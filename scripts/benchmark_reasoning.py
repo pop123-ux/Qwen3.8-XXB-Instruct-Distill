@@ -106,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.output:
             args.output.mkdir(parents=True, exist_ok=True)
             (args.output / "reasoning_template.json").write_text(
-                json.dumps(payload, indent=2) + "\n"
+                json.dumps(payload, indent=2) + "\n", encoding="utf-8"
             )
             print(f"\nwrote {args.output}/reasoning_template.json")
         return 0
@@ -150,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         print("  => the control had little or no measurable effect on reasoning length.")
 
     if args.output:
-        (args.output / "reasoning_baseline.json").write_text(json.dumps(payload, indent=2) + "\n")
+        (args.output / "reasoning_baseline.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         print(f"\nwrote {args.output}/reasoning_baseline.json")
     return 0
 

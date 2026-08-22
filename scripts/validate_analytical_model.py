@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(
             json.dumps({"results": [r.to_dict() for r in results],
-                        "n_passed": passed, "n_total": len(results)}, indent=2) + "\n"
+                        "n_passed": passed, "n_total": len(results)}, indent=2) + "\n", encoding="utf-8"
         )
         print(f"wrote {args.json}")
 

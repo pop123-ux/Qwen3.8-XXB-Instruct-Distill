@@ -116,7 +116,7 @@ def inspect_local(path: str | Path, *, config_only: bool = False) -> TeacherRepo
         report.warnings.append("config.json not found; nothing structural could be verified")
         return report
 
-    config = json.loads(config_path.read_text())
+    config = json.loads(config_path.read_text(encoding="utf-8"))
     report.model_type = config.get("model_type")
     report.architectures = config.get("architectures", []) or []
     text_cfg = config.get("text_config", config)
@@ -133,7 +133,7 @@ def inspect_local(path: str | Path, *, config_only: bool = False) -> TeacherRepo
 
     gen_path = root / "generation_config.json"
     if gen_path.is_file():
-        report.generation_config = json.loads(gen_path.read_text())
+        report.generation_config = json.loads(gen_path.read_text(encoding="utf-8"))
 
     # Reasoning controls live in the chat template, which may sit in its own file
     # or inside tokenizer_config.json depending on the release.
@@ -141,12 +141,12 @@ def inspect_local(path: str | Path, *, config_only: bool = False) -> TeacherRepo
     for candidate in ("chat_template.jinja", "chat_template.json"):
         p = root / candidate
         if p.is_file():
-            template_text = p.read_text()
+            template_text = p.read_text(encoding="utf-8")
             break
     if not template_text:
         tok_cfg_path = root / "tokenizer_config.json"
         if tok_cfg_path.is_file():
-            tok_cfg = json.loads(tok_cfg_path.read_text())
+            tok_cfg = json.loads(tok_cfg_path.read_text(encoding="utf-8"))
             template = tok_cfg.get("chat_template")
             if isinstance(template, list):  # multiple named templates
                 template_text = json.dumps(template)
@@ -163,7 +163,7 @@ def inspect_local(path: str | Path, *, config_only: bool = False) -> TeacherRepo
     tok_path = root / "tokenizer.json"
     if tok_path.is_file():
         try:
-            tok = json.loads(tok_path.read_text())
+            tok = json.loads(tok_path.read_text(encoding="utf-8"))
             vocab = tok.get("model", {}).get("vocab")
             added = tok.get("added_tokens", [])
             if vocab is not None:

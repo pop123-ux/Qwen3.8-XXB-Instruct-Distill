@@ -146,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
-        args.json.write_text(json.dumps(results, indent=2) + "\n")
+        args.json.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
         print(f"\nwrote {args.json}")
     return 0
 

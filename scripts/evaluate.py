@@ -127,9 +127,9 @@ def main(argv: list[str] | None = None) -> int:
             "task_ids": [t.task_id for t in tasks],
             "hardware": collect_hardware().to_dict(),
         }
-        (output_dir / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
+        (output_dir / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
         (output_dir / "benchmark_results.json").write_text(
-            json.dumps(summary.to_dict(), indent=2) + "\n"
+            json.dumps(summary.to_dict(), indent=2) + "\n", encoding="utf-8"
         )
         print(f"\nwrote {output_dir}/{{metadata,benchmark_results}}.json and generations.jsonl")
 

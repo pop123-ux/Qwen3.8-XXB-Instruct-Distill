@@ -38,7 +38,7 @@ def test_fixture_is_loadable_by_transformers(tmp_path):
 @requires_stack
 def test_fixture_config_declares_the_hybrid_layout(tmp_path):
     root = write_tiny_checkpoint(tmp_path / "ckpt", with_weights=False)
-    config = json.loads((root / "config.json").read_text())
+    config = json.loads((root / "config.json").read_text(encoding="utf-8"))
     layer_types = config["layer_types"]
     assert layer_types.count("full_attention") == TINY_SPEC.num_full_attention_layers
     assert layer_types[-1] == "full_attention"

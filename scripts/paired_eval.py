@@ -140,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
                     "hardware": collect_hardware().to_dict(),
                 },
                 indent=2,
-            ) + "\n"
+            ) + "\n", encoding="utf-8"
         )
         print(f"\nwrote {output_dir}/paired_results.json")
     return 0

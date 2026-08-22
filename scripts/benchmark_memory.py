@@ -177,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
                     "timestamp_utc": datetime.now(timezone.utc).isoformat(),
                 },
                 indent=2,
-            ) + "\n"
+            ) + "\n", encoding="utf-8"
         )
         print(f"wrote {args.json}")
     return 0

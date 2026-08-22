@@ -32,7 +32,7 @@ def test_detect_remote_code_finds_nested_auto_map(tmp_path):
 
 
 def test_detect_remote_code_finds_bundled_modules(tmp_path):
-    (tmp_path / "modeling_custom.py").write_text("# custom")
+    (tmp_path / "modeling_custom.py").write_text("# custom", encoding="utf-8")
     needed, evidence = detect_remote_code(str(tmp_path), {})
     assert needed
     assert "modeling_custom.py" in evidence[0]

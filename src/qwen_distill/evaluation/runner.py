@@ -341,7 +341,8 @@ def run_tasks(
     handle = None
     if output_path is not None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        handle = output_path.open("w")
+        # Explicit UTF-8: model output is not ASCII, and Windows defaults to cp1252.
+        handle = output_path.open("w", encoding="utf-8")
 
     try:
         for index, task in enumerate(task_list, start=1):

@@ -57,13 +57,13 @@ def fake_checkpoint(tmp_path):
         "text_config": spec.to_hf_text_config(),
         "vision_config": {"model_type": "qwen3_5_vision", "depth": 2, "hidden_size": 64},
     }
-    (root / "config.json").write_text(json.dumps(config))
+    (root / "config.json").write_text(json.dumps(config), encoding="utf-8")
     (root / "generation_config.json").write_text(
-        json.dumps({"temperature": 0.7, "top_p": 0.8, "top_k": 20})
+        json.dumps({"temperature": 0.7, "top_p": 0.8, "top_k": 20}), encoding="utf-8"
     )
     (root / "chat_template.jinja").write_text(
         "{% if reasoning_effort == 'xhigh' %}<think>{% endif %}"
-        "{{ enable_thinking }}{{ preserve_thinking }}</think>"
+        "{{ enable_thinking }}{{ preserve_thinking }}</think>", encoding="utf-8"
     )
     write_safetensors(
         root / "model-00001-of-00001.safetensors",
@@ -144,10 +144,10 @@ def test_cross_check_reports_mtp_and_vision_split(fake_checkpoint):
 def test_cross_check_flags_drift_when_config_lies(fake_checkpoint):
     """If config.json disagrees with the tensors, the cross-check must say so."""
     root, _ = fake_checkpoint
-    config = json.loads((root / "config.json").read_text())
+    config = json.loads((root / "config.json").read_text(encoding="utf-8"))
     config["text_config"]["num_hidden_layers"] = 40  # inflate the analytical count
     config["text_config"]["layer_types"] = None
-    (root / "config.json").write_text(json.dumps(config))
+    (root / "config.json").write_text(json.dumps(config), encoding="utf-8")
     findings = "\n".join(cross_check(inspect_local(root)))
     assert "MISMATCH" in findings
     assert "ACTION" in findings

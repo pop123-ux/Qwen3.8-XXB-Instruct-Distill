@@ -112,11 +112,11 @@ def write_tiny_checkpoint(
         "eos_token_id": 2,
         "pad_token_id": 0,
     }
-    (root / "config.json").write_text(json.dumps(config, indent=2))
+    (root / "config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
     (root / "generation_config.json").write_text(
-        json.dumps({"bos_token_id": 1, "eos_token_id": 2, "pad_token_id": 0}, indent=2)
+        json.dumps({"bos_token_id": 1, "eos_token_id": 2, "pad_token_id": 0}, indent=2), encoding="utf-8"
     )
-    (root / "chat_template.jinja").write_text(CHAT_TEMPLATE)
+    (root / "chat_template.jinja").write_text(CHAT_TEMPLATE, encoding="utf-8")
 
     tokenizer = build_tokenizer(spec.vocab_size)
     tokenizer.save(str(root / "tokenizer.json"))
@@ -132,13 +132,13 @@ def write_tiny_checkpoint(
                 "chat_template": CHAT_TEMPLATE,
             },
             indent=2,
-        )
+        ), encoding="utf-8"
     )
     (root / "special_tokens_map.json").write_text(
         json.dumps(
             {"bos_token": "<|im_start|>", "eos_token": "<|im_end|>", "pad_token": "<|endoftext|>"},
             indent=2,
-        )
+        ), encoding="utf-8"
     )
 
     if with_weights:
