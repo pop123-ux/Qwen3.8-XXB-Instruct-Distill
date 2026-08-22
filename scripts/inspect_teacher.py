@@ -114,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
-        args.json.write_text(json.dumps(report.to_dict(), indent=2) + "\n")
+        args.json.write_text(json.dumps(report.to_dict(), indent=2) + "\n", encoding="utf-8")
         print(f"\nwrote {args.json}")
     if args.save_spec and report.spec is not None:
         args.save_spec.parent.mkdir(parents=True, exist_ok=True)

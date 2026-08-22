@@ -1,0 +1,192 @@
+{
+  "results": [
+    {
+      "name": "parameters[validation-mini]",
+      "passed": true,
+      "comparisons": {
+        "embedding": {
+          "measured": 262144,
+          "analytical": 262144,
+          "delta": 0
+        },
+        "lm_head": {
+          "measured": 262144,
+          "analytical": 262144,
+          "delta": 0
+        },
+        "final_norm": {
+          "measured": 256,
+          "analytical": 256,
+          "delta": 0
+        },
+        "layer_norms": {
+          "measured": 4096,
+          "analytical": 4096,
+          "delta": 0
+        },
+        "mlp": {
+          "measured": 3145728,
+          "analytical": 3145728,
+          "delta": 0
+        },
+        "full_attention": {
+          "measured": 524544,
+          "analytical": 524544,
+          "delta": 0
+        },
+        "linear_attention": {
+          "measured": 1107720,
+          "analytical": 1107720,
+          "delta": 0
+        },
+        "total": {
+          "measured": 5306632,
+          "analytical": 5306632,
+          "delta": 0
+        }
+      },
+      "details": {
+        "model_class": "Qwen3_5ForCausalLM",
+        "model_module": "transformers.models.qwen3_5.modeling_qwen3_5",
+        "config_class": "Qwen3_5TextConfig",
+        "unmatched_parameters": 0,
+        "n_parameter_tensors": 109,
+        "layer_types_head": [
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention"
+        ],
+        "n_full_attention": 2
+      },
+      "error": null
+    },
+    {
+      "name": "cache_shapes[validation-mini]",
+      "passed": true,
+      "comparisons": {
+        "kv_cache_bytes": {
+          "measured": 75776,
+          "analytical": 75776,
+          "delta": 0
+        },
+        "recurrent_state_bytes": {
+          "measured": 147456,
+          "analytical": 147456,
+          "delta": 0
+        },
+        "conv_state_bytes": {
+          "measured": 30720,
+          "analytical": 30720,
+          "delta": 0
+        }
+      },
+      "details": {
+        "cache_class": "DynamicCache",
+        "layer_types": [
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention"
+        ],
+        "layers_with_kv_cache": [
+          3,
+          7
+        ],
+        "expected_kv_layers": [
+          3,
+          7
+        ],
+        "kv_only_on_full_attention": true,
+        "recurrent_state_shape": [
+          1,
+          6,
+          32,
+          32
+        ],
+        "conv_state_shape": [
+          1,
+          320,
+          4
+        ],
+        "sequence_length": 37
+      },
+      "error": null
+    },
+    {
+      "name": "parameters[teacher-published-spec]",
+      "passed": true,
+      "comparisons": {
+        "embedding": {
+          "measured": 1271398400,
+          "analytical": 1271398400,
+          "delta": 0
+        },
+        "lm_head": {
+          "measured": 1271398400,
+          "analytical": 1271398400,
+          "delta": 0
+        },
+        "final_norm": {
+          "measured": 5120,
+          "analytical": 5120,
+          "delta": 0
+        },
+        "layer_norms": {
+          "measured": 655360,
+          "analytical": 655360,
+          "delta": 0
+        },
+        "mlp": {
+          "measured": 17112760320,
+          "analytical": 17112760320,
+          "delta": 0
+        },
+        "full_attention": {
+          "measured": 1677729792,
+          "analytical": 1677729792,
+          "delta": 0
+        },
+        "linear_attention": {
+          "measured": 5562051072,
+          "analytical": 5562051072,
+          "delta": 0
+        },
+        "total": {
+          "measured": 26895998464,
+          "analytical": 26895998464,
+          "delta": 0
+        }
+      },
+      "details": {
+        "model_class": "Qwen3_5ForCausalLM",
+        "model_module": "transformers.models.qwen3_5.modeling_qwen3_5",
+        "config_class": "Qwen3_5TextConfig",
+        "unmatched_parameters": 0,
+        "n_parameter_tensors": 851,
+        "layer_types_head": [
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention"
+        ],
+        "n_full_attention": 16
+      },
+      "error": null
+    }
+  ],
+  "n_passed": 3,
+  "n_total": 3
+}

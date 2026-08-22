@@ -1,7 +1,14 @@
 # Evaluation Plan
 
-**Status: nothing has been evaluated. This document specifies how evaluation will
-work; it contains no results.**
+**Status: the harness is built and tested; nothing has been evaluated against the
+teacher. This document specifies how evaluation works; it contains no results.**
+
+Implemented in Phase 1: `scripts/evaluate.py` (three tiers, deterministic subsets),
+`scripts/benchmark_reasoning.py` (reasoning sweep + template no-op detector),
+`scripts/paired_eval.py` (identical-prompt teacher/student comparison),
+`scripts/benchmark_memory.py` (peak VRAM vs analytical estimate). See
+[`TEACHER_BASELINE.md`](TEACHER_BASELINE.md) and
+[`REASONING_BASELINE.md`](REASONING_BASELINE.md).
 
 ## Principles
 

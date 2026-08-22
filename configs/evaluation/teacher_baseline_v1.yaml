@@ -1,0 +1,105 @@
+# teacher_baseline_v1 - the measuring instrument.
+#
+# STATUS: NOT YET RUN. This file specifies the baseline; it contains no results.
+# The teacher checkpoint was not reachable from the authoring environment
+# (see docs/VERIFICATION.md), so no measurement has been taken.
+#
+# Every field here exists because omitting it would make two runs incomparable.
+# Do not hard-code any of these in Python.
+
+version: teacher_baseline_v1
+status: not_yet_run
+
+model:
+  repo_id: Qwen/Qwen3.8-27B
+  revision: null              # PIN THIS to a commit sha before the real run
+  local_path: null            # set when weights are available locally
+  trust_remote_code: false    # VERIFY: see open question 1 in docs/VERIFICATION.md
+  dtype: bfloat16
+  quantization: none
+
+tokenizer:
+  source: same_as_model
+  chat_template: from_checkpoint   # never hand-written; must come from the checkpoint
+
+backend:
+  name: transformers          # correctness reference
+  # vLLM is faster but MUST be validated against transformers on a long-context
+  # retrieval task first: a backend that mishandles the DeltaNet recurrent state
+  # can produce plausible short-context output and wrong long-context output.
+  validated_against_reference: false
+
+sampling:
+  temperature: 0.0            # greedy: baseline must be reproducible
+  top_p: 1.0
+  top_k: null
+  seed: 0
+  max_new_tokens: 2048
+
+context:
+  length: 32768
+  evaluation_points: [8192, 16384, 32768, 65536, 131072]
+
+# Four modes, because the project's whole premise is that reasoning budget matters.
+# The student must never be compared against a teacher running an unstated setting.
+modes:
+  - id: mode_a_no_reasoning
+    description: Thinking disabled entirely.
+    enable_thinking: false
+    reasoning_effort: null
+  - id: mode_b_default
+    description: Whatever the model does with no control set - what a user gets by default.
+    enable_thinking: null
+    reasoning_effort: null
+  - id: mode_c_low
+    description: Lowest explicit reasoning budget.
+    enable_thinking: null
+    reasoning_effort: low
+  - id: mode_d_highest
+    description: Highest explicit reasoning budget.
+    enable_thinking: null
+    reasoning_effort: xhigh
+  # `medium` is swept by scripts/benchmark_reasoning.py rather than given its own mode:
+  # it is reported to be a no-op, and the template diff settles that before any
+  # generation is run.
+
+suites:
+  tier1:
+    tasks: reasoning_dev_set + long_context(1024,4096)
+    purpose: cheap regression detection, run continuously
+  reasoning:
+    tasks: reasoning_dev_set
+    purpose: difficulty-stratified reasoning-cost curve
+  long_context:
+    tasks: long_context(1024,4096,16384) x depths(0.1,0.5,0.9)
+    purpose: retrieval vs context length and needle position
+
+determinism:
+  sample_selection: deterministic_prefix   # --limit takes a stable prefix, never a shuffle
+  record_task_ids: true
+  seed: 0
+
+record_per_generation:
+  - task_id
+  - category
+  - difficulty
+  - reasoning setting
+  - prompt_tokens
+  - thinking_tokens
+  - answer_tokens
+  - total_generated_tokens
+  - latency_s
+  - tokens_per_second
+  - correct
+
+output:
+  directory: evaluations/baselines/teacher/
+  files: [benchmark_results.json, generations.jsonl, metadata.json]
+  # generations.jsonl is gitignored: results are committed, bulk text is not.
+
+contamination:
+  note: >-
+    The reasoning dev set is hand-written for this project and contains no items
+    copied from public benchmarks, so it cannot leak a public test set into training.
+    Any real benchmark added later must be checked for overlap against training data
+    before a score is reported.

@@ -126,6 +126,31 @@ def count_parameters(spec: HybridArchSpec) -> ParamBreakdown:
     )
 
 
+def mtp_params(spec: HybridArchSpec, num_mtp_layers: int = 1) -> int:
+    """Parameters of the Multi-Token Prediction head, as vLLM builds it.
+
+    Verified against ``vllm/model_executor/models/qwen3_5_mtp.py`` (vLLM 0.27.1),
+    where ``Qwen3_5MTP`` is registered under ``_SPECULATIVE_DECODING_MODELS``:
+
+    * ``fc``: ``Linear(hidden * 2 -> hidden, bias=False)`` — the draft head concatenates
+      the normalised next-token embedding with the normalised main-model hidden state;
+    * ``layers``: ``num_mtp_layers`` full ``Qwen3_5DecoderLayer`` blocks, each
+      constructed with ``layer_type="full_attention"`` — MTP layers are **never**
+      DeltaNet layers;
+    * three RMSNorms: ``norm``, ``pre_fc_norm_hidden``, ``pre_fc_norm_embedding``.
+
+    ``embed_tokens`` and ``lm_head`` are **shared with the base model**, not duplicated:
+    vLLM's loader routes only ``mtp.*`` tensors into the draft model and reuses the
+    main checkpoint's embedding and head. They are therefore excluded here.
+
+    Defaults to ``num_mtp_layers=1``, matching vLLM's
+    ``getattr(config, "mtp_num_hidden_layers", 1)``.
+    """
+    h = spec.hidden_size
+    per_layer = full_attention_params(spec) + mlp_params(spec) + 2 * h
+    return 2 * h * h + num_mtp_layers * per_layer + 3 * h
+
+
 def format_params(n: int) -> str:
     """Human-readable parameter count, e.g. ``26.90B``."""
     for threshold, suffix in ((1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")):

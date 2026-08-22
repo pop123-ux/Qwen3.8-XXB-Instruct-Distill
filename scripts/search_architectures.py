@@ -138,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
             "ranking_objective": "non_embedding_parameters (capacity proxy)",
             "candidates": [c.summary_row() for c in results],
         }
-        args.json.write_text(json.dumps(payload, indent=2) + "\n")
+        args.json.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         print(f"\nwrote {args.json}")
 
     if args.save_top_spec:
