@@ -1,0 +1,8 @@
+# Training dependencies. Phase 3+; pin exact versions once the stack is chosen.
+-r base.txt
+
+# torch                 # version depends on the CUDA toolkit available
+# transformers>=5.15.1  # must contain the Qwen3.5/3.8 hybrid architecture
+# accelerate
+# datasets
+# peft                  # only if the initialization study shows PEFT suffices

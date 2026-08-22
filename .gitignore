@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Model artifacts - never commit weights
+*.safetensors
+*.bin
+*.gguf
+*.pt
+*.pth
+*.ckpt
+checkpoints/
+models/
+
+# Data
+data/
+*.jsonl.gz
+*.parquet
+
+# Experiment outputs (keep committed summaries, ignore bulk runs)
+experiments/**/runs/
+evaluations/**/raw/
+wandb/
+*.log
+
+# Local environment
+.env
+.env.*
+.DS_Store
+.idea/
+.vscode/

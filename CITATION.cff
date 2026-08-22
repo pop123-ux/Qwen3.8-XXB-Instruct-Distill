@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+title: Qwen3.8-XXB-Instruct-Distill
+message: >-
+  Research infrastructure for distilling Qwen3.8-27B into a 16 GB-deployable
+  instruct model. No trained model or benchmark result is published yet.
+type: software
+authors:
+  - family-names: Pop
+    given-names: Alexandru
+repository-code: "https://github.com/pop123-ux/Qwen3.8-XXB-Instruct-Distill"
+license: MIT
+version: 0.1.0
+date-released: "2026-08-22"
+keywords:
+  - large language models
+  - knowledge distillation
+  - model compression
+  - quantization
+  - long context
+  - gated deltanet
+  - reasoning efficiency
