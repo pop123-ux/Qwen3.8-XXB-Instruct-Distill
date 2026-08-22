@@ -216,10 +216,15 @@ def inspect_hub(repo_id: str, *, config_only: bool = True, revision: str | None 
             "or pass a local --path instead"
         ) from exc
 
+    from ..utils.hub import HubAccessError, diagnose_hub_error
+
     patterns = ["*.json", "*.jinja", "*.txt"]
     if not config_only:
         patterns.append("*.safetensors")
-    local = snapshot_download(repo_id=repo_id, revision=revision, allow_patterns=patterns)
+    try:
+        local = snapshot_download(repo_id=repo_id, revision=revision, allow_patterns=patterns)
+    except Exception as exc:  # noqa: BLE001 - classify rather than leak a traceback
+        raise HubAccessError(diagnose_hub_error(exc, repo_id)) from exc
     report = inspect_local(local, config_only=config_only)
     report.source = f"hf://{repo_id}" + (f"@{revision}" if revision else "")
     return report

@@ -26,6 +26,7 @@ import _bootstrap  # noqa: F401  (side effect: sys.path)
 from qwen_distill.architecture.memory import GIB, DeploymentConfig, estimate_memory
 from qwen_distill.architecture.params import count_parameters, format_params
 from qwen_distill.teacher.inspect import cross_check, inspect_hub, inspect_local
+from qwen_distill.utils.hub import HubAccessError
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,10 +50,19 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    if args.path:
-        report = inspect_local(args.path, config_only=args.config_only)
-    else:
-        report = inspect_hub(args.repo_id, config_only=args.config_only, revision=args.revision)
+    try:
+        if args.path:
+            report = inspect_local(args.path, config_only=args.config_only)
+        else:
+            report = inspect_hub(
+                args.repo_id, config_only=args.config_only, revision=args.revision
+            )
+    except HubAccessError as exc:
+        print(exc.diagnosis.render(), file=sys.stderr)
+        return 1
+    except (NotADirectoryError, FileNotFoundError) as exc:
+        print(f"Could not read the checkpoint: {exc}", file=sys.stderr)
+        return 1
 
     print(f"source              : {report.source}")
     print(f"model_type          : {report.model_type}")
