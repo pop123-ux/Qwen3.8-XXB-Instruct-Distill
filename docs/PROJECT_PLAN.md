@@ -29,10 +29,28 @@ reserved** for driver and desktop, leaving 15.0 GiB usable. See
 
 ## Where the project stands
 
-**Phase 0 (analysis infrastructure) is complete. No model has been trained. No
-benchmark has been run. There are no capability results of any kind.**
+**Phase 0 (analysis infrastructure) and Phase 1 (verification + evaluation
+infrastructure) are complete to the limit of what this environment allows. No model
+has been trained. No benchmark has been run against the teacher. There are no
+capability results of any kind.**
 
-Established so far, analytically:
+Established in Phase 1, empirically:
+
+- The analytical parameter model matches `transformers` **exactly** — zero delta on
+  every component of the 27B architecture, checked by building it on the `meta` device.
+- The memory model's cache terms match a **real forward pass** byte-for-byte, and the
+  DeltaNet recurrent state is measurably constant in sequence length.
+- **MTP is a speculative-decoding draft model** (vLLM `_SPECULATIVE_DECODING_MODELS`),
+  costing 424.70M parameters (1.58%), sharing the base model's embedding and head, and
+  discarded entirely by stock `transformers`.
+- The evaluation, reasoning-sweep and paired-comparison pipelines run end to end
+  against a synthetic checkpoint.
+
+Still blocked: the teacher's own `config.json`, tokenizer, chat template and license
+(`huggingface.co` unreachable), and all peak-VRAM measurement (no GPU). See
+[`VERIFICATION.md`](VERIFICATION.md).
+
+Established in Phase 0, analytically:
 
 - The teacher does not fit 16 GB at any quantisation or context we modelled — at
   Q4_K_M its weights alone are 15.85 GiB.
@@ -49,7 +67,14 @@ Established so far, analytically:
 Architecture spec, exact parameter accounting, VRAM estimator, FLOP/bandwidth model,
 constrained architecture search, teacher inspector, test suite.
 
-### Phase 1 — Teacher verification (blocked on network access)
+### Phase 1 — Teacher verification and evaluation infrastructure ⚠️ partially blocked
+
+Built and tested: loader verification, empirical validation of the analytical model,
+the three-tier evaluation harness, the reasoning-control sweep (including a
+template-level no-op detector), paired teacher/student comparison, and memory
+benchmarking. All exercised end to end against a synthetic checkpoint.
+
+Blocked on network/hardware access:
 
 Everything in [`VERIFICATION.md`](VERIFICATION.md) marked Tier 2 or "open question"
 must be closed against the real checkpoint before an architecture is chosen. The two

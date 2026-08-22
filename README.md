@@ -4,10 +4,10 @@ Research infrastructure for compressing **Qwen3.8-27B** into an instruct model t
 runs comfortably on a **single 16 GB consumer GPU**, keeps a genuinely large context
 window, and spends far fewer tokens thinking about easy questions.
 
-> **Project status: Phase 0 — analysis infrastructure.**
-> No model has been trained. No benchmark has been run. There are no capability
-> results in this repository, and the `XXB` in the name is a placeholder: the final
-> parameter count is a research result, not a design input.
+> **Project status: Phase 1 — verification and evaluation infrastructure.**
+> No model has been trained. No benchmark has been run against the teacher. There are
+> no capability results in this repository, and the `XXB` in the name is a placeholder:
+> the final parameter count is a research result, not a design input.
 
 ## Why this project exists
 
@@ -93,26 +93,37 @@ experiments/      architecture search outputs
 tests/            71 tests pinning every formula
 ```
 
-## Verification, and an honest limitation
+## Verification status
 
-Architectural formulas in this repository were transcribed from the **reference
-implementation** (`transformers==5.15.1`, `models/qwen3_5/`) — the code that actually
-runs the model — rather than from prose descriptions.
+Architectural formulas here were derived from the **reference implementation**
+(`transformers==5.15.1`, `models/qwen3_5/`) — the code that actually runs the model —
+and then **checked against it empirically**.
 
-The anchor check: applying those formulas to the published Qwen3.8-27B configuration
-yields **26,895,998,464 parameters (26.90B)**, within 0.4% of the advertised 27B. That
-is pinned as a regression test.
+`python scripts/validate_analytical_model.py --teacher` instantiates the full 27B
+architecture on PyTorch's `meta` device (shapes only, zero storage, so it runs on a
+laptop) and compares component by component:
 
-**However:** the environment that authored this repository could not reach
-`huggingface.co` (blocked by egress policy). So the upstream **model card,
-`config.json`, tokenizer, chat template and license were never read directly**, and no
-checkpoint cross-check was performed. Several claims — the exact config values, the
-Apache-2.0 license, the `reasoning_effort` behaviour — are corroborated by multiple
-secondary sources but are **not primary-verified**.
+| Component | transformers | analytical | Δ |
+|---|---:|---:|---:|
+| mlp | 17,112,760,320 | 17,112,760,320 | 0 |
+| linear_attention | 5,562,051,072 | 5,562,051,072 | 0 |
+| full_attention | 1,677,729,792 | 1,677,729,792 | 0 |
+| embedding + lm_head | 2,542,796,800 | 2,542,796,800 | 0 |
+| **total** | **26,895,998,464** | **26,895,998,464** | **0** |
 
-`scripts/inspect_teacher.py` exists to close that gap, and it will report a MISMATCH
-if our analytical model disagrees with the real checkpoint. **Run it before relying on
-any number here.** Full detail, claim by claim, in [`docs/VERIFICATION.md`](docs/VERIFICATION.md).
+The memory model's cache terms are likewise verified against a **real forward pass**:
+KV cache, DeltaNet recurrent state and conv state all match byte-for-byte, the KV cache
+appears on exactly the full-attention layers, and the recurrent state is byte-identical
+at sequence length 8 and 64 while the KV cache grows.
+
+**What is still unverified:** `huggingface.co` is blocked by this environment's egress
+policy and no local checkpoint exists, so the upstream **`config.json`, tokenizer, chat
+template and license have never been read**. The formulas are proven correct *for a
+config with these values*; that the teacher **has** these values is corroborated, not
+verified. Peak VRAM is also uncalibrated — this machine has no GPU.
+
+Every claim is classified VERIFIED / CORROBORATED / UNKNOWN, question by question, in
+[`docs/VERIFICATION.md`](docs/VERIFICATION.md).
 
 ## The reasoning-efficiency goal
 
@@ -131,7 +142,9 @@ capability regression cannot be presented as an efficiency win. See
 
 | Document | Contents |
 |---|---|
-| [VERIFICATION.md](docs/VERIFICATION.md) | What is verified, what is not, and how to close the gap |
+| [VERIFICATION.md](docs/VERIFICATION.md) | Every claim classified VERIFIED / CORROBORATED / UNKNOWN |
+| [TEACHER_BASELINE.md](docs/TEACHER_BASELINE.md) | The measuring instrument: modes, suites, determinism |
+| [REASONING_BASELINE.md](docs/REASONING_BASELINE.md) | Measuring what the reasoning controls actually do |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Where parameters, memory and compute go |
 | [PROJECT_PLAN.md](docs/PROJECT_PLAN.md) | Phases, decision gates, and failure modes |
 | [EVALUATION_PLAN.md](docs/EVALUATION_PLAN.md) | Tiers, baselines, contamination, reporting standards |
@@ -158,6 +171,17 @@ model name is chosen** — this has not yet been possible from this environment.
 
 ## Contributing
 
-The most valuable contribution right now is **primary-source verification**: run
-`scripts/inspect_teacher.py` against the real checkpoint and open a PR with the report.
-That unblocks the architecture decision.
+The most valuable contribution right now is **a metadata-only download**. The teacher's
+`config.json`, `tokenizer.json`, `tokenizer_config.json` and chat template total a few
+megabytes — no weights needed — and would close nine open verification questions at
+once, including whether the checkpoint loads under stock `transformers` and whether the
+`medium` reasoning setting is really a no-op:
+
+```bash
+python scripts/inspect_teacher.py --repo-id Qwen/Qwen3.8-27B --config-only \
+    --json evaluations/baselines/teacher_config_report.json
+python scripts/verify_teacher_loader.py --model Qwen/Qwen3.8-27B --config-only
+python scripts/benchmark_reasoning.py --model Qwen/Qwen3.8-27B --template-only
+```
+
+Open a PR with the reports. That unblocks the architecture decision.

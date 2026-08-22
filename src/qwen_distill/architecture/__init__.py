@@ -7,7 +7,7 @@ from .flops import (
     prefill_flops,
 )
 from .memory import DeploymentConfig, MemoryEstimate, estimate_memory, max_context_within
-from .params import ParamBreakdown, count_parameters, format_params
+from .params import ParamBreakdown, count_parameters, format_params, mtp_params
 from .search import Candidate, SearchConstraints, evaluate_candidate, generate_grid, search
 from .spec import FULL_ATTENTION, LINEAR_ATTENTION, HybridArchSpec, build_layer_types
 
@@ -19,6 +19,7 @@ __all__ = [
     "ParamBreakdown",
     "count_parameters",
     "format_params",
+    "mtp_params",
     "DeploymentConfig",
     "MemoryEstimate",
     "estimate_memory",

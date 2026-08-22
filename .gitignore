@@ -26,9 +26,14 @@ data/
 *.jsonl.gz
 *.parquet
 
-# Experiment outputs (keep committed summaries, ignore bulk runs)
+# Experiment outputs (keep committed summaries, ignore bulk generated text)
 experiments/**/runs/
 evaluations/**/raw/
+# Generations can be hundreds of MB; the summaries next to them are what we commit.
+**/generations.jsonl
+**/generations_*.jsonl
+**/teacher_generations.jsonl
+**/student_generations.jsonl
 wandb/
 *.log
 

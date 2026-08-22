@@ -48,13 +48,34 @@ derived:
   num_full_attention_layers: 16
 
 capabilities:
-  multimodal: true                  # vision_config present in the qwen3_5 family
-  mtp_head: true                    # mtp.* keys ship in the checkpoint; transformers discards them
-  reasoning_effort_levels: [low, medium, xhigh]
-  reasoning_effort_default: xhigh
+  multimodal: true                  # CORROBORATED; vision_config present in the qwen3_5 family
+  mtp_head: true                    # VERIFIED (family): mtp.* keys ship; transformers discards them
+  reasoning_effort_levels: [low, medium, xhigh]     # CORROBORATED
+  reasoning_effort_default: xhigh                   # CORROBORATED
   # Reported that `medium` injects no instruction and is effectively a no-op.
-  # Verify directly; see docs/reasoning-efficiency.md.
+  # UNKNOWN, but mechanically decidable:
+  #   python scripts/benchmark_reasoning.py --model Qwen/Qwen3.8-27B --template-only
   medium_reported_noop: true
+
+# Phase 1 verification status per field group. See docs/VERIFICATION.md for evidence.
+verification_status:
+  parameter_formulas: VERIFIED      # exact match vs transformers meta-device build (delta 0)
+  cache_and_state_shapes: VERIFIED  # exact match vs a real forward pass
+  layer_layout_rule: VERIFIED       # 48 linear / 16 full at interval 4
+  attention_and_deltanet_dims: VERIFIED   # for the qwen3_5 family
+  mtp_representation: VERIFIED      # vLLM _SPECULATIVE_DECODING_MODELS; 424.70M params (1.58%)
+  config_values_for_3_8: UNKNOWN    # huggingface.co blocked; config.json never read
+  model_type_for_3_8: UNKNOWN       # leading hypothesis: qwen3_5 (see docs/VERIFICATION.md)
+  tokenizer: UNKNOWN
+  chat_template: UNKNOWN
+  license: UNKNOWN                  # MUST be read before any release
+  peak_vram_end_to_end: UNKNOWN     # no GPU available; runtime overhead uncalibrated
+
+derived_mtp:
+  parameters: 424699392             # VERIFIED formula; 1.58% of 26.90B
+  layers_default: 1                 # vllm: getattr(config, "mtp_num_hidden_layers", 1)
+  layer_type: full_attention        # MTP layers are never DeltaNet
+  shares_embed_and_lm_head: true    # not duplicated in the draft model
 
 license:
   reported: Apache-2.0
