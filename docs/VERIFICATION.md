@@ -10,6 +10,22 @@ Every claim this project relies on, classified. The rule:
 
 Last updated: 2026-08-22 (Phase 1).
 
+## Verification attempt log
+
+The three metadata-only verification commands were **executed**, not merely specified.
+All three failed at the network layer:
+
+| Command | Result |
+|---|---|
+| `inspect_teacher.py --repo-id Qwen/Qwen3.8-27B --config-only` | `ProxyError: 403 Forbidden` |
+| `verify_teacher_loader.py --model Qwen/Qwen3.8-27B --config-only` | `VERDICT: FAILED` — `OSError: Can't load the configuration of 'Qwen/Qwen3.8-27B'` |
+| `benchmark_reasoning.py --model Qwen/Qwen3.8-27B --template-only` | same `OSError` |
+
+No teacher artifact was produced, so none is committed. The attempt itself exposed two
+tooling defects, now fixed: `inspect_teacher.py` exited **0** despite failing (a
+verification script reporting success for work it never did), and two of the three
+scripts leaked raw tracebacks instead of an actionable diagnosis.
+
 ## The blocking constraint
 
 `huggingface.co` is **blocked by this environment's egress policy** — confirmed again

@@ -41,6 +41,7 @@ from qwen_distill.evaluation.reasoning import (
 from qwen_distill.evaluation.runner import TransformersBackend
 from qwen_distill.evaluation.tasks import reasoning_dev_set
 from qwen_distill.utils.hardware import collect_hardware
+from qwen_distill.utils.hub import diagnose_hub_error
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -80,9 +81,22 @@ def main(argv: list[str] | None = None) -> int:
     # --- 1. template-level check --------------------------------------
     from transformers import AutoTokenizer
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.model, trust_remote_code=args.trust_remote_code
-    )
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.model, trust_remote_code=args.trust_remote_code
+        )
+    except Exception as exc:  # noqa: BLE001 - classify rather than leak a traceback
+        print(diagnose_hub_error(exc, args.model).render(), file=sys.stderr)
+        return 1
+
+    if tokenizer.chat_template is None:
+        print(
+            f"'{args.model}' has no chat template, so reasoning controls cannot be "
+            "checked at the template level.",
+            file=sys.stderr,
+        )
+        return 1
+
     comparison = compare_rendered_prompts(tokenizer, settings=settings)
     payload["template_comparison"] = comparison.to_dict()
 
