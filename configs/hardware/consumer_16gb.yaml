@@ -1,0 +1,36 @@
+# The 16 GB consumer deployment envelope this project targets.
+# Used by scripts/estimate_vram.py and scripts/search_architectures.py.
+
+budget:
+  vram_gib: 16.0
+  reserved_gib: 1.0        # driver, desktop compositor, other applications
+  usable_gib: 15.0
+
+defaults:
+  weight_quant: q4_k_m
+  embedding_quant: q6_k    # 248k vocab is quantisation-sensitive; kept higher
+  kv_cache_dtype: fp16
+  recurrent_state_dtype: fp32
+  batch_size: 1
+  prefill_chunk_tokens: 2048
+  runtime_overhead_gib: 0.9
+  activation_safety_factor: 1.25
+
+context_targets:
+  minimum: 32768
+  goal: 131072
+  stretch: 262144
+
+gpus:
+  - name: RTX 3060 Ti 16GB class
+    vram_gib: 16
+    bandwidth_gb_s: 448
+    bf16: true
+  - name: RTX 5070 16GB class
+    vram_gib: 16
+    bandwidth_gb_s: 672
+    bf16: true
+  - name: NVIDIA T4
+    vram_gib: 16
+    bandwidth_gb_s: 320
+    bf16: false            # no BF16; plan fp16/int8 paths for this target

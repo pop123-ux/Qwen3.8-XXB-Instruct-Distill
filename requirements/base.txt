@@ -1,0 +1,5 @@
+# Core analysis tooling. Pure Python; no GPU or PyTorch required.
+pyyaml>=6.0
+
+# Optional: needed only by scripts/inspect_teacher.py --repo-id
+huggingface_hub>=0.26

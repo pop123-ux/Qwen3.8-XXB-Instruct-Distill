@@ -1,0 +1,6 @@
+# Serving dependencies for the 16 GB deployment target.
+-r base.txt
+
+# transformers>=5.15.1
+# vllm                  # verify hybrid support and MTP handling
+# llama-cpp-python      # verify GGUF support for Gated DeltaNet

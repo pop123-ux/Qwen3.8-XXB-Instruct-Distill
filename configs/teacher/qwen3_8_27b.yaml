@@ -1,0 +1,61 @@
+# Qwen3.8-27B teacher configuration.
+#
+# PROVENANCE WARNING: these values are the publicly reported configuration,
+# corroborated across multiple secondary sources and shown to be self-consistent
+# (they reproduce 26.90B parameters against the reference implementation's shape
+# formulas, within 0.4% of the advertised 27B).
+#
+# They have NOT been read from the upstream config.json - see docs/VERIFICATION.md.
+# Replace this file with the output of:
+#     python scripts/inspect_teacher.py --repo-id Qwen/Qwen3.8-27B --config-only \
+#         --save-spec configs/teacher/qwen3_8_27b.verified.json
+# before making any architecture decision that depends on it.
+
+name: Qwen3.8-27B
+repo_id: Qwen/Qwen3.8-27B
+verified: false
+verification_notes: >-
+  Structural formulas verified against transformers==5.15.1 models/qwen3_5.
+  Config values corroborated by secondary sources only; huggingface.co was
+  unreachable from the authoring environment.
+
+architecture:
+  hidden_size: 5120
+  num_hidden_layers: 64
+  intermediate_size: 17408
+  vocab_size: 248320
+  tie_word_embeddings: false
+
+  num_attention_heads: 24
+  num_key_value_heads: 4
+  head_dim: 256
+  partial_rotary_factor: 0.25      # -> rope dim 64
+  attention_bias: false
+
+  linear_num_value_heads: 48
+  linear_num_key_heads: 16
+  linear_key_head_dim: 128
+  linear_value_head_dim: 128
+  linear_conv_kernel_dim: 4
+
+  full_attention_interval: 4        # -> 48 linear : 16 full
+  max_position_embeddings: 262144
+
+derived:
+  total_parameters: 26895998464     # 26.90B, computed by qwen_distill.architecture.params
+  mlp_share: 0.636
+  num_linear_attention_layers: 48
+  num_full_attention_layers: 16
+
+capabilities:
+  multimodal: true                  # vision_config present in the qwen3_5 family
+  mtp_head: true                    # mtp.* keys ship in the checkpoint; transformers discards them
+  reasoning_effort_levels: [low, medium, xhigh]
+  reasoning_effort_default: xhigh
+  # Reported that `medium` injects no instruction and is effectively a no-op.
+  # Verify directly; see docs/reasoning-efficiency.md.
+  medium_reported_noop: true
+
+license:
+  reported: Apache-2.0
+  verified: false                   # MUST be confirmed before any release

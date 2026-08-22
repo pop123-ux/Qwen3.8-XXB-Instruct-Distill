@@ -1,0 +1,7 @@
+# Evaluation dependencies. Backend choice is pending the hybrid-architecture
+# support check described in docs/EVALUATION_PLAN.md.
+-r base.txt
+
+# lm-eval
+# lighteval
+# vllm                  # verify Gated DeltaNet recurrent-state support first
