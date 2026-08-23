@@ -96,6 +96,33 @@ def test_credential_shaped_files_are_never_copied(tmp_path, name):
     assert all(path.name != name for path, _ in plan.to_copy)
 
 
+def test_standard_model_metadata_is_not_mistaken_for_a_secret(tmp_path):
+    """`*token*.json` catches every Hugging Face tokenizer file. Silently dropping the
+    teacher metadata from a backup is data loss discovered only after the runtime dies."""
+    source = make_source(tmp_path)
+    (source / "vendor").mkdir()
+    for name in ("tokenizer_config.json", "tokenizer.json", "special_tokens_map.json"):
+        (source / "vendor" / name).write_text("{}", encoding="utf-8")
+
+    plan = backup.build_plan(source, tmp_path / "drive")
+
+    copied = {path.name for path, _ in plan.to_copy}
+    assert {"tokenizer_config.json", "tokenizer.json", "special_tokens_map.json"} <= copied
+    assert plan.secrets_excluded == []
+
+
+def test_the_allowlist_matches_whole_filenames_not_substrings(tmp_path):
+    """Otherwise `hf_token.json` would ride in behind `tokenizer.json`."""
+    source = make_source(tmp_path)
+    (source / "hf_token.json").write_text("SECRET", encoding="utf-8")
+    (source / "my_tokenizer_config.json.bak").write_text("SECRET", encoding="utf-8")
+
+    plan = backup.build_plan(source, tmp_path / "drive")
+
+    assert "hf_token.json" in plan.secrets_excluded
+    assert all(path.name != "hf_token.json" for path, _ in plan.to_copy)
+
+
 def test_secrets_in_nested_directories_are_also_excluded(tmp_path):
     """Exclusion is by shape at any depth, not only at the root."""
     source = make_source(tmp_path)

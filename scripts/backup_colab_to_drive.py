@@ -52,13 +52,27 @@ EXCLUDE_PATTERNS: tuple[str, ...] = (
 )
 
 #: Credential-shaped paths. Excluded regardless of location, so a token dropped into the
-#: repository root is never uploaded to Drive.
+#: repository root is never uploaded to Drive. Deliberately broad — a false positive
+#: costs one file, a false negative uploads a credential.
 SECRET_PATTERNS: tuple[str, ...] = (
     ".env", ".env.*", "*.pem", "*.key", "id_rsa*", "id_ed25519*",
     ".netrc", ".git-credentials", "*token*.json", "*credentials*.json",
     "*.secret", "secrets.*", ".aws/*", ".ssh/*", ".config/gh/*",
     "huggingface_token*", "hf_token*",
 )
+
+#: Filenames that look credential-shaped but are standard, public model metadata.
+#: Without this, ``*token*.json`` swallows every Hugging Face tokenizer file — and a
+#: backup that silently drops the teacher metadata is worse than one that never ran,
+#: because the loss is only discovered when the runtime is already gone. Matched on the
+#: exact filename, never on a substring, so ``hf_token.json`` is still excluded.
+NOT_SECRET_FILENAMES: frozenset[str] = frozenset({
+    "tokenizer_config.json",
+    "tokenizer.json",
+    "special_tokens_map.json",
+    "added_tokens.json",
+    "preprocessor_config.json",
+})
 
 
 @dataclass
@@ -120,7 +134,7 @@ def build_plan(
             # Never followed: a symlink could point anywhere on the filesystem.
             plan.symlinks_skipped.append(relative.as_posix())
             continue
-        if matches(relative, SECRET_PATTERNS):
+        if matches(relative, SECRET_PATTERNS) and path.name not in NOT_SECRET_FILENAMES:
             plan.secrets_excluded.append(relative.as_posix())
             continue
         if matches(relative, EXCLUDE_PATTERNS):
@@ -148,7 +162,9 @@ def build_plan(
             if not path.is_file() or path.is_symlink():
                 continue
             relative = path.relative_to(destination)
-            if matches(relative, EXCLUDE_PATTERNS) or matches(relative, SECRET_PATTERNS):
+            if matches(relative, EXCLUDE_PATTERNS) or (
+                matches(relative, SECRET_PATTERNS) and path.name not in NOT_SECRET_FILENAMES
+            ):
                 continue
             if not (source / relative).exists():
                 plan.extraneous.append(path)

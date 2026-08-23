@@ -349,8 +349,32 @@ rather than a feature list:
   onto Drive.
 - **Credential-shaped files are never copied** — `.env`, `*.pem`, `*.key`, `id_rsa*`,
   `.netrc`, `.git-credentials`, `*token*.json`, `.ssh/`, `.aws/` — at any depth, so a
-  token dropped in the repo root does not end up in cloud storage.
+  token dropped in the repo root does not end up in cloud storage. The patterns are
+  deliberately broad, with a small exact-filename allowlist for standard model metadata
+  (`tokenizer_config.json`, `tokenizer.json`, ...) that `*token*.json` would otherwise
+  swallow. A backup that silently drops the teacher metadata is worse than one that
+  never ran, because the loss surfaces only after the runtime is gone.
 - **Unchanged files are skipped**, so re-running is cheap and idempotent.
 
 If Drive is not mounted the script exits 2 and prints the `drive.mount` snippet rather
 than silently writing to a local directory that will vanish with the runtime.
+
+### A note on what is currently in git
+
+`.gitignore` already excludes `*.pt`, `*.pth`, `*.ckpt` and `experiments/**/runs/`, but
+`.gitignore` does not untrack files that were committed before it applied. The Level-1
+prototype's three checkpoints are still tracked, at **139 MB**, for a 4.03M-parameter
+toy model whose result is fully captured by the far smaller `summary.json` and
+`metrics.jsonl` beside them.
+
+That is worth deciding on deliberately rather than letting it grow. To stop tracking
+them going forward while keeping the files on disk:
+
+```bash
+git rm --cached experiments/runs/t4_prototype/*/training_state.pt
+```
+
+Note that this does not shrink the repository — the blobs remain in history, and
+removing them from history is a rewrite that invalidates every existing clone. The
+choice to make now is whether Level-2 and later checkpoints go to Drive instead of git.
+They should.

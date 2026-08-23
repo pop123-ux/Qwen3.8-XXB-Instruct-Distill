@@ -31,7 +31,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--checkpoint", type=Path, required=True, help="checkpoint directory")
+    # A single required path reads better positionally; --checkpoint stays accepted so
+    # existing invocations keep working.
+    parser.add_argument("checkpoint", type=Path, nargs="?", help="checkpoint directory")
+    parser.add_argument("--checkpoint", dest="checkpoint_flag", type=Path,
+                        help=argparse.SUPPRESS)
     parser.add_argument("--device", default="cpu", help="device to reload onto (default cpu)")
     parser.add_argument("--max-new-tokens", type=int, default=48)
     parser.add_argument("--prompts", nargs="+", default=list(DEFAULT_PROMPTS))
@@ -40,7 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    args.checkpoint = args.checkpoint or args.checkpoint_flag
+    if args.checkpoint is None:
+        parser.error("a checkpoint directory is required")
     if not args.checkpoint.is_dir():
         print(f"Checkpoint directory not found: {args.checkpoint}", file=sys.stderr)
         return 2
