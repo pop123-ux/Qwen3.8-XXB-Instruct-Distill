@@ -1,0 +1,50 @@
+# Final student training (Level 6 on the development ladder).
+#
+# STATUS: PLACEHOLDER. The student architecture has NOT been chosen — that is a
+# research result the project has not reached. This file exists so the scaling path is
+# concrete and so `--dry-run` can show what the final run would require, not because
+# any of these values are decided.
+#
+# Running this as-is is not intended and the feasibility check will say so on any
+# consumer GPU.
+
+name: final_student
+level: "Level 6 — large distributed final training"
+description: >-
+  PLACEHOLDER for the final student run. Architecture pending the architecture search;
+  spec_path points at a Phase 0 shortlist candidate purely so the estimate is concrete.
+
+model:
+  # NOT a decision. One of the analytical shortlist candidates, used here only to make
+  # the memory estimate meaningful.
+  spec_path: configs/student/candidate_ctx32k_conservative.json
+
+data:
+  train_path: data/distillation/full_train.jsonl
+  validation_path: data/distillation/full_validation.jsonl
+  max_sequence_length: 8192
+  streaming: true
+  shuffle_seed: 0
+
+training:
+  strategy: full          # architecture compression needs real student parameters
+  optimizer: adamw_8bit
+  precision: bf16
+  objective: mixed_kd
+  kd_weight: 0.5
+  kd_temperature: 2.0
+  learning_rate: 0.00005
+  max_steps: 100000
+  warmup_steps: 2000
+  batch_size: 1
+  gradient_accumulation_steps: 64
+  gradient_checkpointing: true
+  seed: 0
+  eval_every: 1000
+  save_every: 2000
+  log_every: 50
+
+runtime:
+  output_dir: experiments/runs/final_student
+  device: auto
+  reserved_vram_gib: 2.0

@@ -26,6 +26,7 @@ from pathlib import Path
 import _bootstrap  # noqa: F401
 
 from qwen_distill.teacher.loader import verify_loader
+from qwen_distill.teacher.runtime_compat import check_runtime_compatibility
 from qwen_distill.utils.offline import looks_local, offline_for
 
 
@@ -89,6 +90,31 @@ def main(argv: list[str] | None = None) -> int:
     print("\nversions:")
     for name, version in report.versions.items():
         print(f"  {name:<18}{version}")
+
+    # Shapes matching is not the same as the computation matching. Check that the
+    # installed runtime actually implements the activations the checkpoint declares
+    # before any expensive inference is run against it.
+    if report.model_type:
+        try:
+            from transformers import AutoConfig
+
+            with offline_for(args.model):
+                loaded = AutoConfig.from_pretrained(
+                    args.model, trust_remote_code=args.trust_remote_code
+                )
+            compat = check_runtime_compatibility(loaded)
+            payload["runtime_compatibility"] = compat.to_dict()
+            print(f"\n--- runtime computation check: {compat.verdict} ---")
+            for check in compat.checks:
+                mark = "OK " if check.satisfied else "!! "
+                print(f"  {mark}{check.gate:<22}{check.config_key}={check.declared!r} "
+                      f"-> runtime applies {check.runtime_activation}")
+            for note in compat.notes:
+                print(f"  note: {note}")
+            for warning in compat.warnings:
+                print(f"  WARNING: {warning}")
+        except Exception as exc:  # noqa: BLE001 - advisory, must not block the report
+            print(f"\n  (runtime computation check unavailable: {exc})")
 
     print("\n=== STAGE 2: RUNTIME VERIFICATION ===")
     if not args.probe or args.config_only:

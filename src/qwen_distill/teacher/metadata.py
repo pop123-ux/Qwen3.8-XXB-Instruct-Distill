@@ -473,23 +473,40 @@ def hash_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-#: Config keys the installed `transformers` does not read, mapped to what it does
-#: instead. Verified by reading ``transformers/models/qwen3_5/`` at 5.15.1.
+#: Config keys the installed `transformers` retains as attributes but does not act on,
+#: mapped to what it does instead and whether that still satisfies the declaration.
+#: Verified by reading ``transformers/models/qwen3_5/`` at 5.15.1 and cross-checking
+#: vLLM 0.27.1. See :mod:`qwen_distill.teacher.runtime_compat` for the gate analysis.
 IGNORED_BY_TRANSFORMERS: dict[str, str] = {
     "attn_output_gate": (
-        "transformers 5.15.1 builds the doubled q_proj unconditionally; a config "
-        "declaring false would still get a gated projection"
+        "SATISFIED for this checkpoint. transformers builds the doubled q_proj "
+        "unconditionally and applies torch.sigmoid; vLLM reads the key and sizes the "
+        "projection conditionally. Both agree when the value is true (as here). A "
+        "checkpoint declaring false would fail to load under transformers on shape "
+        "mismatch - loudly, not silently"
     ),
-    "output_gate_type": "transformers 5.15.1 applies sigmoid gating unconditionally",
+    "output_gate_type": (
+        "SATISFIED. This key governs the *Gated DeltaNet* output gate, not the "
+        "attention gate: vLLM reads it in QwenGatedDeltaNetAttention and passes it to "
+        "RMSNormGated(activation=...), normalising 'swish' to 'silu' first. "
+        "transformers hard-codes 'silu' in Qwen3_5RMSNormGated, and swish and SiLU are "
+        "the same function, so the declaration is honoured. The torch.sigmoid in "
+        "Qwen3_5Attention is a different gate governed by attn_output_gate"
+    ),
     "mamba_ssm_dtype": (
-        "not read by transformers 5.15.1; the recurrent state dtype follows the "
-        "tensors at runtime (the reference path accumulates in float32)"
+        "SATISFIED in effect. Not read by transformers 5.15.1, but its torch reference "
+        "path accumulates the delta-rule state in float32 anyway (measured against a "
+        "real forward pass), which is what the key requests"
+    ),
+    "mtp_num_hidden_layers": (
+        "NOT APPLICABLE under transformers, which discards mtp.* entirely. Read by "
+        "vLLM, where it sets the number of speculative draft layers"
     ),
     "mtp_use_dedicated_embeddings": (
-        "transformers 5.15.1 discards mtp.* entirely; vLLM reuses the base "
-        "embedding and lm_head for the draft model"
+        "NOT APPLICABLE under transformers (no MTP). vLLM reuses the base embedding "
+        "and lm_head for the draft model, matching the declared false"
     ),
-    "language_model_only": "not read by transformers 5.15.1",
+    "language_model_only": "informational; not read by transformers 5.15.1",
 }
 
 

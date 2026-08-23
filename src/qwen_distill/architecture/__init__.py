@@ -10,6 +10,7 @@ from .memory import DeploymentConfig, MemoryEstimate, estimate_memory, max_conte
 from .params import ParamBreakdown, count_parameters, format_params, mtp_params
 from .search import Candidate, SearchConstraints, evaluate_candidate, generate_grid, search
 from .spec import FULL_ATTENTION, LINEAR_ATTENTION, HybridArchSpec, build_layer_types
+from .transfer import TransferPlan, build_transfer_plan, compare_strategies, select_layers
 
 __all__ = [
     "HybridArchSpec",
@@ -33,4 +34,8 @@ __all__ = [
     "evaluate_candidate",
     "generate_grid",
     "search",
+    "TransferPlan",
+    "build_transfer_plan",
+    "compare_strategies",
+    "select_layers",
 ]

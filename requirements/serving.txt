@@ -4,3 +4,13 @@
 # transformers>=5.15.1
 # vllm                  # verify hybrid support and MTP handling
 # llama-cpp-python      # verify GGUF support for Gated DeltaNet
+
+# --- Teacher runtime (verified in Phase 1C) ---------------------------------
+# transformers>=5.8.0   minimum containing models/qwen3_5 (the architecture this
+#                       checkpoint declares). 5.8.0 also wrote the checkpoint config.
+# transformers==5.15.1  RECOMMENDED and the version this project verified against:
+#                       DeltaNet output gate = silu (satisfies output_gate_type
+#                       "swish"), attention output gate = sigmoid. Confirmed identical
+#                       across 5.8.0-5.15.1, and cross-checked against vLLM 0.27.1.
+# accelerate            REQUIRED for the 27B runtime probe: device_map= needs it.
+#                       Without it, --device auto raises ImportError before loading.

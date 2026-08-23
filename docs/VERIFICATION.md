@@ -74,25 +74,105 @@ supplied `config.json` through `HybridArchSpec.from_hf_config` → `count_parame
 with no preset involved. A test varies each architecture field and asserts the estimate
 moves, so no dimension is silently hard-coded.
 
-### Config keys the installed `transformers` does not read
+### Config keys the installed `transformers` retains but does not act on
 
-The checkpoint was written by `transformers 5.8.0.dev0` and carries keys absent from
-5.15.1. Not errors — but a key that looks like it controls behaviour may not, and a
-future release could start honouring one:
+The checkpoint was written by `transformers 5.8.0.dev0` and carries keys the 5.15.1
+modeling code never reads. All of them survive onto the config object as attributes;
+the question is whether 5.15.1's hard-coded behaviour still satisfies each declaration.
+Investigated in Phase 1C against the installed source **and** vLLM 0.27.1:
 
-| Key | Value | What 5.15.1 does |
-|---|---|---|
-| `attn_output_gate` | `true` | builds the doubled `q_proj` unconditionally; would ignore `false` |
-| `output_gate_type` | `"swish"` | applies **sigmoid** gating unconditionally |
-| `mamba_ssm_dtype` | `"float32"` | not read; the reference path accumulates the recurrent state in fp32 anyway, which independently confirms our conservative default |
-| `mtp_use_dedicated_embeddings` | `false` | discards `mtp.*` entirely; vLLM reuses the base embedding and head |
-| `language_model_only` | `false` | not read |
+| Key | Value | Class | Status |
+|---|---|---|---|
+| `output_gate_type` | `"swish"` | B — implementation alias | **SATISFIED** — see below |
+| `attn_output_gate` | `true` | D — behaviour-changing if false | **SATISFIED** for `true` |
+| `mamba_ssm_dtype` | `"float32"` | C — behaviourally important | **SATISFIED in effect** |
+| `mtp_num_hidden_layers` | `1` | C — for vLLM | N/A under transformers (MTP discarded) |
+| `mtp_use_dedicated_embeddings` | `false` | C — for vLLM | N/A under transformers (MTP discarded) |
+| `language_model_only` | `false` | A — irrelevant metadata | informational |
+| `deepstack_visual_indexes` | `[]` | A — empty, vision-only | informational |
 
-`output_gate_type: "swish"` versus 5.15.1's sigmoid is a genuine behavioural
-discrepancy. It does not change the parameter count, but it means the installed
-implementation may not reproduce the checkpoint's intended activation.
+Keys that *are* acted upon by 5.15.1: `layer_types`, `full_attention_interval`,
+`partial_rotary_factor`.
 
-## What remains blocked
+## Runtime computation: `output_gate_type` resolved
+
+**Phase 1B recorded `output_gate_type: "swish"` versus the implementation's sigmoid as
+"a genuine behavioural discrepancy". That was wrong, and this section corrects it.**
+The error was attributing the config key to the wrong gate. The architecture has two
+distinct output gates:
+
+| Gate | Governed by | transformers 5.15.1 | vLLM 0.27.1 |
+|---|---|---|---|
+| **Gated DeltaNet** output gate | `output_gate_type` | `Qwen3_5RMSNormGated`, `self.activation = "silu"` hard-coded | `RMSNormGated(activation=output_gate_type)`, with `"swish"` mapped to `"silu"` |
+| **Full attention** output gate | `attn_output_gate` | `attn_output * torch.sigmoid(gate)` | `attn_output * torch.sigmoid(gate)` |
+
+Evidence, from the installed and vendored sources rather than from memory:
+
+```python
+# vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py, in
+# class QwenGatedDeltaNetAttention.__init__:
+output_gate_type = getattr(config, "output_gate_type", "silu")
+if output_gate_type == "swish":
+    output_gate_type = "silu"
+assert output_gate_type in ["silu", "swish", "sigmoid"]
+self.norm = RMSNormGated(self.head_v_dim, ..., norm_before_gate=True,
+                         activation=output_gate_type)
+
+# transformers/models/qwen3_5/modeling_qwen3_5.py, class Qwen3_5RMSNormGated:
+self.activation = "silu"
+hidden_states = hidden_states * ACT2FN[self.activation](gate.to(torch.float32))
+# ...and separately, in Qwen3_5Attention.forward:
+attn_output = attn_output * torch.sigmoid(gate)
+```
+
+The file path is decisive: `output_gate_type` is read inside the **Gated DeltaNet**
+module and passed to the DeltaNet's `RMSNormGated`. The `torch.sigmoid` is in the
+attention module, a different gate, and vLLM applies sigmoid there too.
+
+**Swish and SiLU are the same function** — Swish with β=1 is `x · sigmoid(x)`, which is
+SiLU. Verified numerically: `ACT2FN["swish"]` and `ACT2FN["silu"]` are bit-identical,
+and both match `x * sigmoid(x)` to 1e-6. Sigmoid is *not* interchangeable with either —
+they differ by up to **1.905** over `[-8, 8]`, which is why the regression test uses
+that gap to discriminate.
+
+**Verdict: `VERIFIED_CORRECT`.** transformers 5.15.1 implements the computation the
+checkpoint declares, for both gates.
+
+### What would break this, and how it is caught
+
+`qwen_distill.teacher.runtime_compat` encodes the reasoning as a runnable check, wired
+into `scripts/verify_teacher_loader.py` Stage 1, with tests that fail if:
+
+- a checkpoint declares `output_gate_type: "sigmoid"` (which the silu-hard-coded
+  runtime could *not* honour) — reported as `IMPLEMENTATION_MISMATCH`;
+- a checkpoint declares `attn_output_gate: false` (transformers builds a gated
+  projection regardless; loading would fail on shape mismatch — loudly, not silently);
+- `transformers` changes either hard-coded activation, or starts reading
+  `output_gate_type`, invalidating the reasoning above.
+
+Nothing is patched or monkey-patched. The module reports; it does not modify.
+
+## Checkpoint state-dict cross-check: DEFERRED
+
+The optional CPU state-dict cross-check was assessed and **not attempted**. Both
+preconditions fail in this environment:
+
+| Check | Result |
+|---|---|
+| Hugging Face reachable | **No** — `huggingface.co` returns 403 at the egress proxy |
+| Disk available | **22 GB** — a bf16 27B checkpoint is ~54 GB, plus the vision tower and MTP head |
+
+Either alone is disqualifying. No attempt was made to bypass the network restriction.
+
+`scripts/inspect_teacher.py --path <checkpoint>` performs this cross-check by reading
+safetensors *headers* only — no tensor data, no model instantiation, no GPU — so it can
+run on any machine with the disk space and a copy of the weights. It reports the
+state-dict total, splits out vision and MTP tensors, and flags a MISMATCH against the
+analytical 26,895,998,464.
+
+**Status: `CHECKPOINT_CROSSCHECK_DEFERRED`.**
+
+## What remains blocked## What remains blocked
 
 The metadata is supplied and verified. Two things still are not:
 

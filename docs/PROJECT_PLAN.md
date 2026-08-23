@@ -55,6 +55,17 @@ Established in Phase 1, empirically against the reference implementation:
 - **MTP is a speculative-decoding draft model** (vLLM `_SPECULATIVE_DECODING_MODELS`),
   424.70M parameters (1.58%), discarded entirely by stock `transformers`.
 
+Added in Phase 1D — the hardware-awareness layer and the training path:
+
+- `scripts/hardware_info.py` answers "what can my GPU run?" for inference and for
+  experiments, deriving every answer from the memory model rather than a lookup table.
+- `scripts/train_student.py --dry-run` answers "will this training run fit?" in seconds,
+  before any weights load.
+- The development ladder (CPU → T4 → rented 24/48 GB → final) with concrete gates per
+  level; see [`TRAINING_ON_LIMITED_HARDWARE.md`](TRAINING_ON_LIMITED_HARDWARE.md).
+- Teacher generation and student training are separated by an offline dataset, so a
+  16 GB card never holds both the teacher and the student.
+
 Still blocked, all requiring the weights or a GPU: state-dict parameter count,
 successful loading and generation, benchmark capability, reasoning-token behaviour, and
 peak VRAM. See [`VERIFICATION.md`](VERIFICATION.md).
