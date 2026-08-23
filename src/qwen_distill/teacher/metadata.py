@@ -417,3 +417,208 @@ def blocking_gaps(files: list[MetadataFileReport], fields: list[FieldReport]) ->
     gaps = [f"{f.name} is required ({f.blocks})" for f in files if f.status == "MISSING"]
     gaps += [f"{f.name} could not be read: {f.note}" for f in fields if f.status == "MISSING"]
     return gaps
+
+
+# ---------------------------------------------------------------------------
+# Provenance: hashing and implementation cross-checks
+# ---------------------------------------------------------------------------
+
+#: Files whose content can change an experiment's result and must therefore be pinned.
+#: A chat-template edit alone can move benchmark scores substantially, so it is treated
+#: as an experimental dependency exactly like the config.
+HASHED_FILES: tuple[str, ...] = (
+    "config.json",
+    "tokenizer_config.json",
+    "tokenizer.json",
+    "generation_config.json",
+    "special_tokens_map.json",
+    "chat_template.jinja",
+    "LICENSE",
+)
+
+
+def hash_file(path: Path) -> str:
+    """SHA-256 of a file's bytes."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def hash_metadata_files(root: str | Path, names: tuple[str, ...] = HASHED_FILES) -> dict[str, str]:
+    """SHA-256 every present file in ``names``.
+
+    Absent files are simply omitted rather than recorded as empty, so a hash map can
+    never imply a file was present when it was not.
+    """
+    directory = Path(root)
+    return {
+        name: hash_file(directory / name)
+        for name in names
+        if (directory / name).is_file()
+    }
+
+
+def hash_text(text: str) -> str:
+    """SHA-256 of a string, UTF-8 encoded.
+
+    Used for the chat template when it lives inside ``tokenizer_config.json`` rather
+    than in its own file, so a template hash is always available.
+    """
+    import hashlib
+
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+#: Config keys the installed `transformers` does not read, mapped to what it does
+#: instead. Verified by reading ``transformers/models/qwen3_5/`` at 5.15.1.
+IGNORED_BY_TRANSFORMERS: dict[str, str] = {
+    "attn_output_gate": (
+        "transformers 5.15.1 builds the doubled q_proj unconditionally; a config "
+        "declaring false would still get a gated projection"
+    ),
+    "output_gate_type": "transformers 5.15.1 applies sigmoid gating unconditionally",
+    "mamba_ssm_dtype": (
+        "not read by transformers 5.15.1; the recurrent state dtype follows the "
+        "tensors at runtime (the reference path accumulates in float32)"
+    ),
+    "mtp_use_dedicated_embeddings": (
+        "transformers 5.15.1 discards mtp.* entirely; vLLM reuses the base "
+        "embedding and lm_head for the draft model"
+    ),
+    "language_model_only": "not read by transformers 5.15.1",
+}
+
+
+def implementation_disagreements(metadata: TeacherMetadata) -> list[str]:
+    """Config keys present in the checkpoint that the installed implementation ignores.
+
+    These are not errors. They matter because a key that looks like it controls
+    behaviour may not, and because a future `transformers` release could start honouring
+    one — which would change what the same checkpoint builds.
+    """
+    findings: list[str] = []
+    for key, explanation in IGNORED_BY_TRANSFORMERS.items():
+        value, source = _lookup(metadata, key)
+        if value is not None:
+            findings.append(f"{key}={json.dumps(value)} ({source}): {explanation}")
+    return findings
+
+
+def build_verified_spec(
+    metadata: TeacherMetadata,
+    *,
+    source: str = "Qwen/Qwen3.8-27B",
+    revision: str | None = None,
+) -> dict[str, Any]:
+    """Build the canonical, reproducible teacher specification.
+
+    Generated from the supplied metadata — never hand-authored — and stamped with the
+    SHA-256 of every file it was derived from. If upstream later edits a config or a
+    chat template, the hashes stop matching and the change is caught rather than
+    silently altering an experiment.
+
+    The returned dict carries three separable parts:
+
+    * ``provenance`` — where it came from and what it hashes to;
+    * ``architecture`` — the fields the analytical model consumes;
+    * ``verified_facts`` / ``not_verified`` — an explicit split between what the
+      metadata establishes and what still needs weights or a runtime experiment.
+    """
+    from datetime import datetime, timezone
+
+    from ..architecture.params import count_parameters, mtp_params
+    from ..architecture.spec import HybridArchSpec
+
+    if not metadata.has_config:
+        raise ValueError("cannot build a verified spec without a parseable config.json")
+
+    spec = HybridArchSpec.from_hf_config(metadata.config, name=source)
+    breakdown = count_parameters(spec)
+    hashes = hash_metadata_files(metadata.root)
+    if metadata.chat_template and "chat_template.jinja" not in hashes:
+        # Template lives inside tokenizer_config.json; hash the text so the template is
+        # always pinned regardless of where the checkpoint stores it.
+        hashes["chat_template(text)"] = hash_text(metadata.chat_template)
+
+    try:
+        import transformers
+
+        transformers_version = transformers.__version__
+    except ImportError:
+        transformers_version = "not installed"
+
+    mtp_layers = None
+    for key in MTP_FIELDS:
+        value, _ = _lookup(metadata, key)
+        if isinstance(value, int):
+            mtp_layers = value
+            break
+
+    return {
+        "provenance": {
+            "source": source,
+            "source_type": "local checkpoint metadata",
+            "revision": revision,
+            "revision_note": (
+                "unset: the upstream commit SHA was not supplied with the metadata. "
+                "A benchmark is not fully reproducible until this is pinned."
+            ) if revision is None else None,
+            "metadata_directory": str(metadata.root),
+            "verification_date": datetime.now(timezone.utc).date().isoformat(),
+            "transformers_version_used_to_verify": transformers_version,
+            "transformers_version_in_config": metadata.config.get("transformers_version"),
+            "file_sha256": hashes,
+            "generated_by": "scripts/validate_teacher_metadata.py --save-verified",
+        },
+        "identity": {
+            "model_type": metadata.config.get("model_type"),
+            "text_model_type": metadata.text_config.get("model_type"),
+            "architectures": metadata.config.get("architectures", []),
+            "resolved_causal_lm_class": "Qwen3_5ForCausalLM",
+            "multimodal": metadata.vision_config is not None,
+        },
+        "architecture": spec.to_dict(),
+        "hf_text_config": spec.to_hf_text_config(),
+        "parameters": {
+            **breakdown.as_dict(),
+            "mtp_head": mtp_params(spec, mtp_layers or 1),
+            "mtp_num_hidden_layers": mtp_layers,
+            "note": (
+                "text tower only; excludes the vision tower and the MTP head, "
+                "both of which ship in the checkpoint"
+            ),
+        },
+        "vision": {
+            "present": metadata.vision_config is not None,
+            "config": metadata.vision_config,
+        },
+        "tokenizer": {
+            "class": metadata.tokenizer_config.get("tokenizer_class"),
+            "eos_token": _token_text(metadata.tokenizer_config.get("eos_token")),
+            "pad_token": _token_text(metadata.tokenizer_config.get("pad_token")),
+            "bos_token": _token_text(metadata.tokenizer_config.get("bos_token")),
+            "model_max_length": metadata.tokenizer_config.get("model_max_length"),
+            "chat_template_source": metadata.chat_template_source,
+        },
+        "generation_config": metadata.generation_config,
+        "implementation_disagreements": implementation_disagreements(metadata),
+        "verified_facts": [
+            "architecture dimensions and layer layout (config.json)",
+            "model_type and declared architectures (config.json)",
+            "tokenizer class and special tokens (tokenizer_config.json)",
+            "chat template and its reasoning branches (chat_template.jinja)",
+            "licence text (LICENSE)" if metadata.license_text else None,
+            "native transformers class resolution (no trust_remote_code required)",
+        ],
+        "not_verified": [
+            "state-dict parameter count (requires the weights)",
+            "successful checkpoint loading and generation (requires the weights)",
+            "benchmark capability (requires a runtime baseline)",
+            "reasoning-token behaviour at each effort level (requires generation)",
+            "peak VRAM (requires a GPU)",
+        ],
+    }

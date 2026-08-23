@@ -17,86 +17,184 @@ modelling the wrong model correctly.
 
 Last updated: 2026-08-23 (Phase 1, offline ingestion).
 
-## Current status: no checkpoint metadata has been supplied
+## Current status: checkpoint metadata supplied and verified
 
-`vendor/qwen38-metadata/` is **empty**. Egress to `huggingface.co` remains blocked in
-the authoring environment, and per instruction no attempt was made to route around it.
-The repository now consumes a locally supplied metadata directory instead — see
-[`vendor/README.md`](../vendor/README.md).
+`vendor/qwen38-metadata/` now contains the upstream `config.json`, `tokenizer_config.json`,
+`generation_config.json`, `chat_template.jinja` and `LICENSE`. Everything below in the
+checkpoint-metadata tier was read from those files.
 
-**No verification status changed in this pass.** The checkpoint-metadata tier below is
-empty, and every question needing the config, tokenizer, template or licence is still
-UNKNOWN. The tooling to close them is built and tested; it is waiting on the files.
+Pinned by SHA-256 in `configs/teacher/qwen3_8_27b.verified.json`:
+
+| File | SHA-256 |
+|---|---|
+| `config.json` | `191e0af232104ed8b65258cf3fb2b842e288008baca7633c11b82a1ac7203aab` |
+| `tokenizer_config.json` | `b11349aafa7cdc6a320767cf7ceb29ed82f7eda5d65e8e0819e76f0ce947bf27` |
+| `generation_config.json` | `e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e` |
+| `chat_template.jinja` | `c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041` |
+| `LICENSE` | `50cbab8a892c5f2993b8c7351a99182507472def3b1374558308605d99b86b32` |
+
+**The weights are still absent**, so everything requiring runtime remains UNKNOWN.
 
 ### VERIFIED — CHECKPOINT METADATA
 
-*(nothing yet — no metadata supplied)*
+Read directly from the supplied files. Regenerate with
+`scripts/validate_teacher_metadata.py --path vendor/qwen38-metadata --save-verified ...`.
 
-## Verification attempt log
+| Claim | Value | Source |
+|---|---|---|
+| `model_type` | `qwen3_5` (text: `qwen3_5_text`) | `config.json` |
+| declared architecture | `Qwen3_5ForConditionalGeneration` | `config.json` |
+| resolved causal-LM class | `Qwen3_5ForCausalLM`, native `transformers` | resolution against 5.15.1 |
+| `trust_remote_code` required | **no** — no `auto_map`, no bundled `.py` | `config.json` + directory |
+| hidden_size / layers / FFN | 5120 / 64 / 17408 | `config.json` |
+| vocab_size | 248320 | `config.json` |
+| attention | 24 query / 4 KV heads, head_dim 256 | `config.json` |
+| `attn_output_gate` | `true` | `config.json` |
+| DeltaNet | 48 value / 16 key heads, dims 128/128, conv kernel 4 | `config.json` |
+| layer layout | **explicit** 64-entry list: 48 linear, 16 full | `config.json` |
+| `full_attention_interval` | 4 (consistent with the explicit list) | `config.json` |
+| `partial_rotary_factor` | 0.25 → RoPE dim 64 | `config.json` |
+| RoPE | `rope_theta` 1e7, mRoPE sections `[11, 11, 10]` | `config.json` |
+| `rope_scaling` | **absent** — 262144 is native, not YaRN-extended | `config.json` |
+| `max_position_embeddings` | 262144 | `config.json` |
+| `tie_word_embeddings` | `false` | `config.json` |
+| MTP | `mtp_num_hidden_layers: 1`, `mtp_use_dedicated_embeddings: false` | `config.json` |
+| vision tower | present: depth 27, hidden 1152, out_hidden 5120 | `config.json` |
+| tokenizer class | `Qwen2Tokenizer` | `tokenizer_config.json` |
+| eos / pad / bos | `<|im_end|>` / `<|endoftext|>` / **none** (`add_bos_token: false`) | `tokenizer_config.json` |
+| `model_max_length` | 262144 | `tokenizer_config.json` |
+| sampling defaults | `do_sample: true`, temp 1.0, top_p 0.95, top_k 20 | `generation_config.json` |
+| **licence** | **Apache-2.0** | `LICENSE` |
+| supported `reasoning_effort` | exactly `xhigh`, `medium`, `low` — `high` raises | `chat_template.jinja` |
+| default reasoning effort | `xhigh` (`reasoning_effort|default('xhigh')`) | `chat_template.jinja` |
+| tool-call formatting | supported; changes the prompt | `chat_template.jinja` |
 
-The three metadata-only verification commands were **executed**, not merely specified.
-All three failed at the network layer:
+**Parameter count from the actual config: 26,895,998,464.** Computed by feeding the
+supplied `config.json` through `HybridArchSpec.from_hf_config` → `count_parameters`,
+with no preset involved. A test varies each architecture field and asserts the estimate
+moves, so no dimension is silently hard-coded.
 
-| Command | Result |
-|---|---|
-| `inspect_teacher.py --repo-id Qwen/Qwen3.8-27B --config-only` | `ProxyError: 403 Forbidden` |
-| `verify_teacher_loader.py --model Qwen/Qwen3.8-27B --config-only` | `VERDICT: FAILED` — `OSError: Can't load the configuration of 'Qwen/Qwen3.8-27B'` |
-| `benchmark_reasoning.py --model Qwen/Qwen3.8-27B --template-only` | same `OSError` |
+### Config keys the installed `transformers` does not read
 
-No teacher artifact was produced, so none is committed. The attempt itself exposed two
-tooling defects, now fixed: `inspect_teacher.py` exited **0** despite failing (a
-verification script reporting success for work it never did), and two of the three
-scripts leaked raw tracebacks instead of an actionable diagnosis.
+The checkpoint was written by `transformers 5.8.0.dev0` and carries keys absent from
+5.15.1. Not errors — but a key that looks like it controls behaviour may not, and a
+future release could start honouring one:
 
-## The blocking constraint
+| Key | Value | What 5.15.1 does |
+|---|---|---|
+| `attn_output_gate` | `true` | builds the doubled `q_proj` unconditionally; would ignore `false` |
+| `output_gate_type` | `"swish"` | applies **sigmoid** gating unconditionally |
+| `mamba_ssm_dtype` | `"float32"` | not read; the reference path accumulates the recurrent state in fp32 anyway, which independently confirms our conservative default |
+| `mtp_use_dedicated_embeddings` | `false` | discards `mtp.*` entirely; vLLM reuses the base embedding and head |
+| `language_model_only` | `false` | not read |
 
-`huggingface.co` is **blocked by this environment's egress policy** — confirmed again
-in Phase 1 for direct HTTPS and for the fetch tooling (`gateway answered 403 to
-CONNECT`). Also blocked: `recipes.vllm.ai`, `northflank.com`, `modelscope.cn`,
-`hf-mirror.com`, `qwen.ai`.
+`output_gate_type: "swish"` versus 5.15.1's sigmoid is a genuine behavioural
+discrepancy. It does not change the parameter count, but it means the installed
+implementation may not reproduce the checkpoint's intended activation.
 
-A filesystem-wide search found **no local copy** of the checkpoint — no HF cache, no
-mounted model directory, no stray `config.json`. The machine also has **no GPU**
-(CPU-only, 4 cores).
+## What remains blocked
 
-Consequently the following remain unread: the upstream **model card, `config.json`,
-`tokenizer.json`, chat template, and `LICENSE`**. No teacher weights were obtained, so
-no teacher measurement of any kind was possible.
+The metadata is supplied and verified. Two things still are not:
 
-What Phase 1 *could* do instead was verify the **reference implementation** — the code
-that actually runs the model — which is distributed on PyPI and reachable. That turned
-out to settle considerably more than expected, including several questions that
-secondary sources could only guess at.
+**The weights.** No checkpoint tensors were obtained, so the state-dict parameter count,
+successful loading, real generation, reasoning-token behaviour and benchmark capability
+are all unmeasured.
+
+**A GPU.** This machine is CPU-only (4 cores), so no VRAM figure can be measured.
+
+Egress to `huggingface.co` remains blocked in this environment and was not circumvented;
+the metadata reached the repository by being supplied locally, which is the intended
+route (see [`vendor/README.md`](../vendor/README.md)).
 
 ## Phase 1 question ledger
 
+M = VERIFIED from checkpoint metadata; R = VERIFIED from the reference implementation.
+
 | # | Question | Status | Evidence |
 |---|---|---|---|
-| 1 | Exact `config.json` of Qwen3.8-27B | **UNKNOWN** | `huggingface.co` blocked; no local copy |
-| 2 | Exact `model_type` | **UNKNOWN** | requires the config; see the narrowing argument below |
-| 3 | Class Transformers loads | **UNKNOWN** for 3.8; **VERIFIED** for the family | `Qwen3_5ForCausalLM` / `Qwen3_5ForConditionalGeneration` resolve natively for `model_type: qwen3_5*` |
-| 4 | Stock transformers vs `trust_remote_code` | **UNKNOWN** | `scripts/verify_teacher_loader.py` answers this in one command once reachable |
-| 5 | Exact layer types | **VERIFIED (family)** | expansion rule read from source *and* checked against a built model: 48 linear / 16 full at interval 4, full attention always last in each group |
-| 6 | Exact attention dimensions | **VERIFIED (family)** | `q_proj` emits `n_heads·head_dim·2` (query + sigmoid gate); `head_dim` 256; `partial_rotary_factor` 0.25 → RoPE 64 |
-| 7 | Exact DeltaNet dimensions | **VERIFIED (family)** | `conv_dim = 2·key_dim + value_dim`; projections `in_proj_qkv/z/b/a`, `out_proj`; depthwise conv kernel 4 |
-| 8 | Exact FFN structure | **VERIFIED (family)** | SwiGLU: `gate_proj`, `up_proj`, `down_proj`, no bias |
-| 9 | Exact vocabulary size | **CORROBORATED** | 248320 is the `Qwen3_5TextConfig` default and matches secondary reports; the 3.8 checkpoint's own value is unread |
-| 10 | Embeddings tied? | **UNKNOWN** | `tie_word_embeddings` defaults `False` in the family; the checkpoint's value is unread |
-| 11 | What the checkpoint contains | **UNKNOWN** | requires the checkpoint |
-| 12 | How MTP is represented | **VERIFIED** | see the MTP section below |
-| 13 | Is MTP used by the inference path | **VERIFIED** | stock transformers **discards** it; vLLM loads it **as a speculative-decoding draft model** |
-| 14 | Text-only or multimodal | **CORROBORATED** (multimodal), **VERIFIED** that the text tower loads alone | `Qwen3_5ForCausalLM` ignores `^model.visual.*`, so a text-only student is a supported path |
-| 15 | Exact tokenizer | **UNKNOWN** | requires the checkpoint |
-| 16 | Exact chat template | **UNKNOWN** | requires the checkpoint |
-| 17 | Exact reasoning controls | **CORROBORATED** | `low` / `medium` / `xhigh` plus a thinking on/off switch |
-| 18 | Actual default reasoning behaviour | **CORROBORATED** | reported default `xhigh`, `preserve_thinking` on |
-| 19 | Is `medium` really a no-op | **UNKNOWN** — but now **mechanically decidable** | `scripts/benchmark_reasoning.py --template-only` renders every setting and diffs; byte-identical prompts prove a no-op by construction. Needs only the tokenizer. Detector validated against a known-positive fixture. |
-| 20 | Exact license | **UNKNOWN** | **must be read before any release** |
-| 21 | Naming / attribution obligations | **UNKNOWN** | same |
-| 22 | Frameworks supporting the checkpoint | **VERIFIED (family)** | transformers 5.15.1 and vLLM 0.27.1 both implement `qwen3_5`; vLLM registers text, multimodal, MoE and MTP variants |
-| 23 | Can the model load under the intended stack | **UNKNOWN** for 3.8 | `verify_teacher_loader.py --probe` performs a real generation, since an import proves nothing |
-| 24 | Does the analytical parameter model match | **VERIFIED — exactly** | see below |
-| 25 | Does the analytical VRAM model match | **VERIFIED for the cache terms**; **UNKNOWN for end-to-end peak** | cache/state terms match a real forward pass byte-for-byte; no GPU here, so runtime overhead is uncalibrated |
+| 1 | Exact `config.json` | **VERIFIED (M)** | supplied and hashed |
+| 2 | Exact `model_type` | **VERIFIED (M)** | `qwen3_5` / text `qwen3_5_text` |
+| 3 | Class Transformers loads | **VERIFIED (M+R)** | `Qwen3_5ForCausalLM`, native module |
+| 4 | Stock transformers vs `trust_remote_code` | **VERIFIED (M)** | stock; no `auto_map`, no bundled `.py` |
+| 5 | Exact layer types | **VERIFIED (M)** | explicit 64-entry list: 48 linear / 16 full |
+| 6 | Exact attention dimensions | **VERIFIED (M)** | 24 q / 4 kv, head_dim 256, `attn_output_gate: true` |
+| 7 | Exact DeltaNet dimensions | **VERIFIED (M)** | 48 v / 16 k, 128/128, conv kernel 4 |
+| 8 | Exact FFN structure | **VERIFIED (M+R)** | SwiGLU, intermediate 17408, no bias |
+| 9 | Exact vocabulary size | **VERIFIED (M)** | 248320 |
+| 10 | Embeddings tied? | **VERIFIED (M)** | `tie_word_embeddings: false` |
+| 11 | What the checkpoint contains | **PARTIAL** | metadata declares text + vision + MTP; tensor inventory needs the weights |
+| 12 | How MTP is represented | **VERIFIED (M+R)** | `mtp_num_hidden_layers: 1`; structure from vLLM |
+| 13 | Is MTP used by the inference path | **VERIFIED (R)** | transformers discards it; vLLM uses it as a speculative draft model |
+| 14 | Text-only or multimodal | **VERIFIED (M)** | multimodal; the text tower loads alone |
+| 15 | Exact tokenizer | **VERIFIED (M)** | `Qwen2Tokenizer`, eos `<\|im_end\|>`, no BOS |
+| 16 | Exact chat template | **VERIFIED (M)** | `chat_template.jinja`, hashed |
+| 17 | Exact reasoning controls | **VERIFIED (M)** | exactly `xhigh`, `medium`, `low`; `high` raises |
+| 18 | Actual default reasoning behaviour | **VERIFIED (M)** | `default('xhigh')`; renders identically to explicit `xhigh` |
+| 19 | Is `medium` a no-op | **REFUTED at template level (M)** | renders a *distinct*, shorter prompt — see below |
+| 20 | Exact licence | **VERIFIED (M)** | Apache-2.0 |
+| 21 | Naming / attribution obligations | **PARTIAL** | Apache-2.0 terms apply; no separate naming policy was supplied |
+| 22 | Frameworks supporting the checkpoint | **VERIFIED (R)** | transformers 5.15.1 and vLLM 0.27.1 both implement `qwen3_5` |
+| 23 | Can the model load under the intended stack | **NOT YET VERIFIED** | Stage 1 resolves; Stage 2 needs the weights |
+| 24 | Does the analytical parameter model match | **VERIFIED (M+R)** | 26,895,998,464 from the real config; exact match vs a `transformers` build |
+| 25 | Does the analytical VRAM model match | **PARTIAL** | cache terms exact vs a real forward pass; end-to-end peak needs a GPU |
+
+## Reasoning controls: what the template actually does
+
+This corrects a hypothesis carried from secondary sources in earlier phases.
+
+The template's own logic:
+
+```jinja
+{%- set resolved_reasoning_effort = reasoning_effort|default('xhigh') %}
+{%- if resolved_reasoning_effort not in ('xhigh', 'medium', 'low') %}
+    {{- raise_exception('Unexpected reasoning effort ... Supported types are xhigh (default), medium, and low.') }}
+{%- if resolved_reasoning_effort == 'xhigh' %}   -> long "think carefully" instruction
+{%- elif resolved_reasoning_effort == 'low' %}   -> "keep your thinking brief" instruction
+```
+
+`medium` has no branch: it sets **no** reasoning instruction. Rendered prompts for
+"What is 15 * 7?":
+
+| Setting | SHA-256 (first 12) | chars |
+|---|---|---|
+| no control | `7f1de0c2b7fd` | 310 |
+| `enable_thinking: true` | `7f1de0c2b7fd` | 310 |
+| `reasoning_effort: xhigh` | `7f1de0c2b7fd` | 310 |
+| `reasoning_effort: low` | `51f41ace41f5` | 239 |
+| `reasoning_effort: medium` | `20ba983e045c` | **73** |
+| `enable_thinking: false` | `8475fd3ecb78` | 84 |
+
+**`medium` is not a no-op.** It produces a distinct — in fact the shortest — prompt,
+because it omits the xhigh instruction the default injects. The earlier secondary-source
+claim conflated "adds no instruction of its own" with "changes nothing"; those differ
+precisely because the default is `xhigh`, not `medium`.
+
+What *is* confirmed is that **no control == `xhigh`**: a caller who sets nothing receives
+the high-effort instruction.
+
+### Three levels of claim, kept separate
+
+1. **Template behaviour** — VERIFIED above. Which prompts differ, byte for byte.
+2. **Generation behaviour** — NOT MEASURED. Whether a distinct prompt produces
+   materially different reasoning length or content requires running the model.
+3. **Benchmark behaviour** — NOT MEASURED. Whether any difference in generation
+   changes task accuracy requires a full evaluation.
+
+A difference at level 1 does not imply one at level 2, and neither implies level 3.
+`scripts/benchmark_reasoning.py` records the rendered-prompt hash alongside measured
+token counts precisely so levels 1 and 2 can be told apart in the results.
+
+### On the default, stated carefully
+
+The template requests high reasoning effort by default. That is a verified fact about
+the template. It is **not** evidence that the resulting token expenditure is wasted —
+that would require showing the extra reasoning does not improve task performance, which
+is a measurement this project has not yet made. The project's motivating question is
+therefore:
+
+> The upstream template requests high reasoning effort by default; this project will
+> measure whether the resulting compute and token expenditure is justified by improved
+> task performance.
 
 ## VERIFIED — REFERENCE IMPLEMENTATION: the analytical model matches exactly
 
@@ -180,60 +278,35 @@ parameters ≈ 1.58%** of a 27B model. Cheap enough that carrying an MTP head in
 student is a real option — but only worth it if the backends we target can use it,
 which is an ablation, not an assumption.
 
-## The `model_type` narrowing argument
+## The `model_type` hypothesis: confirmed
 
-We cannot read the config, so question 2 is UNKNOWN. But the evidence narrows it, and
-the release timing matters:
+Earlier phases inferred, from `transformers` 5.15.1 shipping five days after the
+Qwen3.8 release without adding a `qwen3_8` module, that the checkpoint most likely
+reused `model_type: qwen3_5`. That inference was recorded as a hypothesis, not a fact.
 
-- **`transformers` 5.15.1 was uploaded to PyPI on 2026-08-19** — five days *after* the
-  reported Qwen3.8-27B release of 2026-08-14. It contains `qwen3_5`, `qwen3_5_moe`,
-  `qwen3_next`, `qwen3_vl` — and **no `qwen3_8` module**.
-- **vLLM 0.27.1 was uploaded on 2026-08-11**, *before* the release. Its lack of
-  `qwen3_8` code therefore proves nothing and must not be cited as evidence.
+**The supplied `config.json` confirms it:** `model_type: qwen3_5`, text sub-config
+`qwen3_5_text`, architecture `Qwen3_5ForConditionalGeneration`. Stock `transformers`
+resolves it natively with no `trust_remote_code`.
 
-A `transformers` release five days after the launch that adds no new architecture is
-most consistent with **Qwen3.8-27B reusing `model_type: qwen3_5`** — a new checkpoint
-of an existing architecture family, as `Qwen3.5-27B` / `Qwen3.6-27B` / `Qwen3.8-27B`
-would naturally be.
-
-**This is inference, not verification.** It is recorded as the leading hypothesis
-because it determines whether the community can run our student with stock
-`transformers`. One command settles it:
-
-```bash
-python scripts/verify_teacher_loader.py --model Qwen/Qwen3.8-27B --config-only
-```
+The practical consequence: a student built in this family is loadable by anyone with
+stock `transformers`, which was the open question with the largest effect on the
+project's plan.
 
 ## Still blocked, and what unblocks it
 
-| Blocked question | Unblocked by |
+| Blocked | Unblocked by |
 |---|---|
-| 1, 2, 4, 9, 10, 11, 15, 16, 23 | `config.json` + tokenizer files (a few MB, not the weights) |
-| 17, 18, 19 | the chat template alone — `benchmark_reasoning.py --template-only` |
-| 20, 21 | reading the upstream `LICENSE` and model card |
-| 25 (end-to-end peak VRAM) | any CUDA GPU; ideally the 16 GB target hardware |
-| Teacher baseline, all reasoning measurements | the weights, plus a GPU large enough to run 27B |
+| state-dict parameter count | the weights (`inspect_teacher.py --path <checkpoint>`) |
+| checkpoint loads and generates | the weights (`verify_teacher_loader.py --probe`) |
+| reasoning behaviour at each effort level | the weights + a GPU (`benchmark_reasoning.py`) |
+| benchmark capability | the weights + a GPU large enough for 27B |
+| peak VRAM | any CUDA GPU (`benchmark_memory.py`) |
+| long-context retrieval curve | the weights + memory for 128k context |
+| upstream revision pin | the commit SHA the metadata was taken from |
 
-**The cheapest unblock by far is a few megabytes of metadata, supplied locally.**
-No weights, and no network access from this repository. Obtain the files however suits
-your network (see [`vendor/README.md`](../vendor/README.md)), place them in
-`vendor/qwen38-metadata/`, and run:
-
-```bash
-python scripts/validate_teacher_metadata.py --path vendor/qwen38-metadata
-python scripts/inspect_teacher.py --path vendor/qwen38-metadata --config-only \
-    --json evaluations/baselines/teacher_config_report.json \
-    --save-spec configs/teacher/qwen3_8_27b.verified.json
-python scripts/verify_teacher_loader.py --model vendor/qwen38-metadata --config-only
-python scripts/inspect_chat_template.py --path vendor/qwen38-metadata
-```
-
-All four run offline: they set `HF_HUB_OFFLINE`, and tests sever `socket` and assert no
-connection is attempted.
-
-Together these close questions 1, 2, 4, 5-10, 15, 16, 17 and 19 (at the template level).
-If `cross_check` reports MISMATCH, fix `src/qwen_distill/architecture/params.py` before
-trusting any estimate in this repository.
+The teacher does not fit 16 GB — its Q4_K_M weights alone are 15.85 GiB — so the
+baseline needs a larger GPU, rented or borrowed. That is a one-time cost: the baseline
+is produced once, committed, and reused for every student comparison.
 
 ### What metadata still cannot settle
 

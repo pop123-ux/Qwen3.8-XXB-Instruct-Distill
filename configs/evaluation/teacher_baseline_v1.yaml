@@ -1,10 +1,10 @@
 # teacher_baseline_v1 - the measuring instrument.
 #
-# STATUS: NOT YET RUN. This file specifies the baseline; it contains no results.
-# The teacher checkpoint was not reachable from the authoring environment
-# (see docs/VERIFICATION.md), so no measurement has been taken.
+# STATUS: NOT YET RUN. No measurement has been taken; the weights were not available.
+# Everything that can be pinned from the verified metadata is pinned. What remains
+# unset is listed under `unresolved:` with the reason.
 #
-# Every field here exists because omitting it would make two runs incomparable.
+# Every field exists because omitting it would make two runs incomparable.
 # Do not hard-code any of these in Python.
 
 version: teacher_baseline_v1
@@ -12,78 +12,138 @@ status: not_yet_run
 
 model:
   repo_id: Qwen/Qwen3.8-27B
-  revision: null              # PIN THIS to a commit sha before the real run
-  local_path: null            # set when weights are available locally
-  trust_remote_code: false    # VERIFY: see open question 1 in docs/VERIFICATION.md
-  dtype: bfloat16
+  # VERIFIED from vendor/qwen38-metadata/config.json:
+  model_type: qwen3_5                    # top level
+  text_model_type: qwen3_5_text
+  architectures: [Qwen3_5ForConditionalGeneration]
+  causal_lm_class: Qwen3_5ForCausalLM    # resolved natively by transformers 5.15.1
+  trust_remote_code: false               # VERIFIED: no auto_map, no bundled .py modules
+  dtype: bfloat16                        # config.text_config.dtype
   quantization: none
+  multimodal: true                       # vision_config present
+  # The student is expected to be text-only (Qwen3_5ForCausalLM loads the text tower
+  # alone). Any comparison table MUST state that, or it implies false parity.
+  evaluate_text_only: true
+
+  # NOT PINNED - see unresolved.revision below.
+  revision: null
+  local_path: null
+
+  verified_against:
+    metadata_directory: vendor/qwen38-metadata
+    config_sha256: 191e0af232104ed8b65258cf3fb2b842e288008baca7633c11b82a1ac7203aab
+    chat_template_sha256: c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041
+    tokenizer_config_sha256: b11349aafa7cdc6a320767cf7ceb29ed82f7eda5d65e8e0819e76f0ce947bf27
 
 tokenizer:
   source: same_as_model
-  chat_template: from_checkpoint   # never hand-written; must come from the checkpoint
+  tokenizer_class: Qwen2Tokenizer        # VERIFIED
+  eos_token: "<|im_end|>"                # VERIFIED
+  pad_token: "<|endoftext|>"             # VERIFIED
+  bos_token: null                        # VERIFIED absent; add_bos_token = false
+  model_max_length: 262144               # VERIFIED
+  chat_template: from_checkpoint         # never hand-written
+  chat_template_source: chat_template.jinja
 
 backend:
-  name: transformers          # correctness reference
-  # vLLM is faster but MUST be validated against transformers on a long-context
-  # retrieval task first: a backend that mishandles the DeltaNet recurrent state
-  # can produce plausible short-context output and wrong long-context output.
+  name: transformers                     # the correctness reference
+  version_verified_with: 5.15.1
+  # vLLM is far faster but MUST first be validated against transformers on a
+  # long-context retrieval task: a backend that mishandles the DeltaNet recurrent
+  # state can produce plausible short-context output and wrong long-context output,
+  # and that failure is silent.
   validated_against_reference: false
 
 sampling:
-  temperature: 0.0            # greedy: baseline must be reproducible
+  # Greedy, so the baseline is reproducible. This deliberately DIFFERS from the
+  # checkpoint's generation_config.json defaults, which are recorded below for
+  # reference; any run that uses those defaults must say so.
+  temperature: 0.0
   top_p: 1.0
   top_k: null
   seed: 0
   max_new_tokens: 2048
+  checkpoint_generation_defaults:        # VERIFIED from generation_config.json
+    do_sample: true
+    temperature: 1.0
+    top_p: 0.95
+    top_k: 20
+    eos_token_id: [248046, 248044]
+    pad_token_id: 248044
 
 context:
-  length: 32768
-  evaluation_points: [8192, 16384, 32768, 65536, 131072]
+  native_length: 262144                  # VERIFIED (max_position_embeddings)
+  rope_scaling: null                     # VERIFIED absent: 262144 is native, not YaRN
+  evaluation_length: 32768
+  runtime_probe_points: [8192, 16384, 32768, 65536, 131072]
 
-# Four modes, because the project's whole premise is that reasoning budget matters.
-# The student must never be compared against a teacher running an unstated setting.
+# VERIFIED from chat_template.jinja: supported reasoning_effort values are exactly
+# xhigh, medium and low. `high` raises. The default branch is `default('xhigh')`, so
+# a caller that sets nothing gets the xhigh instruction.
+reasoning:
+  supported_efforts: [xhigh, medium, low]
+  default_effort: xhigh
+  unsupported_example: high              # template raises "Unexpected reasoning effort"
+  template_observations:                 # rendered prompt SHA-256, "What is 15 * 7?"
+    default:           7f1de0c2b7fda736d90625a80eb094ccc0d1ee28a6b5d9004f611b62e5b11a35
+    thinking_enabled:  7f1de0c2b7fda736d90625a80eb094ccc0d1ee28a6b5d9004f611b62e5b11a35
+    xhigh:             7f1de0c2b7fda736d90625a80eb094ccc0d1ee28a6b5d9004f611b62e5b11a35
+    low:               51f41ace41f5cea2034d5994fc0d7a3383a22c1f71c60ef9adf3a448634ccd0e
+    medium:            20ba983e045cdb9a66090a79cccd56941461be2610d5f334da256a388fe83abf
+    thinking_disabled: 8475fd3ecb780f1b067593215c95febad65f330f8ca5d6d34045f649cb6d7fd4
+
 modes:
   - id: mode_a_no_reasoning
-    description: Thinking disabled entirely.
+    description: Thinking disabled entirely. The floor.
     enable_thinking: false
     reasoning_effort: null
   - id: mode_b_default
-    description: Whatever the model does with no control set - what a user gets by default.
+    description: >-
+      No control set. VERIFIED to render identically to xhigh, so this is what a user
+      gets without asking - the setting the project's motivation concerns.
     enable_thinking: null
     reasoning_effort: null
   - id: mode_c_low
-    description: Lowest explicit reasoning budget.
+    description: Lowest explicit budget; injects a "keep thinking brief" instruction.
     enable_thinking: null
     reasoning_effort: low
-  - id: mode_d_highest
-    description: Highest explicit reasoning budget.
+  - id: mode_d_medium
+    description: >-
+      Neutral point: injects NO reasoning instruction, so it renders the shortest
+      prompt of the three. Distinct from default, which injects the xhigh instruction.
+    enable_thinking: null
+    reasoning_effort: medium
+  - id: mode_e_xhigh
+    description: Highest explicit budget. Renders identically to the default.
     enable_thinking: null
     reasoning_effort: xhigh
-  # `medium` is swept by scripts/benchmark_reasoning.py rather than given its own mode:
-  # it is reported to be a no-op, and the template diff settles that before any
-  # generation is run.
 
 suites:
   tier1:
-    tasks: reasoning_dev_set + long_context(1024,4096)
+    tasks: reasoning_dev_set + long_context(1024, 4096)
     purpose: cheap regression detection, run continuously
   reasoning:
     tasks: reasoning_dev_set
     purpose: difficulty-stratified reasoning-cost curve
   long_context:
-    tasks: long_context(1024,4096,16384) x depths(0.1,0.5,0.9)
+    tasks: long_context(1024, 4096, 16384) x depths(0.1, 0.5, 0.9)
     purpose: retrieval vs context length and needle position
+  long_context_runtime:
+    tasks: long_context(8k, 16k, 32k, 64k, 128k) x depths(0.1, 0.5, 0.9)
+    purpose: runtime retrieval probe at deployment-relevant context points
 
 determinism:
   sample_selection: deterministic_prefix   # --limit takes a stable prefix, never a shuffle
   record_task_ids: true
   seed: 0
+  prompt_construction: deterministic       # long-context probes build identical prompts
 
 record_per_generation:
   - task_id
   - category
   - difficulty
   - reasoning setting
+  - rendered prompt sha256
   - prompt_tokens
   - thinking_tokens
   - answer_tokens
@@ -92,14 +152,35 @@ record_per_generation:
   - tokens_per_second
   - correct
 
+record_per_mode:
+  - accuracy
+  - mean_thinking_tokens
+  - mean_total_generated_tokens
+  - mean_latency_s
+  - accuracy_per_1k_thinking_tokens        # descriptive project metric, not portable
+  - accuracy_per_second                    # descriptive and hardware-dependent
+
 output:
   directory: evaluations/baselines/teacher/
   files: [benchmark_results.json, generations.jsonl, metadata.json]
   # generations.jsonl is gitignored: results are committed, bulk text is not.
 
+unresolved:
+  revision:
+    status: NOT PINNED
+    reason: >-
+      The upstream commit SHA was not supplied with the metadata. File hashes pin the
+      metadata we verified against, but they do not pin the weights. Until a revision
+      is set, a benchmark run here is reproducible only against these exact local
+      files - not against "Qwen/Qwen3.8-27B" as a moving target. Do not describe a
+      result as reproducible without stating this.
+  backend_long_context_validation:
+    status: NOT DONE
+    reason: vLLM's DeltaNet recurrent-state handling has not been checked against transformers.
+
 contamination:
   note: >-
-    The reasoning dev set is hand-written for this project and contains no items
-    copied from public benchmarks, so it cannot leak a public test set into training.
-    Any real benchmark added later must be checked for overlap against training data
-    before a score is reported.
+    The reasoning dev set is hand-written for this project and contains no items copied
+    from public benchmarks, so it cannot leak a public test set into training. Any real
+    benchmark added later must be checked for overlap against training data before a
+    score is reported.

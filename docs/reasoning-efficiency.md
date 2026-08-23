@@ -11,13 +11,18 @@ context consumed by reasoning rather than content. One widely-cited example: a s
 SVG drawing request consuming ~22,000 reasoning tokens over ~21 minutes, versus ~3,700
 output tokens in ~137 seconds with thinking disabled.
 
-There is also a report that **`medium` is a no-op** — it injects no instruction, so
-selecting it leaves the user on maximum effort without any error. If true, the
-teacher's own budget control is partly non-functional. See `VERIFICATION.md`; this is
-worth confirming directly, because it strengthens the case for building an explicit
-budget mechanism into the student rather than inheriting the teacher's.
+An earlier version of this document repeated a secondary-source claim that **`medium`
+is a no-op**. The supplied chat template **refutes it**: `medium` renders a distinct —
+in fact the shortest — prompt, because it omits the reasoning instruction that the
+default injects. See [`VERIFICATION.md`](VERIFICATION.md) for the rendered-prompt hashes.
 
-**All of the above is second-hand.** Phase 2 measures it on our own harness.
+What the template *does* establish is that **no control renders identically to `xhigh`**:
+a caller who sets nothing receives the high-effort instruction.
+
+That is a fact about the template, not about behaviour. Whether the extra reasoning the
+default requests is *justified* by better task performance is exactly what this project
+has to measure — and has not measured yet. The community reports above are second-hand
+and describe generation behaviour; Phase 2 measures it on our own harness.
 
 ## What we are optimising
 
@@ -67,9 +72,10 @@ Roughly in order of increasing complexity. Prefer the simplest that works.
    prompt. Simple, uses existing controls, no architecture change.
 2. **Difficulty-labelled training.** Label prompts by difficulty (teacher agreement,
    solve rate, verifier outcome) and condition the target reasoning length on it.
-3. **Explicit budget control tokens.** Give the student a first-class, actually
-   functional budget interface — improving on the teacher's if the `medium` no-op is
-   confirmed.
+3. **Explicit budget control tokens.** Give the student a first-class budget interface.
+   The teacher's three levels (`xhigh` / `medium` / `low`) are coarse and, since the
+   default is `xhigh`, a user gets maximum effort unless they opt out; a finer or
+   better-defaulted interface is worth exploring.
 4. **Learned budget prediction.** The student predicts the budget it needs before
    reasoning.
 5. **Confidence-gated early exit.** Draft an answer, check confidence, allocate more

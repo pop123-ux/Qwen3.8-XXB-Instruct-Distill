@@ -96,9 +96,11 @@ Run at **every** `reasoning_effort` level. This produces the teacher's own
 accuracy-vs-tokens curve, which is the reference the student must beat on efficiency
 and match on capability.
 
-If the reported `medium`-is-a-no-op behaviour (see `VERIFICATION.md`) is real, it
-should be visible here as `medium` and `xhigh` producing near-identical token counts.
-That would be worth reporting on its own.
+The template diff is already done (see `VERIFICATION.md`): the default renders
+identically to `xhigh`, and `medium` renders a *distinct*, shorter prompt. What this
+sweep adds is whether those prompt differences translate into different generation
+behaviour — a separate question, which is why every result records the rendered-prompt
+hash alongside its token counts.
 
 ## Paired teacher/student evaluation
 

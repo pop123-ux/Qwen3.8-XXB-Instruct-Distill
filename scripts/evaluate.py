@@ -27,13 +27,20 @@ import _bootstrap  # noqa: F401
 
 from qwen_distill.evaluation.metrics import format_summary, summarise
 from qwen_distill.evaluation.runner import TransformersBackend, run_tasks
-from qwen_distill.evaluation.tasks import long_context_suite, reasoning_dev_set
+from qwen_distill.evaluation.tasks import (
+    long_context_runtime_suite,
+    long_context_suite,
+    reasoning_dev_set,
+)
 from qwen_distill.utils.hardware import collect_hardware
 
 SUITES = {
     "tier1": lambda: reasoning_dev_set() + long_context_suite((1024, 4096), (0.1, 0.5, 0.9)),
     "reasoning": reasoning_dev_set,
     "long_context": lambda: long_context_suite((1024, 4096, 16384), (0.1, 0.5, 0.9)),
+    # Runtime probe at the deployment-relevant context points. Needs real weights and
+    # enough memory; ordered short-to-long so a run that runs out still yields data.
+    "long_context_runtime": long_context_runtime_suite,
 }
 
 

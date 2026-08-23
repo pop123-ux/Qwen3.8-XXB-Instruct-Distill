@@ -4,7 +4,8 @@ Every term below is transcribed from ``transformers.models.qwen3_5.modeling_qwen
 (v5.15.1). The module-by-module provenance is:
 
 ``Qwen3_5MLP``           gate_proj, up_proj: (hidden, inter); down_proj: (inter, hidden); no bias.
-``Qwen3_5Attention``     q_proj: (hidden, n_heads * head_dim * 2)  <- the 2x is the output gate,
+``Qwen3_5Attention``     q_proj: (hidden, n_heads * head_dim * 2) when ``attn_output_gate``
+                         is set - the 2x is the output gate; see full_attention_params,
                          k_proj/v_proj: (hidden, n_kv * head_dim), o_proj: (n_heads*head_dim, hidden),
                          q_norm/k_norm: head_dim each. bias = config.attention_bias (default False).
 ``Qwen3_5GatedDeltaNet`` in_proj_qkv: (hidden, conv_dim), in_proj_z: (hidden, value_dim),
@@ -77,11 +78,17 @@ def mlp_params(spec: HybridArchSpec) -> int:
 def full_attention_params(spec: HybridArchSpec) -> int:
     """Per-layer gated-attention parameters.
 
-    ``q_proj`` emits ``n_heads * head_dim * 2`` because the second half is the
-    sigmoid output gate applied after attention (``attn_output * sigmoid(gate)``).
+    When ``attn_output_gate`` is set, ``q_proj`` emits ``n_heads * head_dim * 2``: the
+    second half becomes the output gate applied after attention. The Qwen3.8-27B
+    checkpoint declares ``attn_output_gate: true``.
+
+    A caveat worth knowing: ``transformers`` 5.15.1 builds the doubled projection
+    *unconditionally* and does not read this key, so a checkpoint declaring ``false``
+    would still be constructed with a gate. We honour the config rather than
+    hard-coding either behaviour; the disagreement is reported separately.
     """
     h = spec.hidden_size
-    q_out = spec.num_attention_heads * spec.head_dim * 2
+    q_out = spec.num_attention_heads * spec.head_dim * (2 if spec.attn_output_gate else 1)
     kv_out = spec.num_key_value_heads * spec.head_dim
     total = h * q_out + 2 * (h * kv_out) + spec.attention_query_dim * h
     if spec.attention_bias:

@@ -65,6 +65,13 @@ class HybridArchSpec:
     head_dim: int = 256
     attention_bias: bool = False
     partial_rotary_factor: float = 0.25
+    #: Whether ``q_proj`` also emits a gate (doubling its output width).
+    #: The Qwen3.8-27B checkpoint declares ``attn_output_gate: true``.
+    #: NOTE: ``transformers`` 5.15.1 implements the gate *unconditionally* and does
+    #: not read this key, so a checkpoint declaring ``false`` would still be built
+    #: with a doubled ``q_proj``. We follow the config here and flag disagreement
+    #: rather than silently hard-coding either behaviour.
+    attn_output_gate: bool = True
 
     # --- gated deltanet (linear attention) ------------------------------
     linear_num_value_heads: int = 48
@@ -210,6 +217,7 @@ class HybridArchSpec:
             "tie_word_embeddings": self.tie_word_embeddings,
             "attention_bias": self.attention_bias,
             "partial_rotary_factor": self.partial_rotary_factor,
+            "attn_output_gate": self.attn_output_gate,
             "linear_conv_kernel_dim": self.linear_conv_kernel_dim,
             "linear_key_head_dim": self.linear_key_head_dim,
             "linear_value_head_dim": self.linear_value_head_dim,
@@ -226,6 +234,10 @@ class HybridArchSpec:
         ``text_config`` sub-dict (as Qwen3.5/3.8 checkpoints do).
         """
         text = config.get("text_config", config)
+        rope = text.get("rope_parameters") or {}
+        # partial_rotary_factor appears at the top level of text_config and, in newer
+        # checkpoints, inside rope_parameters. Prefer the explicit top-level value.
+        partial_rotary = text.get("partial_rotary_factor", rope.get("partial_rotary_factor", 0.25))
         interval = text.get("full_attention_interval", 4)
         layer_types = text.get("layer_types")
         return cls(
@@ -239,7 +251,8 @@ class HybridArchSpec:
             num_key_value_heads=text["num_key_value_heads"],
             head_dim=text.get("head_dim", text["hidden_size"] // text["num_attention_heads"]),
             attention_bias=text.get("attention_bias", False),
-            partial_rotary_factor=text.get("partial_rotary_factor", 0.25),
+            partial_rotary_factor=partial_rotary,
+            attn_output_gate=text.get("attn_output_gate", True),
             linear_num_value_heads=text.get("linear_num_value_heads", 32),
             linear_num_key_heads=text.get("linear_num_key_heads", 16),
             linear_key_head_dim=text.get("linear_key_head_dim", 128),

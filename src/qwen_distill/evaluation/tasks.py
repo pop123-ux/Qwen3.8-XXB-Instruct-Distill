@@ -245,6 +245,28 @@ def long_context_suite(
     return [needle_in_haystack(n, depth=d) for n in context_lengths for d in depths]
 
 
+#: Context lengths for the runtime long-context probe. The upper points only run where
+#: hardware permits; the harness records the length actually achieved rather than
+#: assuming the model reached it.
+LONG_CONTEXT_RUNTIME_POINTS: tuple[int, ...] = (8192, 16384, 32768, 65536, 131072)
+
+
+def long_context_runtime_suite(
+    context_lengths: tuple[int, ...] = LONG_CONTEXT_RUNTIME_POINTS,
+    depths: tuple[float, ...] = (0.1, 0.5, 0.9),
+) -> list[Task]:
+    """Deterministic needle-in-haystack probes at the runtime context points.
+
+    Every property that makes a retrieval result interpretable is fixed here: prompt
+    construction is deterministic (no sampling, no shuffling), the needle's position is
+    controlled and recorded, the answer check is mechanical, and the approximate context
+    length is stored on each task. Two runs of this suite are therefore comparable.
+
+    Ordered short-to-long so a run that exhausts memory still yields the shorter points.
+    """
+    return [needle_in_haystack(n, depth=d) for n in sorted(context_lengths) for d in depths]
+
+
 def tasks_by_difficulty(tasks: list[Task]) -> dict[str, list[Task]]:
     """Group tasks by difficulty, in ascending difficulty order."""
     grouped: dict[str, list[Task]] = {d: [] for d in DIFFICULTY_ORDER}

@@ -12,38 +12,37 @@ building a student around fixing it, we measure it ourselves.
 
 Two checks, cheapest first, because they answer different questions and can disagree.
 
-## Check 1 — Template diff (free, no weights, no GPU)
+## Check 1 — Template diff (free, no weights, no GPU) — **DONE**
 
 ```bash
-python scripts/benchmark_reasoning.py --model Qwen/Qwen3.8-27B --template-only
+python scripts/inspect_chat_template.py --path vendor/qwen38-metadata
 ```
 
-Renders the chat template at every reasoning setting and hashes each result. If two
-settings produce **byte-identical prompts**, one is a no-op *by construction* — not
-"appears ineffective", but cannot possibly differ, because the model receives the same
-input. That is a proof, and it needs only the tokenizer.
+Renders the chat template at every reasoning setting and hashes each result. Run against
+the real supplied template, this produced:
 
-This is the decisive test for the reported `medium` behaviour (question 19). Sample
-output, from the detector running against a fixture built to reproduce that behaviour:
+| Setting | SHA-256 (first 12) | chars |
+|---|---|---|
+| no control | `7f1de0c2b7fd` | 310 |
+| `enable_thinking: true` | `7f1de0c2b7fd` | 310 |
+| `reasoning_effort: xhigh` | `7f1de0c2b7fd` | 310 |
+| `reasoning_effort: low` | `51f41ace41f5` | 239 |
+| `reasoning_effort: medium` | `20ba983e045c` | **73** |
+| `enable_thinking: false` | `8475fd3ecb78` | 84 |
 
-```
-setting               sha256[:12]       chars
-(default)             fe335e0579dc         71
-low                   ddf2edee1799         85
-medium                fe335e0579dc         71
-xhigh                 a586e3ffe4f7        130
-thinking_disabled     0e6506e4c9e4         64
+Two verified results:
 
-distinct prompts    : 4 of 5
-IDENTICAL PROMPTS   : (default) == medium
-=> these settings are indistinguishable at the template level:
-   selecting one over another cannot change behaviour via the prompt.
-```
+- **The default is `xhigh`.** No control renders byte-identically to explicit `xhigh`.
+  The template literally reads `reasoning_effort|default('xhigh')`.
+- **`medium` is *not* a no-op.** It renders a distinct, shorter prompt: it has no branch
+  in the template, so it injects no reasoning instruction at all, whereas the default
+  injects the long xhigh instruction. This **refutes** the secondary-source claim
+  carried in earlier phases.
 
-**That output is from a synthetic fixture, not from Qwen3.8.** The fixture template was
-written to reproduce the reported behaviour so the detector could be tested against a
-known-positive case. It demonstrates the tool works; it says nothing about the real
-model until run against the real tokenizer.
+Supported values are exactly `xhigh`, `medium`, `low`; anything else raises
+`Unexpected reasoning effort`. These hashes are pinned in
+`tests/test_teacher_verified.py`, so a template change fails the suite rather than
+silently invalidating measurements.
 
 ## Check 2 — Generation sweep
 
@@ -108,4 +107,6 @@ capability: on the current 19-item dev set a single hard item is worth far more 
 | xhigh | TBD | TBD | TBD | TBD | Not yet measured |
 | thinking disabled | TBD | TBD | TBD | TBD | Not yet measured |
 
-**Template-level `medium` no-op:** Not yet checked against the real chat template.
+**Template-level status:** checked. The default is `xhigh`; `medium` renders a distinct
+prompt and is not a no-op. Whether those prompt differences change *generation* is the
+open question this table will answer.
