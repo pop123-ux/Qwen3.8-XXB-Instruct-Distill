@@ -1,14 +1,36 @@
 # Verification Status
 
-Every claim this project relies on, classified. The rule:
+Every claim this project relies on, classified by **what evidence backs it**:
 
-| Status | Meaning |
+| Tier | Meaning |
 |---|---|
-| **VERIFIED** | The relevant upstream source or checkpoint was directly inspected, or the claim was mechanically checked against the reference implementation. |
-| **CORROBORATED** | Multiple independent secondary sources agree, and the claim is self-consistent with things we did verify. **A secondary article never makes a claim VERIFIED.** |
-| **UNKNOWN** | Not established. |
+| **VERIFIED — CHECKPOINT METADATA** | Read from the teacher's own `config.json` / tokenizer / chat template. The authoritative source. |
+| **VERIFIED — REFERENCE IMPLEMENTATION** | Mechanically checked against the code that runs the model (`transformers`, vLLM). Establishes how the *architecture family* behaves. |
+| **CORROBORATED** | Multiple independent secondary sources agree and the claim is self-consistent with things we did verify. **A secondary article never makes a claim VERIFIED.** |
+| **NOT YET VERIFIED / UNKNOWN** | Not established. |
 
-Last updated: 2026-08-22 (Phase 1).
+The middle two tiers are genuinely different, and the distinction carries weight here.
+Our formulas provably reproduce what `transformers` builds *for a config with the values
+we assumed*. That does **not** establish that the teacher's config carries those values.
+Both statements would hold even if the real config differed — we would simply be
+modelling the wrong model correctly.
+
+Last updated: 2026-08-23 (Phase 1, offline ingestion).
+
+## Current status: no checkpoint metadata has been supplied
+
+`vendor/qwen38-metadata/` is **empty**. Egress to `huggingface.co` remains blocked in
+the authoring environment, and per instruction no attempt was made to route around it.
+The repository now consumes a locally supplied metadata directory instead — see
+[`vendor/README.md`](../vendor/README.md).
+
+**No verification status changed in this pass.** The checkpoint-metadata tier below is
+empty, and every question needing the config, tokenizer, template or licence is still
+UNKNOWN. The tooling to close them is built and tested; it is waiting on the files.
+
+### VERIFIED — CHECKPOINT METADATA
+
+*(nothing yet — no metadata supplied)*
 
 ## Verification attempt log
 
@@ -76,7 +98,7 @@ secondary sources could only guess at.
 | 24 | Does the analytical parameter model match | **VERIFIED — exactly** | see below |
 | 25 | Does the analytical VRAM model match | **VERIFIED for the cache terms**; **UNKNOWN for end-to-end peak** | cache/state terms match a real forward pass byte-for-byte; no GPU here, so runtime overhead is uncalibrated |
 
-## VERIFIED: the analytical model matches the reference implementation exactly
+## VERIFIED — REFERENCE IMPLEMENTATION: the analytical model matches exactly
 
 `python scripts/validate_analytical_model.py --teacher` — reproducible, no GPU, no
 network, no checkpoint. Artifact: `evaluations/baselines/analytical_model_validation.json`.
@@ -133,7 +155,7 @@ calibration factor and refuses to emit zeros on a CPU-only host rather than prod
 numbers that could be mistaken for measurements. Until it runs on real 16 GB hardware,
 **peak-VRAM figures in this repository are estimates, not measurements.**
 
-## VERIFIED: what MTP actually is
+## VERIFIED — REFERENCE IMPLEMENTATION: what MTP actually is
 
 From `vllm/model_executor/models/qwen3_5_mtp.py` (vLLM 0.27.1) and
 `transformers/models/qwen3_5/modeling_qwen3_5.py` (5.15.1):
@@ -192,19 +214,36 @@ python scripts/verify_teacher_loader.py --model Qwen/Qwen3.8-27B --config-only
 | 25 (end-to-end peak VRAM) | any CUDA GPU; ideally the 16 GB target hardware |
 | Teacher baseline, all reasoning measurements | the weights, plus a GPU large enough to run 27B |
 
-**The cheapest unblock by far is a metadata-only download.** `config.json`,
-`tokenizer.json`, `tokenizer_config.json`, `generation_config.json` and the chat
-template total a few megabytes and would close nine questions at once:
+**The cheapest unblock by far is a few megabytes of metadata, supplied locally.**
+No weights, and no network access from this repository. Obtain the files however suits
+your network (see [`vendor/README.md`](../vendor/README.md)), place them in
+`vendor/qwen38-metadata/`, and run:
 
 ```bash
-python scripts/inspect_teacher.py --repo-id Qwen/Qwen3.8-27B --config-only \
+python scripts/validate_teacher_metadata.py --path vendor/qwen38-metadata
+python scripts/inspect_teacher.py --path vendor/qwen38-metadata --config-only \
     --json evaluations/baselines/teacher_config_report.json \
     --save-spec configs/teacher/qwen3_8_27b.verified.json
-python scripts/verify_teacher_loader.py --model Qwen/Qwen3.8-27B --config-only \
-    --json evaluations/baselines/loader_report.json
-python scripts/benchmark_reasoning.py --model Qwen/Qwen3.8-27B --template-only \
-    --output evaluations/baselines/teacher/reasoning
+python scripts/verify_teacher_loader.py --model vendor/qwen38-metadata --config-only
+python scripts/inspect_chat_template.py --path vendor/qwen38-metadata
 ```
 
-If `cross_check` reports MISMATCH, fix `src/qwen_distill/architecture/params.py`
-before trusting any estimate in this repository.
+All four run offline: they set `HF_HUB_OFFLINE`, and tests sever `socket` and assert no
+connection is attempted.
+
+Together these close questions 1, 2, 4, 5-10, 15, 16, 17 and 19 (at the template level).
+If `cross_check` reports MISMATCH, fix `src/qwen_distill/architecture/params.py` before
+trusting any estimate in this repository.
+
+### What metadata still cannot settle
+
+These stay UNKNOWN however complete the metadata is. The tooling reports them as UNKNOWN
+rather than MISSING, so they are never mistaken for a gap in the supplied files:
+
+| Fact | Why |
+|---|---|
+| state-dict parameter count | requires the weights |
+| whether the checkpoint loads and generates | a config that parses is **not** proof the model runs |
+| whether `medium` changes a *trained model's* behaviour | the template diff can prove it cannot act via the prompt; any other route needs a runtime experiment |
+| peak VRAM | requires a GPU |
+| upstream licence | requires the upstream `LICENSE` file to be supplied |

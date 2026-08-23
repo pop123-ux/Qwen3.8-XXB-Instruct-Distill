@@ -50,6 +50,9 @@ CHAT_TEMPLATE = """{%- for message in messages %}
 {%- if message['role'] == 'user' %}<|im_start|>user
 {{ message['content'] }}<|im_end|>
 {% endif %}
+{%- if message['role'] == 'assistant' %}<|im_start|>assistant
+{{ message['content'] }}<|im_end|>
+{% endif %}
 {%- endfor %}
 {%- if add_generation_prompt %}<|im_start|>assistant
 {%- if enable_thinking is defined and not enable_thinking %}

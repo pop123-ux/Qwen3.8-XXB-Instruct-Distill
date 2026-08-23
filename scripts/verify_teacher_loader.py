@@ -26,6 +26,7 @@ from pathlib import Path
 import _bootstrap  # noqa: F401
 
 from qwen_distill.teacher.loader import verify_loader
+from qwen_distill.utils.offline import looks_local, offline_for
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,9 +55,15 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    report = verify_loader(args.model, trust_remote_code=args.trust_remote_code)
+    local = looks_local(args.model)
+    with offline_for(args.model) as offline:
+        report = verify_loader(args.model, trust_remote_code=args.trust_remote_code)
     payload = report.to_dict()
+    payload["offline_enforced"] = offline
 
+    print("=== STAGE 1: METADATA VERIFICATION ===")
+    if local:
+        print("network access             : disabled (local path, offline mode enforced)")
     print(f"source                     : {report.source}")
     print(f"model_type                 : {report.model_type}")
     print(f"config class               : {report.config_class}")
@@ -78,16 +85,29 @@ def main(argv: list[str] | None = None) -> int:
     for name, version in report.versions.items():
         print(f"  {name:<18}{version}")
 
+    print("\n=== STAGE 2: RUNTIME VERIFICATION ===")
+    if not args.probe or args.config_only:
+        payload["runtime_verification"] = {
+            "performed": False,
+            "reason": "not requested (--probe omitted or --config-only set)",
+        }
+        print("  NOT PERFORMED.")
+        print("  A config that resolves is NOT proof the checkpoint loads and generates.")
+        print("  Weight loading, tensor-shape agreement and a real generation are")
+        print("  unverified until this stage runs with the full weights:")
+        print(f"    python scripts/verify_teacher_loader.py --model {args.model} --probe")
+
     if args.probe and not args.config_only:
         from qwen_distill.evaluation.runner import TransformersBackend
 
-        print("\n--- live generation probe ---")
+        print("  running a real generation against the weights...")
         backend = TransformersBackend(
             args.model, device=args.device, dtype=args.dtype,
             trust_remote_code=args.trust_remote_code, max_new_tokens=32,
         )
         probe = backend.probe()
         payload["probe"] = probe.to_dict()
+        payload["runtime_verification"] = {"performed": True, "ok": probe.ok}
         print(f"  ok               : {probe.ok}")
         print(f"  model class      : {probe.model_class}")
         print(f"  generated tokens : {probe.generated_tokens}")

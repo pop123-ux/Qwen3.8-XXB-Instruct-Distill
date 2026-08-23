@@ -43,3 +43,9 @@ wandb/
 .DS_Store
 .idea/
 .vscode/
+
+# Vendored upstream metadata: supplied locally by each contributor, never
+# redistributed through this repository (upstream content, upstream licence).
+# The directory and its instructions are tracked; its contents are not.
+vendor/qwen38-metadata/*
+!vendor/qwen38-metadata/.gitkeep

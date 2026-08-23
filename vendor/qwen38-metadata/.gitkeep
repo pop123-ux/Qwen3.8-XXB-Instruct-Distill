@@ -1,0 +1,3 @@
+Place the upstream metadata files in this directory. See ../README.md.
+The files themselves are gitignored: they are upstream content under upstream's
+licence, and this project does not redistribute them.

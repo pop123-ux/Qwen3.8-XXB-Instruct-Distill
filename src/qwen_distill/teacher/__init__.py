@@ -2,6 +2,14 @@
 
 from .inspect import TeacherReport, cross_check, inspect_hub, inspect_local, read_safetensors_header
 from .loader import LoaderReport, collect_versions, detect_remote_code, verify_loader
+from .metadata import (
+    FieldReport,
+    MetadataFileReport,
+    TeacherMetadata,
+    blocking_gaps,
+    load_metadata,
+    validate_metadata,
+)
 from .validate import ValidationResult, validate_cache_shapes, validate_parameters
 
 __all__ = [
@@ -14,6 +22,12 @@ __all__ = [
     "verify_loader",
     "collect_versions",
     "detect_remote_code",
+    "TeacherMetadata",
+    "MetadataFileReport",
+    "FieldReport",
+    "load_metadata",
+    "validate_metadata",
+    "blocking_gaps",
     "ValidationResult",
     "validate_parameters",
     "validate_cache_shapes",

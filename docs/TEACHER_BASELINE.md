@@ -6,6 +6,11 @@ The teacher checkpoint was not reachable from the authoring environment and this
 machine has no GPU (see [`VERIFICATION.md`](VERIFICATION.md)). The pipeline below is
 built, tested end to end against a synthetic checkpoint, and ready to run.
 
+**Metadata-only verification no longer needs network access from this repository.**
+Supply `vendor/qwen38-metadata/` (see [`vendor/README.md`](../vendor/README.md)) and the
+config, tokenizer, chat template and reasoning controls can all be verified offline. The
+baseline *measurements* below still require the weights and a large GPU.
+
 ## Why the baseline comes first
 
 The student will eventually be compared against the teacher. If the teacher's numbers

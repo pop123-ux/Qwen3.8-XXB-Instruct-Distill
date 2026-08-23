@@ -46,9 +46,12 @@ Established in Phase 1, empirically:
 - The evaluation, reasoning-sweep and paired-comparison pipelines run end to end
   against a synthetic checkpoint.
 
-Still blocked: the teacher's own `config.json`, tokenizer, chat template and license
-(`huggingface.co` unreachable), and all peak-VRAM measurement (no GPU). See
-[`VERIFICATION.md`](VERIFICATION.md).
+Still blocked: the teacher's own `config.json`, tokenizer, chat template and licence,
+and all peak-VRAM measurement (no GPU). Egress to `huggingface.co` is blocked in the
+authoring environment and was not circumvented; instead the repository now ingests a
+**locally supplied metadata directory** (`vendor/qwen38-metadata/`, see
+[`vendor/README.md`](../vendor/README.md)), so anyone able to obtain a few megabytes of
+metadata can close those questions offline. See [`VERIFICATION.md`](VERIFICATION.md).
 
 Established in Phase 0, analytically:
 
