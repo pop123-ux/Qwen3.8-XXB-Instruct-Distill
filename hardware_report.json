@@ -1,0 +1,91 @@
+{
+  "timestamp_utc": "2026-08-23T14:54:17.178722+00:00",
+  "git_commit": "48e51193a28208cddd7523abc2d7377430570890",
+  "system": {
+    "os": "Linux",
+    "os_release": "6.6.122+",
+    "machine": "x86_64",
+    "python_version": "3.13.15",
+    "torch_version": "2.11.0+cu128",
+    "transformers_version": "5.15.0",
+    "cuda_runtime_version": "12.8",
+    "hip_version": null,
+    "cuda_available": true,
+    "rocm_available": false,
+    "mps_available": false,
+    "cpu_count": 2,
+    "total_ram_gib": 12.671417236328125,
+    "notes": []
+  },
+  "devices": [
+    {
+      "index": 0,
+      "vendor": "nvidia",
+      "name": "Tesla T4",
+      "backend": "cuda",
+      "total_memory_gib": 14.56317138671875,
+      "allocated_memory_gib": 0.0,
+      "reserved_memory_gib": 0.0,
+      "free_memory_gib": 14.46075439453125,
+      "peak_allocated_gib": 0.0,
+      "peak_reserved_gib": 0.0,
+      "compute_capability": "7.5",
+      "multi_processor_count": 40,
+      "memory_bandwidth_gb_s": null,
+      "driver_version": "580.82.07",
+      "supports_bf16": false,
+      "supports_fp16": true,
+      "supports_fp8": false,
+      "supports_int8": true,
+      "has_tensor_cores": true,
+      "notes": []
+    }
+  ],
+  "tier": {
+    "level": 2,
+    "name": "12-16 GB VRAM",
+    "summary": "the project's deployment target; small-student training and evaluation"
+  },
+  "note": "memory figures are ANALYTICAL ESTIMATES unless --calibrate was run",
+  "recommendations": {
+    "tier_level": 2,
+    "tier_name": "12-16 GB VRAM",
+    "tier_summary": "the project's deployment target; small-student training and evaluation",
+    "available_gib": 13.56317138671875,
+    "device_name": "Tesla T4",
+    "good": [
+      "the full analysis suite and unit tests",
+      "architecture prototyping and shape verification",
+      "training-pipeline debugging with toy models"
+    ],
+    "with_care": [
+      "~14B large QLORA training @2048 (12.6 GiB, tight)"
+    ],
+    "not_realistic": [
+      "Qwen3.8-27B bf16 inference (needs 49.2 GiB)",
+      "Qwen3.8-27B 4-bit inference (needs 17.7 GiB)",
+      "full-parameter training of a 27B-class model (needs ~255 GiB)"
+    ],
+    "inference": [
+      "~0.5B toy bf16 @8k (1.5 GiB)",
+      "~1.8B small bf16 @8k (4.0 GiB)",
+      "~8B mid 4-bit @8k (5.5 GiB)",
+      "~14B large 4-bit @8k (10.5 GiB)"
+    ],
+    "training": [
+      "~0.5B toy FULL @2048 tokens (7.1 GiB)",
+      "~1.8B small LORA @2048 tokens (6.9 GiB)",
+      "~8B mid QLORA @2048 tokens (7.7 GiB)"
+    ],
+    "evaluation": [
+      "Tier 1 development evaluation on models that fit above",
+      "reasoning-cost sweeps on small models",
+      "teacher baseline requires a larger GPU; generate teacher data elsewhere and train/evaluate the student here"
+    ],
+    "architecture_experiments": [
+      "candidate architecture search (CPU-bound, always available)",
+      "small hybrid prototypes with real DeltaNet/attention layers",
+      "cache and recurrent-state behaviour checks"
+    ]
+  }
+}
