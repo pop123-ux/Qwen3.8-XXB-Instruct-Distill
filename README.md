@@ -66,6 +66,29 @@ roughly 7.7B parameters of capacity.
 These are calculations, not measurements. They narrow the search space; they do not
 tell us what a trained model will score.
 
+## What can my GPU run?
+
+```bash
+python scripts/hardware_info.py --recommend
+```
+
+Detects your accelerator (NVIDIA, AMD/ROCm, or none), classifies it, and derives from
+the project's memory model — not a lookup table — which models fit at which
+quantisation and context, and which training experiments are plausible. Works CPU-only,
+where "no GPU" is a normal answer rather than an error.
+
+```bash
+# preview a machine you don't have yet
+python scripts/hardware_info.py --simulate-vram 16 --simulate-name "Tesla T4" --matrix --recommend
+
+# will this training run fit? seconds, no weights loaded
+python scripts/train_student.py --config configs/experiments/t4_prototype.yaml --dry-run
+```
+
+See [`docs/HARDWARE.md`](docs/HARDWARE.md) for tiers and rented-GPU guidance, and
+[`docs/TRAINING_ON_LIMITED_HARDWARE.md`](docs/TRAINING_ON_LIMITED_HARDWARE.md) for the
+development ladder from CPU to the final run.
+
 ## Quick start
 
 ```bash
@@ -154,6 +177,9 @@ capability regression cannot be presented as an efficiency win. See
 | [EVALUATION_PLAN.md](docs/EVALUATION_PLAN.md) | Tiers, baselines, contamination, reporting standards |
 | [DEPLOYMENT_PLAN.md](docs/DEPLOYMENT_PLAN.md) | The 16 GB envelope and measurement methodology |
 | [reasoning-efficiency.md](docs/reasoning-efficiency.md) | Adaptive reasoning research direction |
+| [HARDWARE.md](docs/HARDWARE.md) | Capability tiers, what fits where, rented-GPU options |
+| [TRAINING_ON_LIMITED_HARDWARE.md](docs/TRAINING_ON_LIMITED_HARDWARE.md) | The development ladder: CPU → T4 → rented |
+| [COMPUTE_STRATEGY.md](docs/COMPUTE_STRATEGY.md) | When to rent, and what |
 
 ## Reporting standards
 

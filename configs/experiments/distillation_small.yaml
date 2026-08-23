@@ -1,0 +1,52 @@
+# Experiment T4-B — Distillation mechanics (Level 3 on the development ladder).
+#
+# Purpose: determine whether knowledge distillation actually beats plain SFT at small
+# scale, before spending real compute on the full recipe.
+#
+# Requires a teacher-generated dataset, produced separately (possibly on rented
+# hardware) — the T4 never holds the teacher and the student at once.
+
+name: distillation_small
+level: "Level 3 — T4 small distillation experiment"
+description: >-
+  Small student trained on offline teacher outputs. Compares hard-target SFT against
+  mixed SFT + logit KD. Run twice with objective sft and mixed_kd to get the comparison.
+
+model:
+  # Start from a pretrained small model rather than random init: the architecture
+  # experiment is separate from the distillation experiment, and conflating them
+  # would make the result uninterpretable.
+  pretrained: null        # SET THIS to a small compatible checkpoint
+  trust_remote_code: false
+
+data:
+  train_path: data/distillation/train.jsonl        # produced by teacher generation
+  validation_path: data/distillation/validation.jsonl
+  max_sequence_length: 1024
+  streaming: false
+  shuffle_seed: 0
+
+training:
+  strategy: qlora         # 4-bit frozen base + adapter: fits a T4 comfortably
+  optimizer: adamw_8bit
+  precision: fp16         # T4 has no bf16
+  objective: mixed_kd     # set to `sft` for the control run
+  kd_weight: 0.5
+  kd_temperature: 2.0
+  learning_rate: 0.0002
+  max_steps: 1000
+  warmup_steps: 50
+  batch_size: 1
+  gradient_accumulation_steps: 16
+  gradient_checkpointing: true
+  lora_rank: 16
+  lora_alpha: 32
+  seed: 0
+  eval_every: 100
+  save_every: 250
+  log_every: 20
+
+runtime:
+  output_dir: experiments/runs/distillation_small
+  device: auto
+  reserved_vram_gib: 1.0

@@ -180,6 +180,33 @@ output space. Keeping the teacher's tokenizer is close to a hard requirement for
 distillation strategy in `docs/PROJECT_PLAN.md`. Tying embeddings gets half the
 benefit with none of that cost.
 
+## Weight transfer: an early finding
+
+`qwen_distill.architecture.transfer` plans teacher-to-student initialisation. Building
+plans for a 48-layer student from the 64-layer teacher surfaced something non-obvious:
+
+| Layer selection | Coverage | Block-type mismatches |
+|---|---:|---:|
+| `first` | 100% | 0 |
+| `last` | 100% | 0 |
+| `interleave` | 100% | 0 |
+| **`uniform`** | **95%** | **20** |
+
+`uniform` is the intuitive choice — spread the selection evenly to preserve the
+depth-wise progression of representations. But both models use a **period-4** layout
+(3 DeltaNet : 1 attention), and spreading 48 layers over 64 gives a stride of 1.33. That
+lands student layers on teacher layers of the *wrong block type*, whose tensors do not
+even share names.
+
+The lesson generalises: **any layer-selection stride that is not compatible with the
+hybrid period will silently misalign block types.** The planner reports these as
+mismatches rather than mapping them, so the failure is visible at plan time rather than
+at apply time.
+
+This does not settle which strategy initialises a *better* student — that is an
+empirical question the planner exists to make testable. It settles that one obvious
+candidate is structurally broken for this architecture family.
+
 ## Open architectural questions
 
 - Is the 3:1 DeltaNet:attention ratio optimal at 15B, or was it tuned for 27B?
