@@ -1,0 +1,64 @@
+{
+  "name": "t4_prototype",
+  "description": "Tiny hybrid DeltaNet/attention model on synthetic data. Validates the training mechanism end to end: forward, backward, optimizer, checkpointing, resume, logging.",
+  "level": "Level 1 \u2014 T4 toy model",
+  "model": {
+    "spec_path": null,
+    "pretrained": null,
+    "architecture": {
+      "hidden_size": 256,
+      "num_hidden_layers": 4,
+      "intermediate_size": 704,
+      "vocab_size": 4096,
+      "num_attention_heads": 4,
+      "num_key_value_heads": 2,
+      "head_dim": 64,
+      "linear_num_key_heads": 2,
+      "linear_num_value_heads": 6,
+      "linear_key_head_dim": 32,
+      "linear_value_head_dim": 32,
+      "full_attention_interval": 4,
+      "max_position_embeddings": 2048,
+      "tie_word_embeddings": true
+    },
+    "trust_remote_code": false
+  },
+  "data": {
+    "train_path": null,
+    "validation_path": null,
+    "synthetic": true,
+    "synthetic_examples": 512,
+    "max_sequence_length": 256,
+    "streaming": false,
+    "shuffle_seed": 0
+  },
+  "training": {
+    "strategy": "full",
+    "optimizer": "adamw",
+    "precision": "fp16",
+    "objective": "sft",
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0,
+    "warmup_steps": 20,
+    "max_steps": 200,
+    "scheduler": "cosine",
+    "batch_size": 4,
+    "gradient_accumulation_steps": 2,
+    "gradient_checkpointing": false,
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "kd_weight": 0.5,
+    "kd_temperature": 2.0,
+    "seed": 0,
+    "eval_every": 50,
+    "save_every": 100,
+    "log_every": 10
+  },
+  "runtime": {
+    "output_dir": "experiments/runs/t4_prototype",
+    "device": "auto",
+    "resume_from": null,
+    "reserved_vram_gib": 1.0
+  }
+}
