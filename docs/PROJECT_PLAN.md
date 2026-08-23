@@ -99,20 +99,65 @@ the three-tier evaluation harness, the reasoning-control sweep (including a
 template-level no-op detector), paired teacher/student comparison, and memory
 benchmarking. All exercised end to end against a synthetic checkpoint.
 
-Blocked on network/hardware access:
+**Answered since:** the supplied metadata declares `model_type: qwen3_5`, which
+`transformers==5.15.1` implements natively. No `trust_remote_code`, no unreleased
+version — so a student built on this architecture runs on stock `transformers`, and the
+question that could have constrained the whole plan is closed.
 
-Everything in [`VERIFICATION.md`](VERIFICATION.md) marked Tier 2 or "open question"
-must be closed against the real checkpoint before an architecture is chosen. The two
-that can change the plan outright:
+Still blocked on hardware access: everything in [`VERIFICATION.md`](VERIFICATION.md)
+that needs the weights or a GPU — state-dict parameter count, real generation, benchmark
+capability, measured peak VRAM. One open question remains that can change the plan:
 
-- **Does the 3.8 checkpoint load under stock `transformers`?** No `qwen3_8` module
-  exists in `transformers==5.15.1`. If it needs `trust_remote_code` or an unreleased
-  version, that constrains what we can train and what the community can run.
 - **Does a smaller Qwen3.8-family base exist?** We found no evidence of one. If none
   exists, initialization strategy A below is unavailable.
 
 **Deliverable:** committed inspector reports under `evaluations/baselines/`, plus a
 verified spec at `configs/teacher/qwen3_8_27b.verified.json`.
+
+### Phase 1C / 1D — Runtime compatibility and hardware path ✅
+
+Resolved the `output_gate_type: "swish"` vs hard-coded `torch.sigmoid` question before
+spending GPU time on it: the two refer to **different gates**, so there is no
+discrepancy (`VERIFIED_CORRECT`). Fixed three loader defects found in the same review,
+the worst being `dtype="auto"` resolving to `None` and loading fp32 — about 108 GiB for
+the teacher, on what was the CLI default.
+
+Added hardware diagnostics (`scripts/hardware_info.py`), capability tiers 0–6 derived
+from the project's own memory model rather than a lookup table, and a realistic
+development ladder from CPU to the final run.
+
+### Phase 2A — First scaling experiment ⏳ configured, awaiting a GPU
+
+> Numbering note: phases 0–2A are the *infrastructure* track and ran in that order.
+> Phase 2 below is the first *research* phase and needs a rented GPU, so it comes after
+> 2A in time despite the number.
+
+Level 1 (4.03M) passed on a real T4. Level 2 (94.48M, byte-level real text) is
+configured, dry-run clean at 4.53 GiB of a T4's 14.56 GiB, and validated end to end on
+CPU — but **has not run on a GPU**, because the authoring environment has none.
+
+Three defects were found and fixed while preparing it, each of which would have wasted
+the GPU window rather than failing loudly:
+
+1. **`precision` never reached the model.** `from_config` takes no dtype, so
+   `precision: fp16` trained in fp32 — double the weight/gradient/optimizer memory and
+   none of the T4's fp16 speed. Now resolved explicitly, applied as autocast +
+   `GradScaler`, and recorded in `summary.json` as both requested and effective.
+2. **The memory estimate could not be checked term by term.** Gradients were folded
+   into the optimizer term and weights were modelled at a fixed 2 B/param regardless of
+   scheme. AMP and pure-bf16 both total 16 B/param for AdamW, so only a per-component
+   breakdown can distinguish them.
+3. **The loss path was understated 2.5–3x.** `ForCausalLMLoss` upcasts the logits with
+   `.float()` and `cross_entropy` retains a second fp32 buffer, so they are held three
+   times over. At a 248k vocabulary that is gigabytes.
+
+The earlier "2.85 calibration factor" was also retired: it divided peak *reserved* by
+modelled tensors with overhead zeroed, and was mostly measuring the CUDA context.
+`scripts/hardware_info.py --calibrate-run` replaces it with per-term residuals that name
+which term to fix, and never emits a global multiplier.
+
+**Deliverable:** a Level-2 run on a T4, its `summary.json`, and the calibration that
+run produces.
 
 ### Phase 2 — Teacher baseline (`teacher_baseline_v1`)
 

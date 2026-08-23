@@ -19,8 +19,8 @@ To preview a machine you do not have yet:
 python scripts/hardware_info.py --simulate-vram 16 --simulate-name "Tesla T4" --matrix --recommend
 ```
 
-Every memory figure is an **analytical estimate** until `--calibrate` measures the model
-against your machine.
+Every memory figure is an **analytical estimate** until `--calibrate` or
+`--calibrate-run` measures the model against your machine.
 
 ## Capability tiers
 
@@ -128,8 +128,45 @@ Three verdicts, deliberately:
 python scripts/hardware_info.py --calibrate
 ```
 
-Loads a small model (never the 27B teacher), measures real peak VRAM at several
-contexts, and reports the measured/estimated ratio. Near 1.0 means the estimator is
-trustworthy on your machine; a consistent offset means it is missing a term and should
-be corrected rather than explained away. Requires CUDA — on CPU it says so rather than
-reporting zeros.
+Loads a small model (never the 27B teacher) and measures real peak VRAM at several
+contexts. Requires CUDA — on CPU it says so rather than reporting zeros.
+
+It reports **two ratios, kept apart**, because they answer different questions:
+
+- **live tensors / modelled tensors** — is our arithmetic right? This is the only one
+  that should drive a correction to the estimator.
+- **allocator reserve / modelled tensors** — what does the process actually occupy?
+  This is what a deployment claim has to satisfy, and it is always the larger of the
+  two.
+
+It also measures the **CUDA context** directly, before any model tensor exists, and
+reports it separately. On a small probe model that fixed cost can exceed the entire
+tensor footprint.
+
+That separation is the correction to a real mistake. An earlier version reported a
+single "calibration factor" of ~2.85 — computed by dividing peak *reserved* by modelled
+tensors with the overhead term zeroed. Those are different quantities, and the factor
+was largely measuring the CUDA context. Applying it as a multiplier would have made
+every future estimate wrong in a way that looked calibrated. Neither ratio is a
+multiplier: a ratio away from 1.0 tells you **which term** to fix.
+
+### Calibrating against a finished training run
+
+```bash
+python scripts/hardware_info.py --calibrate-run experiments/<run>/summary.json
+```
+
+Compares each estimated term against what the memory probe actually measured during
+that run, and names the term to correct:
+
+```
+  component                     modelled  measured   ratio  verdict
+  weights                          0.352     0.352   1.000  OK
+  optimizer_state                  0.704     0.704   1.000  OK
+  activations+logits               1.930     3.100   1.606  UNDERESTIMATED
+```
+
+Weights and optimizer state are derivable arithmetic, so they should read 1.000; when
+they do, a discrepancy has been isolated to the terms that are genuinely modelled. A
+correct *total* built from two errors that cancelled is still two errors, and only a
+per-component view shows it.

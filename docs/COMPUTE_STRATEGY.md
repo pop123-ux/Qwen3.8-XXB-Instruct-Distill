@@ -32,7 +32,19 @@ generated once and trained on repeatedly. That is what makes this affordable.
 Development, prototyping, small experiments, evaluation of small models. The project's
 deployment target, so validating *there* is not a compromise — it is the point.
 
-No bf16 (Turing). Use `precision: fp16`.
+**No bf16 (Turing).** Use `precision: fp16`, which the trainer applies as autocast plus
+`GradScaler` with fp32 master weights — not fp16 parameters, which AdamW underflows. A
+config declaring `bf16` falls back to fp16 on a T4 and says so, rather than failing
+partway into a run.
+
+Levels 0–3 of the [development ladder](TRAINING_ON_LIMITED_HARDWARE.md) all live here.
+Level 1 (4.03M) has passed; Level 2 (94.48M, byte-level text) is configured and
+estimated at 4.53 GiB of the T4's 14.56 GiB.
+
+**Colab runtimes are ephemeral.** Anything not in git or on Drive dies with the session,
+and checkpoints are too large for git. Run `scripts/backup_colab_to_drive.py` after an
+experiment — it excludes credentials and caches, never follows symlinks, and never
+deletes without an explicit `--delete-extraneous --yes`.
 
 ### ~$0.16–0.44/hr — 24 GB (A5000, 3090, 4090, L4)
 
@@ -91,6 +103,12 @@ python scripts/train_student.py --config <config> --dry-run --simulate-vram 24
 Both run locally in seconds and tell you whether the rental would have worked. Renting
 first and finding out second is the expensive order.
 
+The dry-run now prints a **per-term** breakdown — weights, gradients, optimizer state,
+activations, logits, then the live-tensor subtotal and the runtime overhead separately —
+because a single total cannot tell you which term is about to be wrong. It also names
+the precision scheme that will actually run, which is not always the one the config
+requested (fp16 on CPU, bf16 on Turing).
+
 ## A cost-control habit
 
 Rented GPUs bill by the hour whether or not they are computing. Before starting a run:
@@ -98,6 +116,19 @@ Rented GPUs bill by the hour whether or not they are computing. Before starting 
 - have the dataset already prepared and uploaded;
 - have the config dry-run clean at the simulated VRAM;
 - know the number of steps and the expected wall-clock;
-- write checkpoints often enough that an interruption is not a total loss.
+- write checkpoints often enough that an interruption is not a total loss;
+- know that `precision` is being honoured — a run that silently trains fp32 when the
+  config says fp16 costs roughly double the memory and loses the tensor-core speedup,
+  and until this phase nothing in the artifacts would have told you.
 
 Most wasted rental time is spent debugging setup that could have been debugged on a T4.
+
+After any GPU run, feed the result back into the estimator:
+
+```bash
+python scripts/hardware_info.py --calibrate-run experiments/<run>/summary.json
+```
+
+It compares each modelled term against what was measured and names the one to fix.
+Never apply the ratio as a global multiplier — that is precisely the mistake that
+produced this project's earlier, unusable "2.85 calibration factor".

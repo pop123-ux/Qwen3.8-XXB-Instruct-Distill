@@ -4,11 +4,13 @@ Research infrastructure for compressing **Qwen3.8-27B** into an instruct model t
 runs comfortably on a **single 16 GB consumer GPU**, keeps a genuinely large context
 window, and spends far fewer tokens thinking about easy questions.
 
-> **Project status: Phase 1 — verification and evaluation infrastructure.**
-> **No final student model has been trained.** A 4.03M Level-1 hybrid prototype has
-> been trained successfully on a Tesla T4 for infrastructure validation — it proves the
-> pipeline executes and optimises, and nothing about language quality. No benchmark has
-> been run against the teacher, and the `XXB` in the name is a placeholder: the final
+> **Project status: Phase 2A — first scaling experiment.**
+> **No final student model has been trained.** A 4.03M Level-1 hybrid prototype trained
+> successfully on a Tesla T4, proving the pipeline executes and optimises and nothing
+> about language quality. The Level-2 run (94.48M, real byte-level text) is configured
+> and validated on CPU but **has not yet run on a GPU** — the authoring environment has
+> none, so the numbers below are estimates until someone runs it. No benchmark has been
+> run against the teacher, and the `XXB` in the name is a placeholder: the final
 > parameter count is a research result, not a design input.
 
 ## Why this project exists
@@ -88,7 +90,79 @@ capability retention. The task was a synthetic induction task chosen because it 
 *learnable* — a loss that falls on it means the optimizer works, not that the model
 understands language. Treating 2.09 as a capability number would be a category error.
 
-Level 2 (~100M, real text) is the experiment that starts to answer the language question.
+Level 2 (94.48M, real text) is the experiment that starts to answer the language
+question.
+
+## Level 2 — configured, not yet run
+
+| | |
+|---|---|
+| Model | **94.48M** params, 16 layers (12 DeltaNet + 4 full attention), hidden 640, FFN 2176 |
+| Ratios | 3:1 hybrid layout and 3.40x FFN expansion, both matching the teacher |
+| Vocabulary | **256** — byte-level, so nearly every parameter is in the layers rather than an embedding table |
+| Objective | causal LM on real text, scored in **bits per byte** (8.0 = learned nothing) |
+| Target | Tesla T4, 14.56 GiB, fp16 autocast, seq 1024, 2000 steps |
+| Estimate | 3.33 GiB live tensors + 1.20 GiB overhead = **4.53 GiB**, `PLAUSIBLE` |
+
+Byte-level tokenization is the deliberate choice here: no tokenizer to download or
+version, any text file works unchanged, and the loss is directly comparable across runs
+because it does not depend on a tokenizer's compression rate.
+
+**This has not run on a GPU.** The authoring environment has no accelerator, so it is
+validated end-to-end on CPU only — architecture builds, loss falls, checkpoints reload
+bit-for-bit, resume restores the right step. To run it:
+
+```bash
+python scripts/train_student.py --config configs/experiments/t4_level2_100m.yaml --dry-run
+python scripts/train_student.py --config configs/experiments/t4_level2_100m.yaml
+python scripts/validate_checkpoint.py experiments/t4_level2_100m/final
+python scripts/hardware_info.py --calibrate-run experiments/t4_level2_100m/summary.json
+```
+
+The last command is the point of the exercise: it compares each estimated term against
+what was actually measured and names which term is wrong. See
+[Memory: measured, not multiplied](#memory-measured-not-multiplied).
+
+### Working in Colab
+
+Colab runtimes are ephemeral, and checkpoints are too large for git. After a run:
+
+```bash
+python scripts/backup_colab_to_drive.py --dry-run   # see exactly what would move
+python scripts/backup_colab_to_drive.py
+```
+
+It never follows symlinks, never copies credential-shaped files (`.env`, `*.pem`,
+`id_rsa*`, `*token*.json`, `.ssh/`, ...), and never deletes anything unless you pass
+both `--delete-extraneous` and `--yes`. Code and configs belong in git; checkpoints and
+experiment artifacts belong on Drive.
+
+## Memory: measured, not multiplied
+
+An earlier calibration reported a measured/estimated ratio of ~2.85. That number was
+not usable, and it is worth saying why: it divided **peak reserved** — which includes
+the CUDA context and every block the caching allocator holds — by **modelled tensors
+with the overhead term deliberately zeroed**. Those are different quantities, and on a
+small probe model the CUDA context alone rivals the whole tensor footprint. Multiplying
+future estimates by 2.85 would have baked that confusion in permanently.
+
+What the estimator does instead:
+
+- **Predicts two quantities**, matching the two the probe measures: live tensors
+  (`predicted_allocated_gib`) and process footprint (`predicted_reserved_gib`).
+- **Attributes every term separately** — weights, gradients, optimizer moments,
+  activations, logits — so a total that is right because two errors cancelled is still
+  reported as two errors.
+- **Models the precision that will actually run.** `torch.autocast` keeps fp32 weights
+  and gradients while computing in fp16; pure-bf16 training keeps bf16 weights with an
+  fp32 master. Both total 16 bytes/parameter for AdamW, so only a per-component
+  breakdown can tell them apart.
+- **Counts the loss path properly.** `ForCausalLMLoss` does `logits = logits.float()`
+  and `cross_entropy` retains a second fp32 log-softmax buffer, so the logits are held
+  three times over — a 2.5-3x correction that is measured in gigabytes at a 248k vocab.
+
+`--calibrate-run` reports per-term residuals and names which term to fix. It never emits
+a global multiplier.
 
 ## What can my GPU run?
 
@@ -117,7 +191,7 @@ development ladder from CPU to the final run.
 
 ```bash
 pip install -e ".[dev]"
-pytest                                    # 71 tests, no GPU required
+pytest                                    # 490 tests, no GPU required
 
 python scripts/estimate_vram.py --preset teacher --matrix --max-context
 python scripts/search_architectures.py --vram 16 --context 32768 --top 15
@@ -131,13 +205,15 @@ Everything runs on CPU in seconds. No weights are downloaded unless you ask.
 ```
 src/qwen_distill/
   architecture/   spec, exact parameter accounting, VRAM model, FLOPs, search
-  teacher/        checkpoint inspection and cross-checking
-  evaluation/     (planned)
-  data/           (planned)
-scripts/          inspect_teacher, estimate_vram, search_architectures
+  teacher/        checkpoint inspection, cross-checking, runtime compatibility
+  diagnostics/    device detection, capability tiers, fit analysis, calibration
+  training/       config, feasibility gate, trainer, corpora, memory probe
+  evaluation/     harness, backends, reasoning-effort sweeps
+scripts/          hardware_info, train_student, estimate_vram, validate_checkpoint, ...
 docs/             plans and analysis (start with VERIFICATION.md)
 experiments/      architecture search outputs
-tests/            71 tests pinning every formula
+vendor/           teacher metadata, supplied out-of-band
+tests/            490 tests pinning every formula
 ```
 
 ## Verification status
@@ -163,15 +239,15 @@ KV cache, DeltaNet recurrent state and conv state all match byte-for-byte, the K
 appears on exactly the full-attention layers, and the recurrent state is byte-identical
 at sequence length 8 and 64 while the KV cache grows.
 
-**What is still unverified:** the upstream **`config.json`, tokenizer, chat template and
-licence have never been read** — egress to `huggingface.co` is blocked in the authoring
-environment, and no attempt was made to route around it. The formulas are proven correct
-*for a config with these values*; that the teacher **has** these values is corroborated,
-not verified. Peak VRAM is also uncalibrated — no GPU.
+The teacher's **`config.json`, tokenizer config, generation config, chat template and
+licence** are now in the repository under `vendor/qwen38-metadata/`, supplied out-of-band
+rather than downloaded: egress to `huggingface.co` is blocked in the authoring
+environment, and no attempt was made to route around it. Every field is recorded with a
+SHA-256 of its source file in `configs/teacher/qwen3_8_27b.verified.json`.
 
-The repository now ingests this metadata from a local directory instead, so anyone who
-can obtain the files can close those questions without this environment needing network
-access at all.
+**What is still unverified:** anything that needs the *weights* or a *GPU* — state-dict
+parameter count, real generation, benchmark capability, and measured peak VRAM. The
+memory model is analytical throughout.
 
 Every claim is classified VERIFIED / CORROBORATED / UNKNOWN, question by question, in
 [`docs/VERIFICATION.md`](docs/VERIFICATION.md).
@@ -179,8 +255,10 @@ Every claim is classified VERIFIED / CORROBORATED / UNKNOWN, question by questio
 ## The reasoning-efficiency goal
 
 Qwen3.8-27B defaults to `reasoning_effort: xhigh` and reportedly spends thousands of
-thinking tokens on simple requests. There is also a report that the `medium` setting
-is a **no-op**, silently leaving users on maximum effort.
+thinking tokens on simple requests. A widely repeated secondary claim that the `medium`
+setting is a **no-op** is *refuted* by the real chat template: `medium` renders a
+distinct — in fact the shortest — prompt. See
+[below](#one-correction-worth-flagging).
 
 The objective here is *not* to suppress reasoning. It is to make reasoning
 proportional to difficulty: near-zero for "what is 15 × 7", extensive for a hard
