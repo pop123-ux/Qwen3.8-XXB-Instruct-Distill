@@ -53,9 +53,9 @@ not a meaningful baseline. Four modes are run:
 | C | `reasoning_effort: low` | cheapest explicit budget |
 | D | `reasoning_effort: xhigh` | most expensive explicit budget |
 
-`medium` is swept separately by `benchmark_reasoning.py` rather than given its own
-mode, because it is reported to be a no-op and the template diff settles that before
-any generation runs.
+`medium` now has its own mode. The template diff showed it renders a *distinct* prompt
+(the shortest of the three, since it injects no reasoning instruction), so it is a real
+setting worth measuring — not the no-op earlier secondary sources described.
 
 Mode B matters most for the project's motivation: if the default is `xhigh`, then the
 overthinking users complain about is the *out-of-the-box* behaviour, not something
@@ -111,7 +111,7 @@ python scripts/evaluate.py --model Qwen/Qwen3.8-27B --suite tier1 --reasoning-ef
 python scripts/evaluate.py --model Qwen/Qwen3.8-27B --suite tier1 --reasoning-effort xhigh \
     --output evaluations/baselines/teacher/mode_d_xhigh
 
-# 2. the reasoning sweep, including the medium no-op check
+# 2. the reasoning sweep across all five modes
 python scripts/benchmark_reasoning.py --model Qwen/Qwen3.8-27B \
     --output evaluations/baselines/teacher/reasoning
 ```
@@ -131,7 +131,23 @@ reused for every subsequent student comparison.
 
 | Mode | Suite | Accuracy | Mean thinking tokens | Mean latency | Status |
 |---|---|---|---|---|---|
-| A — no reasoning | tier1 | TBD | TBD | TBD | Not yet measured |
-| B — default | tier1 | TBD | TBD | TBD | Not yet measured |
+| A — thinking disabled | tier1 | TBD | TBD | TBD | Not yet measured |
+| B — default (= xhigh) | tier1 | TBD | TBD | TBD | Not yet measured |
 | C — low | tier1 | TBD | TBD | TBD | Not yet measured |
-| D — xhigh | tier1 | TBD | TBD | TBD | Not yet measured |
+| D — medium | tier1 | TBD | TBD | TBD | Not yet measured |
+| E — xhigh | tier1 | TBD | TBD | TBD | Not yet measured |
+
+## The instrument warning
+
+**No student benchmark result is meaningful unless the teacher was evaluated under the
+same harness, benchmark version, prompt format, reasoning configuration and sampling
+assumptions.** Three sources of numbers must never be mixed without explicit labels:
+
+| Source | What it is | May be compared to |
+|---|---|---|
+| upstream published Qwen scores | different harness, prompts, shots, reasoning settings | nothing here — cite separately, as context |
+| our teacher scores | this harness, `teacher_baseline_v1` | our student scores |
+| our student scores | this harness, same settings | our teacher scores |
+
+A table that puts all three in one column without saying so is invalid, however
+carefully each number was individually produced.

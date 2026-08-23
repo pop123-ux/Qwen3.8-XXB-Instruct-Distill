@@ -49,6 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device", default="auto")
     parser.add_argument("--dtype", default="auto")
     parser.add_argument("--json", type=Path, help="write the structured report here")
+    parser.add_argument(
+        "--runtime-json", type=Path,
+        default=Path("evaluations/baselines/teacher_runtime_report.json"),
+        help="where --probe writes the Stage 2 runtime report",
+    )
     return parser
 
 
@@ -116,6 +121,28 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  sample output    : {probe.generated_text[:120]!r}")
         if probe.error:
             print(f"  ERROR            : {probe.error}")
+        print(f"  tokenizer class  : {probe.tokenizer_class}")
+        print(f"  prompt sha256    : {(probe.rendered_prompt_sha256 or '-')[:16]}")
+        if probe.cuda_available:
+            print(f"  peak GPU memory  : {probe.peak_gpu_memory_gib:.2f} GiB ({probe.gpu_name})")
+        else:
+            print("  peak GPU memory  : UNAVAILABLE (no CUDA device)")
+
+        args.runtime_json.parent.mkdir(parents=True, exist_ok=True)
+        args.runtime_json.write_text(
+            json.dumps(
+                {
+                    "model": args.model,
+                    "stage": "runtime",
+                    "performed": True,
+                    "probe": probe.to_dict(),
+                    "stage1_verdict": report.verdict,
+                },
+                indent=2, ensure_ascii=False,
+            ) + "\n",
+            encoding="utf-8",
+        )
+        print(f"  wrote {args.runtime_json}")
 
     if report.warnings:
         print("\nwarnings:")

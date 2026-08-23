@@ -173,58 +173,68 @@ verified against the upstream repository before any weights are released or any 
 model name is chosen** — this has not yet been possible from this environment. See
 [`THIRD_PARTY.md`](THIRD_PARTY.md).
 
-## Unblocking verification: supply the metadata locally
+## Teacher verification status
 
-The single most valuable contribution right now is **a few megabytes of upstream
-metadata**. No weights, no GPU, and the tooling never touches the network.
+The upstream metadata has been supplied and verified. What that establishes, and what it
+does not, are kept strictly apart.
 
-**1. Obtain the files** — however suits your network. From a machine with Hub access:
+### Directly verified from checkpoint metadata
+
+Read from the teacher's own `config.json`, `tokenizer_config.json`, `chat_template.jinja`
+and `LICENSE`, all pinned by SHA-256 in
+[`configs/teacher/qwen3_8_27b.verified.json`](configs/teacher/qwen3_8_27b.verified.json):
+
+| | |
+|---|---|
+| model type | `qwen3_5` (text: `qwen3_5_text`) |
+| architecture | `Qwen3_5ForConditionalGeneration`, multimodal |
+| loads natively | yes — `Qwen3_5ForCausalLM`, **no `trust_remote_code`** |
+| dimensions | hidden 5120, 64 layers, FFN 17408, vocab 248320 |
+| attention | 24 query / 4 KV heads, head_dim 256, output gate declared |
+| DeltaNet | 48 value / 16 key heads, dims 128/128 |
+| layer layout | explicit 64-entry list: **48 linear, 16 full** |
+| context | 262144 native — **no `rope_scaling`**, so not YaRN-extended |
+| MTP | declared, 1 layer, shares the base embedding |
+| tokenizer | `Qwen2Tokenizer`, eos `<\|im_end\|>`, no BOS |
+| reasoning controls | exactly `xhigh`, `medium`, `low`; `high` raises |
+| default effort | **`xhigh`** — set nothing and you get the high-effort instruction |
+| licence | **Apache-2.0** |
+
+**Parameter count from the actual config: 26,895,998,464.** Computed by feeding the
+supplied `config.json` through the analytical model — no preset, no hard-coding. A test
+varies each architecture field and asserts the estimate moves.
+
+### Not yet runtime-verified
+
+Nothing below has been measured, and configuration resolving is **not** evidence for any
+of it:
+
+- state-dict parameter count (needs the weights)
+- successful checkpoint loading and real generation (needs the weights)
+- benchmark capability (needs a runtime baseline)
+- actual reasoning-token behaviour at each effort level (needs generation)
+- actual peak VRAM (needs a GPU)
+
+`scripts/verify_teacher_loader.py` reports these as two explicit stages and prints
+`STAGE 2: RUNTIME VERIFICATION — NOT PERFORMED` until real weights are supplied.
+
+### One correction worth flagging
+
+Earlier phases carried a secondary-source claim that the `medium` reasoning setting was
+a no-op. **The real template refutes it**: `medium` renders a distinct — in fact the
+shortest — prompt, because it injects no reasoning instruction while the default injects
+the long `xhigh` one. The confusion was between "adds no instruction of its own" and
+"changes nothing"; those differ precisely because the default is `xhigh`.
+
+### Reproducing the verification
 
 ```bash
-pip install huggingface_hub
-hf download Qwen/Qwen3.8-27B \
-    --include "*.json" "*.jinja" "LICENSE" \
-    --local-dir vendor/qwen38-metadata
-```
-
-Or download them from the model page in a browser, or `git clone` with
-`GIT_LFS_SKIP_SMUDGE=1`. Full instructions, including which files matter and why, are in
-[`vendor/README.md`](vendor/README.md).
-
-**2. Put them here:**
-
-```
-vendor/qwen38-metadata/
-├── config.json               required
-├── tokenizer_config.json     required
-├── tokenizer.json            optional
-├── generation_config.json    optional
-├── special_tokens_map.json   optional
-├── chat_template.jinja       optional (only if not inside tokenizer_config.json)
-└── LICENSE                   optional (needed before the licence can be called verified)
-```
-
-Only the first two are required; everything else is handled gracefully when absent, and
-the validator reports what its absence costs.
-
-**3. Run the offline verification chain:**
-
-```bash
-python scripts/validate_teacher_metadata.py --path vendor/qwen38-metadata
-python scripts/inspect_teacher.py --path vendor/qwen38-metadata --config-only \
-    --json evaluations/baselines/teacher_config_report.json \
-    --save-spec configs/teacher/qwen3_8_27b.verified.json
+python scripts/validate_teacher_metadata.py --path vendor/qwen38-metadata \
+    --save-verified configs/teacher/qwen3_8_27b.verified.json
+python scripts/inspect_teacher.py --path vendor/qwen38-metadata --config-only
 python scripts/verify_teacher_loader.py --model vendor/qwen38-metadata --config-only
 python scripts/inspect_chat_template.py --path vendor/qwen38-metadata
 ```
 
-All four work with **no internet access**. They set `HF_HUB_OFFLINE`, and tests sever
-`socket` and assert no connection is attempted — so a report produced this way provably
-came from the supplied files alone.
-
-The metadata files themselves are gitignored: they are upstream content under upstream's
-licence, and this project does not redistribute them. Open a PR with the **generated
-reports**, not the vendored files.
-
-That closes twelve open verification questions, including whether the checkpoint loads
-under stock `transformers` and whether the `medium` reasoning setting is really a no-op.
+All four run offline. See [`vendor/README.md`](vendor/README.md) for how to obtain the
+metadata files.

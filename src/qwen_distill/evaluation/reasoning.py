@@ -142,10 +142,18 @@ def compare_rendered_prompts(
 
 @dataclass
 class ReasoningSweep:
-    """Measured behaviour across reasoning settings."""
+    """Measured behaviour across reasoning settings.
+
+    ``prompt_hashes`` records the exact rendered prompt for each setting. It is what
+    lets a reader separate two very different explanations of an observed difference:
+    *the prompt changed* versus *the model behaved differently*. Two settings with the
+    same prompt hash but different token counts differ only by sampling noise; two with
+    different hashes are genuinely different inputs.
+    """
 
     per_setting: dict[str, RunSummary] = field(default_factory=dict)
     raw: dict[str, list[GenerationResult]] = field(default_factory=dict)
+    prompt_hashes: dict[str, str] = field(default_factory=dict)
 
     def token_ratios(self, reference: str) -> dict[str, float | None]:
         """Mean thinking tokens at each setting, relative to ``reference``."""
@@ -178,9 +186,18 @@ class ReasoningSweep:
                     pairs.append((a, b))
         return pairs
 
+    def settings_sharing_a_prompt(self) -> list[list[str]]:
+        """Groups of settings whose rendered prompts are byte-identical."""
+        groups: dict[str, list[str]] = {}
+        for label, digest in self.prompt_hashes.items():
+            groups.setdefault(digest, []).append(label)
+        return [g for g in groups.values() if len(g) > 1]
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "per_setting": {k: v.to_dict() for k, v in self.per_setting.items()},
+            "prompt_hashes": self.prompt_hashes,
+            "settings_sharing_a_prompt": self.settings_sharing_a_prompt(),
             "indistinguishable_settings": self.indistinguishable_settings(),
         }
 
@@ -205,6 +222,13 @@ def sweep_reasoning_settings(
         if progress:
             print(f"\n=== reasoning_effort = {label} ===")
         backend: Backend = make_backend(setting)
+        # Pin the exact prompt this setting produced, so a later reader can tell a
+        # template difference apart from a behavioural one.
+        try:
+            rendered = backend.apply_template(tasks[0].prompt, tasks[0].system_prompt)
+            sweep.prompt_hashes[label] = hashlib.sha256(rendered.encode()).hexdigest()
+        except Exception:  # noqa: BLE001 - a backend need not expose templating
+            pass
         path = None
         if output_dir is not None:
             safe = str(label).strip("()").replace(" ", "_")

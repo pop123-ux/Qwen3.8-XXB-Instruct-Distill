@@ -87,14 +87,28 @@ class GenerationResult:
 
 @dataclass
 class BackendProbe:
-    """Evidence that a backend can actually run this architecture."""
+    """Evidence that a backend can actually run this architecture.
+
+    This is Stage 2 verification: weights loaded, model and tokenizer instantiated, the
+    real chat template rendered, and a genuine generation performed. A config that
+    resolves proves none of that.
+    """
 
     backend: str
     ok: bool
     model_class: str | None = None
+    tokenizer_class: str | None = None
+    rendered_prompt: str | None = None
+    rendered_prompt_sha256: str | None = None
     generated_text: str | None = None
     generated_tokens: int | None = None
+    prompt_tokens: int | None = None
     latency_s: float | None = None
+    tokens_per_second: float | None = None
+    #: None when no CUDA device is present — recorded as unavailable, never as zero.
+    peak_gpu_memory_gib: float | None = None
+    gpu_name: str | None = None
+    cuda_available: bool = False
     versions: dict[str, str] = field(default_factory=dict)
     error: str | None = None
     notes: list[str] = field(default_factory=list)
@@ -299,19 +313,43 @@ class TransformersBackend:
         return approx(thinking), approx(answer)
 
     # -- probing -------------------------------------------------------
-    def probe(self) -> BackendProbe:
-        """Actually generate something. Import success proves nothing."""
-        from ..teacher.loader import collect_versions
+    def probe(self, prompt: str = "Reply with the single word: OK") -> BackendProbe:
+        """Actually load the weights and generate. Import success proves nothing.
 
-        probe = BackendProbe(backend=self.name, ok=False, versions=collect_versions())
+        Records peak GPU memory when CUDA is present, and marks it explicitly
+        unavailable otherwise rather than reporting a misleading zero.
+        """
+        import hashlib
+
+        from ..teacher.loader import collect_versions
+        from ..utils.hardware import collect_hardware, measure_memory, reset_peak_memory
+
+        hardware = collect_hardware()
+        probe = BackendProbe(
+            backend=self.name, ok=False, versions=collect_versions(),
+            cuda_available=hardware.cuda_available, gpu_name=hardware.gpu_name,
+        )
+        if not hardware.cuda_available:
+            probe.notes.append("no CUDA device: peak GPU memory unavailable, not zero")
         try:
+            reset_peak_memory()
             self.load()
             probe.model_class = type(self._model).__name__
+            probe.tokenizer_class = type(self._tokenizer).__name__
+
+            rendered = self.apply_template(prompt, None)
+            probe.rendered_prompt = rendered[:2000]
+            probe.rendered_prompt_sha256 = hashlib.sha256(rendered.encode()).hexdigest()
+
             started = time.perf_counter()
-            result = self.generate("Reply with the single word: OK", task=None)
+            result = self.generate(prompt, task=None)
             probe.latency_s = time.perf_counter() - started
-            probe.generated_text = (result.answer_text or result.thinking_text)[:200]
+            probe.generated_text = (result.answer_text or result.thinking_text)[:500]
             probe.generated_tokens = result.total_generated_tokens
+            probe.prompt_tokens = result.prompt_tokens
+            probe.tokens_per_second = result.tokens_per_second
+            if hardware.cuda_available:
+                probe.peak_gpu_memory_gib = measure_memory("probe").torch_peak_reserved_gib
             probe.ok = result.total_generated_tokens > 0
             if not probe.ok:
                 probe.notes.append("backend loaded but produced zero tokens")

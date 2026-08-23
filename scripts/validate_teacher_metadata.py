@@ -25,6 +25,9 @@ import _bootstrap  # noqa: F401
 
 from qwen_distill.teacher.metadata import (
     blocking_gaps,
+    build_verified_spec,
+    hash_metadata_files,
+    implementation_disagreements,
     load_metadata,
     summarise_counts,
     validate_metadata,
@@ -47,6 +50,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--strict", action="store_true",
         help="exit non-zero if any required file or field is MISSING",
     )
+    parser.add_argument(
+        "--save-verified", type=Path,
+        help="write the canonical verified teacher specification here "
+             "(generated from the metadata, stamped with file hashes)",
+    )
+    parser.add_argument("--source", default="Qwen/Qwen3.8-27B", help="upstream model id")
+    parser.add_argument("--revision", help="upstream commit SHA, if known")
     return parser
 
 
@@ -103,6 +113,31 @@ def main(argv: list[str] | None = None) -> int:
     print("\n  Note: UNKNOWN entries are not gaps in the supplied files. They are facts")
     print("  that metadata cannot establish at all (they need the weights or a runtime")
     print("  experiment) and must stay UNKNOWN in docs/VERIFICATION.md.")
+
+    digests = hash_metadata_files(args.path)
+    if digests:
+        print("\n--- file hashes (SHA-256) ---")
+        for name, digest in digests.items():
+            print(f"  {name:<26}{digest}")
+
+    disagreements = implementation_disagreements(metadata)
+    if disagreements:
+        print("\n--- config keys the installed transformers does not read ---")
+        for line in disagreements:
+            print(f"  - {line}")
+        print("  These are not errors. They matter because a key that looks like it")
+        print("  controls behaviour may not, and a future release could start honouring it.")
+
+    if args.save_verified:
+        spec = build_verified_spec(metadata, source=args.source, revision=args.revision)
+        args.save_verified.parent.mkdir(parents=True, exist_ok=True)
+        args.save_verified.write_text(
+            json.dumps(spec, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+        print(f"\nwrote verified teacher specification: {args.save_verified}")
+        print(f"  parameters (text tower): {spec['parameters']['total']:,}")
+        if spec["provenance"]["revision"] is None:
+            print("  WARNING: revision unpinned - see provenance.revision_note")
 
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)

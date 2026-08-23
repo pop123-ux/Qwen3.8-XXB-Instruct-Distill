@@ -29,29 +29,37 @@ reserved** for driver and desktop, leaving 15.0 GiB usable. See
 
 ## Where the project stands
 
-**Phase 0 (analysis infrastructure) and Phase 1 (verification + evaluation
-infrastructure) are complete to the limit of what this environment allows. No model
-has been trained. No benchmark has been run against the teacher. There are no
-capability results of any kind.**
+**Phase 1B: the teacher's metadata is verified. The runtime teacher is pending.**
+No model has been trained. No benchmark has been run. There are no capability results.
 
-Established in Phase 1, empirically:
+Established in Phase 1B, **directly from the supplied checkpoint metadata**:
+
+- `model_type: qwen3_5`, architecture `Qwen3_5ForConditionalGeneration`, loads natively
+  with **no `trust_remote_code`** — so a student in this family is runnable by anyone
+  with stock `transformers`. This was the open question with the largest effect on the plan.
+- Every architecture dimension, and an **explicit** 64-entry layer layout (48 linear,
+  16 full). The analytical model, fed the real config, yields **26,895,998,464**.
+- Context 262144 is **native**: no `rope_scaling`, so it is not YaRN-extended.
+- MTP declared with 1 layer, sharing the base embedding.
+- Licence **Apache-2.0**.
+- Reasoning controls are exactly `xhigh`, `medium`, `low`; the default is `xhigh`; and
+  `medium` is **not** a no-op — it renders a distinct, shorter prompt. That refutes a
+  secondary-source claim earlier phases had carried.
+
+Established in Phase 1, empirically against the reference implementation:
 
 - The analytical parameter model matches `transformers` **exactly** — zero delta on
-  every component of the 27B architecture, checked by building it on the `meta` device.
+  every component, checked by building the architecture on the `meta` device.
 - The memory model's cache terms match a **real forward pass** byte-for-byte, and the
   DeltaNet recurrent state is measurably constant in sequence length.
 - **MTP is a speculative-decoding draft model** (vLLM `_SPECULATIVE_DECODING_MODELS`),
-  costing 424.70M parameters (1.58%), sharing the base model's embedding and head, and
-  discarded entirely by stock `transformers`.
-- The evaluation, reasoning-sweep and paired-comparison pipelines run end to end
-  against a synthetic checkpoint.
+  424.70M parameters (1.58%), discarded entirely by stock `transformers`.
 
-Still blocked: the teacher's own `config.json`, tokenizer, chat template and licence,
-and all peak-VRAM measurement (no GPU). Egress to `huggingface.co` is blocked in the
-authoring environment and was not circumvented; instead the repository now ingests a
-**locally supplied metadata directory** (`vendor/qwen38-metadata/`, see
-[`vendor/README.md`](../vendor/README.md)), so anyone able to obtain a few megabytes of
-metadata can close those questions offline. See [`VERIFICATION.md`](VERIFICATION.md).
+Still blocked, all requiring the weights or a GPU: state-dict parameter count,
+successful loading and generation, benchmark capability, reasoning-token behaviour, and
+peak VRAM. See [`VERIFICATION.md`](VERIFICATION.md).
+
+Established in Phase 0, analytically:
 
 Established in Phase 0, analytically:
 
@@ -70,7 +78,7 @@ Established in Phase 0, analytically:
 Architecture spec, exact parameter accounting, VRAM estimator, FLOP/bandwidth model,
 constrained architecture search, teacher inspector, test suite.
 
-### Phase 1 — Teacher verification and evaluation infrastructure ⚠️ partially blocked
+### Phase 1 / 1B — Teacher verification ✅ metadata verified, runtime pending
 
 Built and tested: loader verification, empirical validation of the analytical model,
 the three-tier evaluation harness, the reasoning-control sweep (including a

@@ -35,12 +35,25 @@ class StratumSummary:
     def accuracy_per_1k_thinking_tokens(self) -> float | None:
         """Accuracy divided by thousands of reasoning tokens spent.
 
-        Meaningful only *within* one evaluation configuration — it is a ratio of two
-        quantities measured under fixed settings, not a portable score.
+        A **descriptive project metric**, not a universal quality measure: it is a ratio
+        of two quantities measured under one fixed configuration, and it is only
+        comparable across runs of *our own* harness at identical settings. Never quote
+        it against a number from another paper or harness.
         """
         if self.accuracy is None or self.mean_thinking_tokens <= 0:
             return None
         return self.accuracy / (self.mean_thinking_tokens / 1000.0)
+
+    @property
+    def accuracy_per_second(self) -> float | None:
+        """Accuracy divided by mean wall-clock latency, in seconds.
+
+        Descriptive, and hardware-dependent: it changes with GPU, batch size and
+        backend, so it compares checkpoints only when everything else is held fixed.
+        """
+        if self.accuracy is None or self.mean_latency_s <= 0:
+            return None
+        return self.accuracy / self.mean_latency_s
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -55,6 +68,7 @@ class StratumSummary:
             "mean_latency_s": self.mean_latency_s,
             "total_thinking_tokens": self.total_thinking_tokens,
             "accuracy_per_1k_thinking_tokens": self.accuracy_per_1k_thinking_tokens,
+            "accuracy_per_second": self.accuracy_per_second,
         }
 
 
