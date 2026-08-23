@@ -204,6 +204,21 @@ and `LICENSE`, all pinned by SHA-256 in
 supplied `config.json` through the analytical model — no preset, no hard-coding. A test
 varies each architecture field and asserts the estimate moves.
 
+### Runtime computation verified
+
+The checkpoint declares `output_gate_type: "swish"` while `transformers` contains a
+hard-coded `torch.sigmoid(gate)`. That looks like a contradiction and an earlier phase
+recorded it as one. **It is not** — they refer to two different gates:
+
+| Gate | Config key | transformers 5.15.1 | vLLM 0.27.1 |
+|---|---|---|---|
+| Gated DeltaNet output | `output_gate_type` | `silu` | `output_gate_type`, mapping `swish`→`silu` |
+| Full attention output | `attn_output_gate` | `sigmoid` | `sigmoid` |
+
+Swish (β=1) and SiLU are the same function, so the declaration is satisfied. Verdict:
+**`VERIFIED_CORRECT`** — verified against the installed source and cross-checked against
+vLLM, with a regression test that would fail if a checkpoint ever declared `sigmoid`.
+
 ### Not yet runtime-verified
 
 Nothing below has been measured, and configuration resolving is **not** evidence for any

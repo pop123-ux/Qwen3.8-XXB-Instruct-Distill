@@ -81,15 +81,22 @@ def main(argv: list[str] | None = None) -> int:
         output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"=== teacher: {args.teacher} ===")
+    teacher_backend = make(args.teacher, args.teacher_reasoning_effort)
     teacher_results = run_tasks(
-        make(args.teacher, args.teacher_reasoning_effort), tasks,
+        teacher_backend, tasks,
         output_path=(output_dir / "teacher_generations.jsonl") if output_dir else None,
     )
+    # Free the teacher before the student loads: on a single GPU, holding both at once
+    # will OOM, and the failure would come after the teacher run had already completed.
+    teacher_backend.unload()
+
     print(f"\n=== student: {args.student} ===")
+    student_backend = make(args.student, args.student_reasoning_effort)
     student_results = run_tasks(
-        make(args.student, args.student_reasoning_effort), tasks,
+        student_backend, tasks,
         output_path=(output_dir / "student_generations.jsonl") if output_dir else None,
     )
+    student_backend.unload()
 
     teacher_summary = summarise(teacher_results)
     student_summary = summarise(student_results)

@@ -170,6 +170,18 @@ class TransformersBackend:
 
     # -- loading -------------------------------------------------------
     def load(self) -> None:
+        """Load the tokenizer and model.
+
+        Two details matter enough at 27B scale to be worth stating:
+
+        * ``dtype="auto"`` is passed through **as the string**, not converted to
+          ``None``. ``dtype=None`` makes `transformers` load in float32 regardless of
+          what the checkpoint declares — for a 27B bf16 checkpoint that is ~108 GB
+          instead of ~54 GB, which will not fit on any single GPU.
+        * ``device_map`` requires ``accelerate``. It is checked up front so a missing
+          dependency fails immediately with an actionable message, rather than after
+          a long download or partial load.
+        """
         if self._model is not None:
             return
         import torch
@@ -179,13 +191,47 @@ class TransformersBackend:
         self._tokenizer = AutoTokenizer.from_pretrained(
             self.model_path, trust_remote_code=self.trust_remote_code
         )
-        dtype = None if self.dtype == "auto" else getattr(torch, self.dtype)
+
+        # "auto" must reach transformers verbatim; anything else names a torch dtype.
+        dtype = self.dtype if self.dtype == "auto" else getattr(torch, self.dtype)
+
+        device_map = None if self.device == "cpu" else self.device
+        if device_map is not None:
+            try:
+                import accelerate  # noqa: F401
+            except ImportError as exc:
+                raise ImportError(
+                    f"device_map={device_map!r} requires `accelerate` "
+                    "(pip install accelerate). Use --device cpu to load without it."
+                ) from exc
+
         self._model = AutoModelForCausalLM.from_pretrained(
             self.model_path,
             trust_remote_code=self.trust_remote_code,
             dtype=dtype,
-            device_map=self.device if self.device != "cpu" else None,
+            device_map=device_map,
         ).eval()
+
+    def unload(self) -> None:
+        """Release the model and free GPU memory.
+
+        Needed whenever two models are loaded in one process — ``paired_eval.py`` runs
+        a teacher and then a student, and without this the teacher stays resident while
+        the student loads, which will OOM on a single GPU.
+        """
+        self._model = None
+        self._tokenizer = None
+        self._think_close_cache = _UNSET
+        try:
+            import gc
+
+            import torch
+
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
 
     def apply_template(self, prompt: str, system_prompt: str | None) -> str:
         """Render the chat template, passing reasoning controls when supported.

@@ -320,3 +320,39 @@ def test_committed_verified_spec_matches_the_metadata(metadata):
     assert committed["parameters"]["total"] == count_parameters(
         HybridArchSpec.from_hf_config(metadata.config, name="x")
     ).total
+
+
+# --- runtime computation (Phase 1C) ------------------------------------
+@requires_stack
+def test_installed_runtime_implements_the_declared_computation(metadata):
+    """The Phase 1C question, tied to the real checkpoint config.
+
+    Matching parameter shapes is not the same as matching the computation. This asserts
+    that the installed `transformers` applies the activations this specific checkpoint
+    declares, for both output gates.
+    """
+    from qwen_distill.teacher.runtime_compat import check_runtime_compatibility
+
+    report = check_runtime_compatibility(metadata.config)
+    assert report.verdict == "VERIFIED_CORRECT", [c.to_dict() for c in report.checks]
+    assert report.warnings == []
+
+
+def test_checkpoint_declares_a_silu_equivalent_deltanet_gate(metadata):
+    """`swish` must remain something a silu-hard-coded runtime can honour."""
+    from qwen_distill.teacher.runtime_compat import SILU_EQUIVALENT_NAMES
+
+    assert metadata.text_config["output_gate_type"] in SILU_EQUIVALENT_NAMES
+
+
+def test_checkpoint_enables_the_attention_output_gate(metadata):
+    """transformers builds the gated q_proj unconditionally; false would not load."""
+    assert metadata.text_config["attn_output_gate"] is True
+
+
+def test_gate_activation_does_not_affect_the_parameter_count(spec):
+    """Activation choice is parameterisation-free: the count must not move.
+
+    Confirms the Phase 1C investigation had no effect on 26,895,998,464.
+    """
+    assert count_parameters(spec).total == 26_895_998_464

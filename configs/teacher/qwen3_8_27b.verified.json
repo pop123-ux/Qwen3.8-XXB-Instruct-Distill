@@ -258,11 +258,12 @@
     "top_p": 0.95
   },
   "implementation_disagreements": [
-    "attn_output_gate=true (config.json:text_config): transformers 5.15.1 builds the doubled q_proj unconditionally; a config declaring false would still get a gated projection",
-    "output_gate_type=\"swish\" (config.json:text_config): transformers 5.15.1 applies sigmoid gating unconditionally",
-    "mamba_ssm_dtype=\"float32\" (config.json:text_config): not read by transformers 5.15.1; the recurrent state dtype follows the tensors at runtime (the reference path accumulates in float32)",
-    "mtp_use_dedicated_embeddings=false (config.json:text_config): transformers 5.15.1 discards mtp.* entirely; vLLM reuses the base embedding and lm_head for the draft model",
-    "language_model_only=false (config.json): not read by transformers 5.15.1"
+    "attn_output_gate=true (config.json:text_config): SATISFIED for this checkpoint. transformers builds the doubled q_proj unconditionally and applies torch.sigmoid; vLLM reads the key and sizes the projection conditionally. Both agree when the value is true (as here). A checkpoint declaring false would fail to load under transformers on shape mismatch - loudly, not silently",
+    "output_gate_type=\"swish\" (config.json:text_config): SATISFIED. This key governs the *Gated DeltaNet* output gate, not the attention gate: vLLM reads it in QwenGatedDeltaNetAttention and passes it to RMSNormGated(activation=...), normalising 'swish' to 'silu' first. transformers hard-codes 'silu' in Qwen3_5RMSNormGated, and swish and SiLU are the same function, so the declaration is honoured. The torch.sigmoid in Qwen3_5Attention is a different gate governed by attn_output_gate",
+    "mamba_ssm_dtype=\"float32\" (config.json:text_config): SATISFIED in effect. Not read by transformers 5.15.1, but its torch reference path accumulates the delta-rule state in float32 anyway (measured against a real forward pass), which is what the key requests",
+    "mtp_num_hidden_layers=1 (config.json:text_config): NOT APPLICABLE under transformers, which discards mtp.* entirely. Read by vLLM, where it sets the number of speculative draft layers",
+    "mtp_use_dedicated_embeddings=false (config.json:text_config): NOT APPLICABLE under transformers (no MTP). vLLM reuses the base embedding and lm_head for the draft model, matching the declared false",
+    "language_model_only=false (config.json): informational; not read by transformers 5.15.1"
   ],
   "verified_facts": [
     "architecture dimensions and layer layout (config.json)",

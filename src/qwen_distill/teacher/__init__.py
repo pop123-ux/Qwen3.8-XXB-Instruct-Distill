@@ -10,6 +10,11 @@ from .metadata import (
     load_metadata,
     validate_metadata,
 )
+from .runtime_compat import (
+    RuntimeCompatReport,
+    activations_equivalent,
+    check_runtime_compatibility,
+)
 from .validate import ValidationResult, validate_cache_shapes, validate_parameters
 
 __all__ = [
@@ -28,6 +33,9 @@ __all__ = [
     "load_metadata",
     "validate_metadata",
     "blocking_gaps",
+    "RuntimeCompatReport",
+    "check_runtime_compatibility",
+    "activations_equivalent",
     "ValidationResult",
     "validate_parameters",
     "validate_cache_shapes",
