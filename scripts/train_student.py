@@ -106,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
 
     report = check_feasibility(config, spec, available_gib=args.simulate_vram)
     if args.simulate_vram is not None:
-        print(f"\n  (feasibility checked against a simulated {args.simulate_vram:.0f} GiB GPU)")
+        print(f"\n  (feasibility checked against a simulated {args.simulate_vram:.2f} GiB GPU)")
     print()
     print(report.render())
 

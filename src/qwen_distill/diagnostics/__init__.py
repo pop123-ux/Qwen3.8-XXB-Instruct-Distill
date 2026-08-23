@@ -1,6 +1,12 @@
 """Hardware diagnostics: what is this machine, and what can it actually do?"""
 
-from .calibrate import CalibrationReport, calibrate
+from .calibrate import (
+    CalibrationReport,
+    ComponentResidual,
+    TrainingCalibration,
+    calibrate,
+    calibrate_training_run,
+)
 from .devices import DeviceInfo, SystemInfo, collect_devices, collect_system, cpu_device
 from .fit import (
     InferenceFit,
@@ -19,4 +25,5 @@ __all__ = [
     "fit_matrix",
     "Recommendations", "recommend",
     "CalibrationReport", "calibrate",
+    "ComponentResidual", "TrainingCalibration", "calibrate_training_run",
 ]

@@ -5,9 +5,11 @@ runs comfortably on a **single 16 GB consumer GPU**, keeps a genuinely large con
 window, and spends far fewer tokens thinking about easy questions.
 
 > **Project status: Phase 1 — verification and evaluation infrastructure.**
-> No model has been trained. No benchmark has been run against the teacher. There are
-> no capability results in this repository, and the `XXB` in the name is a placeholder:
-> the final parameter count is a research result, not a design input.
+> **No final student model has been trained.** A 4.03M Level-1 hybrid prototype has
+> been trained successfully on a Tesla T4 for infrastructure validation — it proves the
+> pipeline executes and optimises, and nothing about language quality. No benchmark has
+> been run against the teacher, and the `XXB` in the name is a placeholder: the final
+> parameter count is a research result, not a design input.
 
 ## Why this project exists
 
@@ -65,6 +67,28 @@ roughly 7.7B parameters of capacity.
 
 These are calculations, not measurements. They narrow the search space; they do not
 tell us what a trained model will score.
+
+## Level 1 result — infrastructure validated on a real T4
+
+The first rung of the [development ladder](docs/TRAINING_ON_LIMITED_HARDWARE.md) is done.
+
+| | |
+|---|---|
+| Model | 4.03M params, 4 layers (3 DeltaNet + 1 full attention), hidden 256, FFN 704 |
+| Hardware | Tesla T4, 14.56 GiB, CC 7.5, **fp16 (no bf16)** |
+| Run | 200 steps, seq 256, full training, AdamW, ~56 s |
+| Train loss | 8.2565 → 2.1008 |
+| Validation loss | 4.4904 → 2.0910 |
+
+**What this proves:** the hybrid DeltaNet/attention architecture instantiates, trains and
+optimises on real CUDA hardware; checkpoints write and reload; the pipeline is sound.
+
+**What it does not prove:** anything about language quality, distillation, or teacher
+capability retention. The task was a synthetic induction task chosen because it is
+*learnable* — a loss that falls on it means the optimizer works, not that the model
+understands language. Treating 2.09 as a capability number would be a category error.
+
+Level 2 (~100M, real text) is the experiment that starts to answer the language question.
 
 ## What can my GPU run?
 

@@ -30,7 +30,10 @@ reserved** for driver and desktop, leaving 15.0 GiB usable. See
 ## Where the project stands
 
 **Phase 1B: the teacher's metadata is verified. The runtime teacher is pending.**
-No model has been trained. No benchmark has been run. There are no capability results.
+**No final student model has been trained.** A 4.03M Level-1 prototype trained
+successfully on a Tesla T4 (200 steps, loss 8.26 → 2.10, validation 4.49 → 2.09),
+validating the infrastructure only — it says nothing about language quality. No
+benchmark has been run against the teacher; there are no capability results.
 
 Established in Phase 1B, **directly from the supplied checkpoint metadata**:
 
