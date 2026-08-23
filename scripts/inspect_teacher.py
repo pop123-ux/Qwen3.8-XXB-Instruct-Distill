@@ -27,6 +27,7 @@ from qwen_distill.architecture.memory import GIB, DeploymentConfig, estimate_mem
 from qwen_distill.architecture.params import count_parameters, format_params
 from qwen_distill.teacher.inspect import cross_check, inspect_hub, inspect_local
 from qwen_distill.utils.hub import HubAccessError
+from qwen_distill.utils.offline import offline_mode
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,7 +53,10 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.path:
-            report = inspect_local(args.path, config_only=args.config_only)
+            # A local path must never reach the network: the report's value depends on
+            # it having come purely from the supplied files.
+            with offline_mode():
+                report = inspect_local(args.path, config_only=args.config_only)
         else:
             report = inspect_hub(
                 args.repo_id, config_only=args.config_only, revision=args.revision
@@ -64,6 +68,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Could not read the checkpoint: {exc}", file=sys.stderr)
         return 1
 
+    if args.path:
+        print("network access      : disabled (offline mode enforced)")
     print(f"source              : {report.source}")
     print(f"model_type          : {report.model_type}")
     print(f"architectures       : {', '.join(report.architectures) or '(none listed)'}")

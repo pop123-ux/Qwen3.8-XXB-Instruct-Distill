@@ -116,11 +116,15 @@ KV cache, DeltaNet recurrent state and conv state all match byte-for-byte, the K
 appears on exactly the full-attention layers, and the recurrent state is byte-identical
 at sequence length 8 and 64 while the KV cache grows.
 
-**What is still unverified:** `huggingface.co` is blocked by this environment's egress
-policy and no local checkpoint exists, so the upstream **`config.json`, tokenizer, chat
-template and license have never been read**. The formulas are proven correct *for a
-config with these values*; that the teacher **has** these values is corroborated, not
-verified. Peak VRAM is also uncalibrated — this machine has no GPU.
+**What is still unverified:** the upstream **`config.json`, tokenizer, chat template and
+licence have never been read** — egress to `huggingface.co` is blocked in the authoring
+environment, and no attempt was made to route around it. The formulas are proven correct
+*for a config with these values*; that the teacher **has** these values is corroborated,
+not verified. Peak VRAM is also uncalibrated — no GPU.
+
+The repository now ingests this metadata from a local directory instead, so anyone who
+can obtain the files can close those questions without this environment needing network
+access at all.
 
 Every claim is classified VERIFIED / CORROBORATED / UNKNOWN, question by question, in
 [`docs/VERIFICATION.md`](docs/VERIFICATION.md).
@@ -169,19 +173,58 @@ verified against the upstream repository before any weights are released or any 
 model name is chosen** — this has not yet been possible from this environment. See
 [`THIRD_PARTY.md`](THIRD_PARTY.md).
 
-## Contributing
+## Unblocking verification: supply the metadata locally
 
-The most valuable contribution right now is **a metadata-only download**. The teacher's
-`config.json`, `tokenizer.json`, `tokenizer_config.json` and chat template total a few
-megabytes — no weights needed — and would close nine open verification questions at
-once, including whether the checkpoint loads under stock `transformers` and whether the
-`medium` reasoning setting is really a no-op:
+The single most valuable contribution right now is **a few megabytes of upstream
+metadata**. No weights, no GPU, and the tooling never touches the network.
+
+**1. Obtain the files** — however suits your network. From a machine with Hub access:
 
 ```bash
-python scripts/inspect_teacher.py --repo-id Qwen/Qwen3.8-27B --config-only \
-    --json evaluations/baselines/teacher_config_report.json
-python scripts/verify_teacher_loader.py --model Qwen/Qwen3.8-27B --config-only
-python scripts/benchmark_reasoning.py --model Qwen/Qwen3.8-27B --template-only
+pip install huggingface_hub
+hf download Qwen/Qwen3.8-27B \
+    --include "*.json" "*.jinja" "LICENSE" \
+    --local-dir vendor/qwen38-metadata
 ```
 
-Open a PR with the reports. That unblocks the architecture decision.
+Or download them from the model page in a browser, or `git clone` with
+`GIT_LFS_SKIP_SMUDGE=1`. Full instructions, including which files matter and why, are in
+[`vendor/README.md`](vendor/README.md).
+
+**2. Put them here:**
+
+```
+vendor/qwen38-metadata/
+├── config.json               required
+├── tokenizer_config.json     required
+├── tokenizer.json            optional
+├── generation_config.json    optional
+├── special_tokens_map.json   optional
+├── chat_template.jinja       optional (only if not inside tokenizer_config.json)
+└── LICENSE                   optional (needed before the licence can be called verified)
+```
+
+Only the first two are required; everything else is handled gracefully when absent, and
+the validator reports what its absence costs.
+
+**3. Run the offline verification chain:**
+
+```bash
+python scripts/validate_teacher_metadata.py --path vendor/qwen38-metadata
+python scripts/inspect_teacher.py --path vendor/qwen38-metadata --config-only \
+    --json evaluations/baselines/teacher_config_report.json \
+    --save-spec configs/teacher/qwen3_8_27b.verified.json
+python scripts/verify_teacher_loader.py --model vendor/qwen38-metadata --config-only
+python scripts/inspect_chat_template.py --path vendor/qwen38-metadata
+```
+
+All four work with **no internet access**. They set `HF_HUB_OFFLINE`, and tests sever
+`socket` and assert no connection is attempted — so a report produced this way provably
+came from the supplied files alone.
+
+The metadata files themselves are gitignored: they are upstream content under upstream's
+licence, and this project does not redistribute them. Open a PR with the **generated
+reports**, not the vendored files.
+
+That closes twelve open verification questions, including whether the checkpoint loads
+under stock `transformers` and whether the `medium` reasoning setting is really a no-op.

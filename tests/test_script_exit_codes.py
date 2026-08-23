@@ -53,3 +53,47 @@ def test_help_works_for_every_script():
             continue
         result = run(script.name, "--help")
         assert result.returncode == 0, f"{script.name}: {result.stderr[:300]}"
+
+
+def test_validate_metadata_exits_2_when_directory_absent(tmp_path):
+    result = run("validate_teacher_metadata.py", "--path", str(tmp_path / "nope"))
+    assert result.returncode == 2
+    assert "Metadata directory not found" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_inspect_chat_template_exits_2_when_directory_absent(tmp_path):
+    result = run("inspect_chat_template.py", "--path", str(tmp_path / "nope"))
+    assert result.returncode == 2
+    assert "Traceback" not in result.stderr
+
+
+def test_inspect_chat_template_exits_1_when_no_template(tmp_path):
+    """A missing template must be reported, not worked around."""
+    import json
+
+    root = tmp_path / "meta"
+    root.mkdir()
+    (root / "config.json").write_text(
+        json.dumps({"model_type": "qwen3_5_text", "architectures": []}), encoding="utf-8"
+    )
+    (root / "tokenizer_config.json").write_text(
+        json.dumps({"tokenizer_class": "X"}), encoding="utf-8"
+    )
+    result = run("inspect_chat_template.py", "--path", str(root))
+    assert result.returncode == 1
+    assert "No chat template found" in result.stderr
+    assert "UNKNOWN" in result.stderr
+
+
+def test_validate_metadata_strict_flags_missing_required(tmp_path):
+    import json
+
+    root = tmp_path / "meta"
+    root.mkdir()
+    (root / "config.json").write_text(
+        json.dumps({"model_type": "x", "architectures": []}), encoding="utf-8"
+    )
+    result = run("validate_teacher_metadata.py", "--path", str(root), "--strict")
+    assert result.returncode == 1
+    assert "MISSING" in result.stdout
