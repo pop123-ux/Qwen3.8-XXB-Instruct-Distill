@@ -170,8 +170,39 @@ def check_resume_compatibility(
     return result
 
 
+#: Fraction of the run spent warming up. OneCycleLR computes its warmup length as
+#: ``pct_start * total_steps - 1``, so a short run can round that to zero and divide by
+#: it: total_steps=10 at pct_start=0.1 raises ZeroDivisionError. The floor below keeps
+#: the warmup at least two steps long, which costs nothing on a real run and stops a
+#: 10-step smoke test from crashing before it trains anything.
+DEFAULT_PCT_START = 0.1
+MIN_WARMUP_STEPS = 2
+
+
+def make_schedule(optimizer: Any, *, total_steps: int, max_lr: float,
+                  pct_start: float = DEFAULT_PCT_START) -> Any:
+    """Build the one-cycle schedule, safely for short runs as well as long ones."""
+    import torch
+
+    steps = max(total_steps, 1)
+    if steps < 2:
+        # OneCycleLR needs `pct_start * total_steps > 1` for a non-degenerate warmup,
+        # which a single step cannot satisfy at any pct_start. A constant rate is the
+        # honest answer rather than a crash.
+        return torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _step: 1.0)
+
+    # Keep the warmup at least MIN_WARMUP_STEPS long where the run is long enough, and
+    # otherwise as long as OneCycleLR permits. The cap stays below 1.0 because
+    # `pct_start * total_steps - 1` must remain positive.
+    floor = MIN_WARMUP_STEPS / steps
+    effective = min(max(pct_start, floor), 0.9)
+    return torch.optim.lr_scheduler.OneCycleLR(
+        optimizer, max_lr=max_lr, total_steps=steps, pct_start=effective,
+    )
+
+
 def rebuild_schedule(scheduler: Any, optimizer: Any, *, total_steps: int, completed: int,
-                     max_lr: float, pct_start: float = 0.1) -> Any:
+                     max_lr: float, pct_start: float = DEFAULT_PCT_START) -> Any:
     """Return a OneCycleLR for ``total_steps``, advanced to ``completed`` steps.
 
     OneCycleLR computes its LR from ``last_epoch`` against ``total_steps``, so extending
@@ -181,10 +212,8 @@ def rebuild_schedule(scheduler: Any, optimizer: Any, *, total_steps: int, comple
     """
     import warnings
 
-    import torch
-
-    fresh = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer, max_lr=max_lr, total_steps=max(total_steps, 1), pct_start=pct_start,
+    fresh = make_schedule(
+        optimizer, total_steps=total_steps, max_lr=max_lr, pct_start=pct_start
     )
     with warnings.catch_warnings():
         # PyTorch warns when scheduler.step() precedes optimizer.step(), because that

@@ -1,0 +1,38 @@
+{
+  "experiment": "t4_level2_100m_ckpt",
+  "outcome": "INTERRUPTED at step 1925 of 2000 \u2014 Colab reclaimed /content; nothing recovered",
+  "completed": false,
+  "hardware": {
+    "device": "Tesla T4",
+    "total_vram_gib": 14.56
+  },
+  "configuration": {
+    "parameters": 94480000,
+    "layers": 16,
+    "layout": "12 linear_attention (Gated DeltaNet) + 4 full_attention",
+    "sequence_length": 1024,
+    "micro_batch_size": 4,
+    "gradient_accumulation_steps": 4,
+    "effective_batch": 16,
+    "precision": "fp16 autocast",
+    "optimizer": "adamw",
+    "gradient_checkpointing": true,
+    "max_steps_configured": 2000
+  },
+  "observed": {
+    "cuda_oom": false,
+    "tokens_per_second": 2050,
+    "reached_step": 1925,
+    "recovered": null
+  },
+  "cause": "training.persistent_backup was null, so the run reported 'persistent copy : off (local only)'. Checkpoints were written atomically and completely to /content, which Colab reclaimed. The checkpoint machinery worked; it was pointed at a filesystem with a shorter lifetime than the run.",
+  "what_this_proves": [
+    "the 94.48M configuration trains to at least step 1925 on a T4 without OOM",
+    "sustained throughput ~2050 tokens/s with gradient checkpointing on"
+  ],
+  "what_this_does_not_prove": [
+    "final model quality \u2014 no checkpoint or metric survived",
+    "measured peak VRAM against the 3.57 GiB estimate"
+  ],
+  "resolution": "Phase: persistence hardened. Startup preflight refuses an unmounted Drive; a local-only run warns explicitly; summary.json records which checkpoints are durable; a failed copy never advances the persistent pointer; --status and --restore work from a fresh Colab session."
+}

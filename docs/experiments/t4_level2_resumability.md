@@ -190,6 +190,108 @@ not measured it.
 `/content` is staging, not storage. A completed checkpoint is only safe once it is
 somewhere else.
 
+A run reached **step 1925 of 2000** on a T4 — no OOM, ~2050 tokens/s — and lost all of
+it. The checkpoint machinery worked perfectly: atomic writes, complete markers, verified
+pointers. It was pointed at a filesystem with a shorter lifetime than the run, because
+`persistent_backup` was `null` and the run said so plainly:
+
+```
+persistent copy : off (local only)
+```
+
+### Turning it on
+
+One setting, in the experiment YAML:
+
+```yaml
+training:
+  persistent_backup: /content/drive/MyDrive/qwen-distill/t4_level2_100m_ckpt
+```
+
+or per-invocation, without editing the config:
+
+```bash
+--persistent-dir /content/drive/MyDrive/qwen-distill/t4_level2_100m_ckpt
+```
+
+That path is the **run** directory, not its `checkpoints/` subdirectory. The persistent
+copy mirrors the local layout exactly, so recovery is a plain restore:
+
+```
+Google Drive/qwen-distill/t4_level2_100m_ckpt/
+    checkpoints/
+        step_000200/ ... step_002000/
+        latest.json
+    progress/latest.json
+    metrics.jsonl
+    summary.json
+```
+
+Copies happen on the existing 200-step checkpoint interval — never per step. At ~1.1 GB
+a checkpoint and ~26 minutes between them, that is bounded work at risk and bounded I/O.
+
+### The unmounted-Drive trap
+
+`mkdir(parents=True)` on `/content/drive/MyDrive/...` **succeeds when Drive is not
+mounted**. It silently creates an ordinary local directory that looks exactly like the
+real thing, and every checkpoint "persists" onto the disk that is about to disappear —
+reproducing the 1925-step loss while reporting success at every step.
+
+So the mount root is verified to pre-exist before anything is created under it, at
+**startup**, before a single step is trained:
+
+```
+    persistent copy : UNUSABLE — /content/drive/MyDrive does not exist, so Drive is not
+                      mounted. Writing here would create an ordinary local directory
+                      that disappears with the runtime [...]
+                        from google.colab import drive
+                        drive.mount('/content/drive')
+```
+
+The run then exits rather than training into a void. Catching this at step 0 instead of
+step 200 is the entire point.
+
+### What "persisted" is allowed to mean
+
+- A checkpoint is copied **only after it is locally complete**, and the copy is
+  **verified complete at the destination** before anything points at it. A truncated
+  arrival on a full Drive is caught there, not later.
+- The persistent `latest.json` is written from the verified destination copy, so it can
+  only ever name a checkpoint that is really present and really whole.
+- **A failed copy never advances the persistent pointer.** The previous persisted
+  checkpoint stays the newest one there, and no staging directory is left behind.
+- A failed copy is reported loudly, recorded in `summary.json`, and repeated in the
+  end-of-run summary. Training continues — the local checkpoint is intact, and losing
+  the copy is recoverable while losing the run is not — but nothing claims it is safe.
+
+`summary.json` carries the answer directly, so "was this run durable?" needs no memory:
+
+```json
+"persistence": {
+  "enabled": true,
+  "destination": "/content/drive/MyDrive/qwen-distill/t4_level2_100m_ckpt",
+  "persisted": ["step_000200", "..."],
+  "failed": [],
+  "all_checkpoints_persisted": true
+}
+```
+
+### Recovering in a fresh session
+
+```bash
+# what survived? works with no local run at all
+python scripts/train_student.py --config configs/experiments/t4_level2_100m_ckpt.yaml     --persistent-dir /content/drive/MyDrive/qwen-distill/t4_level2_100m_ckpt --status
+
+# bring it back and carry on
+python scripts/train_student.py --config configs/experiments/t4_level2_100m_ckpt.yaml     --persistent-dir /content/drive/MyDrive/qwen-distill/t4_level2_100m_ckpt     --restore --resume latest
+```
+
+`--restore` copies only checkpoints that verify as complete — a copy interrupted by a
+dying runtime is skipped and reported, never resumed from — and rebuilds the local
+pointer from what actually arrived rather than trusting the remote one.
+
+### Manual backup still exists
+
 ```bash
 # after a run, or between runs
 python scripts/backup_colab_to_drive.py --source experiments/runs/t4_level2_100m_ckpt \
@@ -259,17 +361,20 @@ git clone https://github.com/pop123-ux/Qwen3.8-XXB-Instruct-Distill
 cd Qwen3.8-XXB-Instruct-Distill
 pip install -e ".[dev]" && pip install -r requirements/training.txt
 
-python scripts/train_student.py --config configs/experiments/t4_level2_100m_ckpt.yaml --dry-run
-python scripts/train_student.py --config configs/experiments/t4_level2_100m_ckpt.yaml
+export DRIVE=/content/drive/MyDrive/qwen-distill/t4_level2_100m_ckpt
 
-# after the run, or any time you want the work safe
-python scripts/backup_colab_to_drive.py \
-    --source experiments/runs/t4_level2_100m_ckpt \
-    --destination /content/drive/MyDrive/qwen-distill/t4_level2_100m_ckpt \
-    --checkpoints-only
+python scripts/train_student.py --config configs/experiments/t4_level2_100m_ckpt.yaml \
+    --persistent-dir "$DRIVE" --dry-run
+
+python scripts/train_student.py --config configs/experiments/t4_level2_100m_ckpt.yaml \
+    --persistent-dir "$DRIVE"
 ```
 
-### After a disconnect
+Every 200 steps a checkpoint is written locally, verified, copied to Drive, verified
+there, and only then advertised. Nothing else is needed — the manual backup below is for
+topping up after a run that was started without persistence.
+
+### After a disconnect (or on a different account)
 
 ```python
 from google.colab import drive
@@ -282,16 +387,20 @@ git clone https://github.com/pop123-ux/Qwen3.8-XXB-Instruct-Distill
 cd Qwen3.8-XXB-Instruct-Distill
 pip install -e ".[dev]" && pip install -r requirements/training.txt
 
-# bring the experiment back from Drive
-mkdir -p experiments/runs
-cp -r /content/drive/MyDrive/qwen-distill/t4_level2_100m_ckpt experiments/runs/
+export DRIVE=/content/drive/MyDrive/qwen-distill/t4_level2_100m_ckpt
 
-# confirm what survived before spending GPU time on it
-python scripts/train_student.py --config configs/experiments/t4_level2_100m_ckpt.yaml --status
+# what survived? answered from Drive alone, with no local run present
+python scripts/train_student.py --config configs/experiments/t4_level2_100m_ckpt.yaml \
+    --persistent-dir "$DRIVE" --status
 
-# continue from where it stopped
-python scripts/train_student.py --config configs/experiments/t4_level2_100m_ckpt.yaml --resume latest
+# restore and continue in one command
+python scripts/train_student.py --config configs/experiments/t4_level2_100m_ckpt.yaml \
+    --persistent-dir "$DRIVE" --restore --resume latest
 ```
+
+On a **different Google account**, share the `qwen-distill` folder with it (or copy the
+folder into that account's Drive) and use the same commands — nothing else is
+account-specific.
 
 ## Storage cost
 

@@ -118,11 +118,29 @@ training:
   # Progress records are ~400 bytes and carry no weights, so they can be frequent. They
   # are what survives between checkpoints.
   progress_every: 25
-  # Copy each completed checkpoint to persistent storage. Off by default: the trainer
-  # must work with no Drive, no network and no mounted volume. Set to a Drive path to
-  # enable, e.g.
-  #   persistent_backup: /content/drive/MyDrive/qwen-distill/t4_level2_100m_ckpt/checkpoints
-  # Or leave it off and run scripts/backup_colab_to_drive.py after the run.
+  # Copy each completed checkpoint to persistent storage, right after it is written and
+  # verified. This is the RUN directory, not its checkpoints/ subdirectory: the
+  # persistent copy mirrors the local layout exactly, so recovery is a plain restore.
+  #
+  #   <persistent_backup>/checkpoints/step_000200/ ... latest.json
+  #   <persistent_backup>/progress/latest.json
+  #   <persistent_backup>/metrics.jsonl, summary.json
+  #
+  # A previous Level-2 run reached step 1925 of 2000 on a T4 — no OOM, ~2050 tokens/s —
+  # and lost all of it, because it ran with this set to null and Colab reclaimed
+  # /content. The checkpoints were written correctly, atomically, to a filesystem that
+  # then ceased to exist.
+  #
+  # Uncomment to enable. The path must be under a MOUNTED Drive: the trainer checks at
+  # startup and refuses to run if it is not, because writing to an unmounted
+  # /content/drive/MyDrive/... silently creates an ordinary local directory that
+  # disappears with the runtime while every checkpoint reports "persisted".
+  #
+  # persistent_backup: /content/drive/MyDrive/qwen-distill/t4_level2_100m_ckpt
+  #
+  # Left null here so the config works anywhere, including CI and CPU boxes with no
+  # Drive. Set it on the command line instead if you prefer:
+  #   --persistent-dir /content/drive/MyDrive/qwen-distill/t4_level2_100m_ckpt
   persistent_backup: null
 
 runtime:

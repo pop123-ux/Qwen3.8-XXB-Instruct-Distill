@@ -52,6 +52,7 @@ from .memory_probe import (
 from .progress import ProgressWriter
 from .resume_compat import (
     check_resume_compatibility,
+    make_schedule,
     rebuild_schedule,
 )
 from .text_data import (
@@ -249,9 +250,9 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
     optimizer = torch.optim.AdamW(
         trainable, lr=config.training.learning_rate, weight_decay=config.training.weight_decay
     )
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer, max_lr=config.training.learning_rate,
-        total_steps=max(config.training.max_steps, 1), pct_start=0.1,
+    scheduler = make_schedule(
+        optimizer, total_steps=config.training.max_steps,
+        max_lr=config.training.learning_rate,
     )
     take(profile, "after_optimizer_creation")
 
@@ -351,7 +352,25 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
           f"-> {progress.metrics_path.name} + progress/latest.json")
     print(f"    resume          : "
           f"{config.runtime.resume_from or 'no (starting from step 0)'}")
-    print(f"    persistent copy : {config.training.persistent_backup or 'off (local only)'}")
+    persistence = None
+    if config.training.persistent_backup:
+        from .persist import preflight
+
+        persistence = preflight(config.training.persistent_backup)
+        print(persistence.render())
+        if not persistence.usable:
+            print(
+                "\n  ERROR: persistence was requested but cannot work, so this run would "
+                "train\n  with no durable copy while reporting that it has one. Fix the "
+                "destination\n  or remove training.persistent_backup to run local-only.",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        print("    persistent copy : off (local only)")
+        print("                      NOTHING SURVIVES THIS RUNTIME. Set "
+              "training.persistent_backup")
+        print("                      to a mounted Drive path to keep checkpoints.")
 
     vocab = BYTE_VOCAB_SIZE if text_mode else (spec.vocab_size if spec else model.config.vocab_size)
     generator = torch.Generator().manual_seed(config.training.seed)
@@ -410,8 +429,13 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
                   file=sys.stderr)
             return None
         print(f"  checkpoint: {path.name} ({reason})")
-        _persist_checkpoint(config, path, checkpoint_root)
+        if persistence is not None:
+            _persist_checkpoint(config, path, checkpoint_root, output, persisted)
         return path
+
+    #: Which checkpoints reached persistent storage, and which failed. A run must never
+    #: end implying that everything is safe when a copy failed at step 800.
+    persisted: dict[str, list[str]] = {"ok": [], "failed": []}
 
     resumed_elapsed = state.elapsed_seconds
     started = time.perf_counter()
@@ -588,11 +612,26 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
         output, config, spec, state, profile, corpus_stats,
         elapsed=elapsed, tokens_seen=tokens_seen, device=device, text_mode=text_mode,
         effective_precision=precision, precision_note=precision_note, oom=oom,
+        persisted=persisted, persistent_destination=config.training.persistent_backup,
     )
     if oom is not None:
         print(f"  wrote {output / 'summary.json'} recording the OOM.")
         print("  This is usable data: run scripts/hardware_info.py --calibrate-run on it.")
         return 1
+    # The run must never end implying everything is stored when a copy failed midway.
+    if config.training.persistent_backup:
+        if persisted["failed"]:
+            print(f"\n  ! {len(persisted['failed'])} checkpoint(s) FAILED to persist: "
+                  f"{', '.join(persisted['failed'])}", file=sys.stderr)
+            print("    Those exist locally only. Copy them before this runtime ends:",
+                  file=sys.stderr)
+            print(f"      python scripts/backup_colab_to_drive.py --source {output} \\\n"
+                  f"          --destination {config.training.persistent_backup} "
+                  "--checkpoints-only", file=sys.stderr)
+        elif persisted["ok"]:
+            print(f"  persisted {len(persisted['ok'])} checkpoint(s) to "
+                  f"{config.training.persistent_backup}")
+
     if final_checkpoint is not None:
         print(f"  wrote {final_checkpoint} and summary.json")
     elif state.step == 0:
@@ -667,6 +706,8 @@ def _write_summary(
     effective_precision: str,
     precision_note: str | None,
     oom: OOMRecord | None = None,
+    persisted: dict[str, list[str]] | None = None,
+    persistent_destination: str | None = None,
 ) -> None:
     """Write the full artifact set: summary, hardware, git commit, resolved config.
 
@@ -743,6 +784,17 @@ def _write_summary(
         # them is a success, and the artifact must say which without being read closely.
         "outcome": "OOM" if oom else "completed",
         "oom": oom.to_dict() if oom else None,
+        # Which checkpoints are actually durable. Reading this months later must not
+        # require trusting that persistence was on and worked.
+        "persistence": {
+            "enabled": bool(persistent_destination),
+            "destination": persistent_destination,
+            "persisted": (persisted or {}).get("ok", []),
+            "failed": (persisted or {}).get("failed", []),
+            "all_checkpoints_persisted": (
+                bool(persistent_destination) and not (persisted or {}).get("failed")
+            ),
+        },
         "memory": profile.to_dict(),
         "analytical_estimate": estimate,
         "estimate_vs_measured": comparison,
@@ -825,21 +877,36 @@ def _git_commit() -> str | None:
         return None
 
 
-def _persist_checkpoint(config: ExperimentConfig, checkpoint: Path, root: Path) -> None:
-    """Copy a completed checkpoint to persistent storage, if the config asks for it.
+def _persist_checkpoint(
+    config: ExperimentConfig,
+    checkpoint: Path,
+    root: Path,
+    run_directory: Path,
+    persisted: dict[str, list[str]],
+) -> None:
+    """Copy a completed checkpoint to persistent storage and record whether it worked.
 
-    Optional by design: the trainer must run with no Drive, no network and no mounted
-    volume. A backup that fails is reported and does not stop training — losing the copy
-    is recoverable, losing the run is not.
+    Training continues through a failure — the local checkpoint is intact, and losing
+    the copy is recoverable while losing the run is not — but the failure is recorded so
+    the run cannot finish implying that everything is safely stored.
     """
     destination = config.training.persistent_backup
     if not destination:
         return
     try:
-        from .persist import persist_checkpoint
+        from .persist import persist_checkpoint, persist_run_metadata
 
         target = persist_checkpoint(checkpoint, destination, checkpoint_root=root)
+        persist_run_metadata(run_directory, destination)
+        persisted["ok"].append(checkpoint.name)
         print(f"    persisted -> {target}")
     except Exception as exc:  # noqa: BLE001 - a backup failure must not end the run
-        print(f"    ! persistent backup failed: {type(exc).__name__}: {exc}", file=sys.stderr)
-        print("      Training continues; the local checkpoint is intact.", file=sys.stderr)
+        persisted["failed"].append(checkpoint.name)
+        print(f"\n  ! PERSISTENT COPY FAILED for {checkpoint.name}: "
+              f"{type(exc).__name__}: {exc}", file=sys.stderr)
+        print("    This checkpoint exists LOCALLY ONLY and will not survive the runtime.",
+              file=sys.stderr)
+        print("    The persistent pointer still names the last checkpoint that did copy.",
+              file=sys.stderr)
+        print("    Training continues; fix the destination and re-run the backup script.\n",
+              file=sys.stderr)

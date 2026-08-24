@@ -62,7 +62,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--status", action="store_true",
-        help="report where this experiment got to and how to resume it, then exit",
+        help="report where this experiment got to and how to resume it, then exit. "
+             "Reads local disk and, when configured, persistent storage — so it works "
+             "in a fresh Colab that has never seen the run.",
+    )
+    parser.add_argument(
+        "--restore", action="store_true",
+        help="copy the run back from persistent storage before training. Use with "
+             "--resume latest in a fresh session.",
+    )
+    parser.add_argument(
+        "--persistent-dir", metavar="PATH",
+        help="override training.persistent_backup for this invocation",
     )
     parser.add_argument("--json", type=Path, help="write the dry-run report here")
     parser.add_argument(
@@ -70,6 +81,77 @@ def build_parser() -> argparse.ArgumentParser:
         help="train even when the feasibility check says NOT FEASIBLE (expect an OOM)",
     )
     return parser
+
+
+def _report_persistent_status(config: ExperimentConfig) -> None:
+    """What is on persistent storage — the only durable answer after a runtime dies."""
+    destination = config.training.persistent_backup
+    if not destination:
+        print("\n  persistent storage: not configured (local only)")
+        return
+
+    from qwen_distill.training.persist import persistent_status
+
+    status = persistent_status(destination)
+    print(f"\n  persistent storage: {status['destination']}")
+    if not status["exists"]:
+        print("    NOT PRESENT — is Drive mounted, and is the path right?")
+        return
+    print(f"    checkpoints     : {len(status['checkpoints'])}")
+    for name in status["checkpoints"][-3:]:
+        print(f"      {name}")
+    progress = status["latest_progress"]
+    if progress:
+        print(f"    latest step     : {progress.get('step')}")
+        for key in ("loss", "validation_loss", "validation_bits_per_byte"):
+            if progress.get(key) is not None:
+                print(f"    {key:<16}: {progress[key]}")
+    if status["resumable_checkpoint"]:
+        print(f"    resumable at    : step {status['resumable_step']}")
+        print("    Restore and continue with:")
+        print("      python scripts/train_student.py --config <config> "
+              "--restore --resume latest")
+    else:
+        print("    no complete checkpoint there yet")
+
+
+def restore_experiment(config: ExperimentConfig) -> int:
+    """Pull a persisted run back onto local disk, for a fresh Colab session."""
+    from qwen_distill.training.persist import restore_run
+
+    destination = config.training.persistent_backup
+    if not destination:
+        print("--restore needs a persistent location: set training.persistent_backup, "
+              "or pass --persistent-dir.", file=sys.stderr)
+        return 2
+
+    print(f"{RULE}\nRESTORE FROM PERSISTENT STORAGE\n{RULE}\n")
+    try:
+        result = restore_run(destination, config.runtime.output_dir)
+    except (OSError, FileNotFoundError) as exc:
+        print(f"  restore failed: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"  from : {result['destination']}")
+    print(f"  to   : {result['local']}")
+    if result["restored"]:
+        print(f"  restored {len(result['restored'])} checkpoint(s): "
+              f"{', '.join(result['restored'])}")
+    else:
+        print("  nothing to copy — local disk already has every complete checkpoint")
+    if result["skipped_incomplete"]:
+        # A copy interrupted by a dying runtime. Never restored, never resumed from.
+        print(f"  skipped {len(result['skipped_incomplete'])} incomplete checkpoint(s): "
+              f"{', '.join(result['skipped_incomplete'])}")
+    if result["pointer"]:
+        print(f"  resumable at step {result['pointer']['step']} "
+              f"({result['pointer']['path']})")
+    else:
+        print("  no complete checkpoint available — nothing to resume from",
+              file=sys.stderr)
+        return 2
+    print()
+    return 0
 
 
 def report_status(config: ExperimentConfig) -> int:
@@ -91,8 +173,11 @@ def report_status(config: ExperimentConfig) -> int:
     print(f"  run directory : {output}")
 
     if not output.is_dir():
-        print("\n  Nothing here yet — this experiment has not been run in this directory.")
-        print("  Start it with:\n    python scripts/train_student.py --config <config>")
+        print("\n  Nothing on local disk — this experiment has not been run here.")
+        # A fresh Colab has no local run, which is exactly when persistent storage is
+        # the only thing that can answer the question.
+        _report_persistent_status(config)
+        print("\n  Start it with:\n    python scripts/train_student.py --config <config>")
         return 0
 
     latest = ProgressWriter(output).read_latest()
@@ -122,6 +207,8 @@ def report_status(config: ExperimentConfig) -> int:
         print(f"    {path.name}{age}")
     if len(checkpoints) > 5:
         print(f"    ... and {len(checkpoints) - 5} older")
+
+    _report_persistent_status(config)
 
     resolved = resolve_checkpoint(checkpoint_root, "latest")
     if resolved is None:
@@ -157,8 +244,16 @@ def main(argv: list[str] | None = None) -> int:
     elif args.resume_from:
         config.runtime.resume_from = str(args.resume_from)
 
+    if args.persistent_dir:
+        config.training.persistent_backup = args.persistent_dir
+
     if args.status:
         return report_status(config)
+
+    if args.restore:
+        code = restore_experiment(config)
+        if code != 0:
+            return code
 
     print(RULE)
     print(f"EXPERIMENT: {config.name}")
