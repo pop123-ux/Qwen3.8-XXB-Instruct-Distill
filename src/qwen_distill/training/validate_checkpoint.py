@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .checkpoints import is_complete, resolve_checkpoint
+
 #: Fixed byte-level prompts for the generation sanity check. Short, deterministic, and
 #: chosen so a model that learned anything about English produces plausible completions.
 DEFAULT_PROMPTS: tuple[str, ...] = (
@@ -82,6 +84,28 @@ class CheckpointReport:
         return "\n".join(lines)
 
 
+def resolve_checkpoint_argument(reference: str | Path) -> Path:
+    """Accept a checkpoint directory, a run directory, or ``latest``.
+
+    A run directory holds ``checkpoints/``, not a checkpoint, so pointing this script at
+    one used to fail with "no training_state.json" — accurate but unhelpful. Resolving it
+    to the newest verified checkpoint is what the user meant, and it keeps the interface
+    unambiguous: an actual checkpoint directory is still used exactly as given.
+    """
+    path = Path(reference)
+
+    # A directory that is itself a checkpoint wins, always.
+    if (path / "metadata.json").is_file() or (path / "training_state.pt").is_file():
+        return path
+
+    for candidate in (path / "checkpoints", path):
+        if candidate.is_dir():
+            resolved = resolve_checkpoint(candidate, "latest")
+            if resolved is not None:
+                return resolved
+    return path
+
+
 def _build_from_config(config_path: Path, device: str):
     """Rebuild an empty model from a saved experiment config."""
     from transformers import AutoConfig, AutoModelForCausalLM
@@ -122,36 +146,61 @@ def validate_checkpoint(
     max_new_tokens: int = 48,
 ) -> CheckpointReport:
     """Reload a checkpoint into a fresh model and verify it behaves identically."""
-    path = Path(checkpoint_dir)
+    path = resolve_checkpoint_argument(checkpoint_dir)
     report = CheckpointReport(checkpoint=str(path))
 
     try:
         import torch
 
-        state_file = path / "training_state.pt"
         config_file = path / "config.json"
-        if not state_file.is_file():
-            report.error = f"no training_state.pt in {path}"
+        modern = path / "model.safetensors"
+        legacy = path / "training_state.pt"
+
+        if modern.is_file():
+            from safetensors.torch import load_file
+
+            if not is_complete(path):
+                report.error = (
+                    f"{path} is not a complete checkpoint: the COMPLETE marker or a "
+                    "required file is missing, so it was never safe to resume from."
+                )
+                return report
+            saved_state = load_file(str(modern), device=device)
+        elif legacy.is_file():
+            # Checkpoints written before the atomic format. Still readable so existing
+            # Level-1 artifacts do not become unverifiable.
+            saved_state = torch.load(
+                legacy, map_location=device, weights_only=False
+            )["model"]
+        else:
+            report.error = f"no model.safetensors or training_state.pt in {path}"
             return report
         if not config_file.is_file():
             report.error = f"no config.json in {path}"
             return report
 
-        payload = torch.load(state_file, map_location=device, weights_only=False)
-        saved_state = payload["model"]
-
         model, spec = _build_from_config(config_file, device)
         missing, unexpected = model.load_state_dict(saved_state, strict=False)
+        # A tied lm_head/embedding pair is stored once, so one of the two names is
+        # legitimately absent. Counting that as a failure would fail every checkpoint.
+        tied = getattr(model.config, "tie_word_embeddings", False)
+        real_missing = [
+            name for name in missing
+            if not (tied and name.endswith(("lm_head.weight", "embed_tokens.weight")))
+        ]
         report.checks.append(CheckResult(
             name="state_dict loads into a freshly built model",
-            passed=not missing and not unexpected,
-            detail=f"{len(missing)} missing, {len(unexpected)} unexpected",
-            data={"missing": list(missing)[:10], "unexpected": list(unexpected)[:10]},
+            passed=not real_missing and not unexpected,
+            detail=(f"{len(real_missing)} missing, {len(unexpected)} unexpected"
+                    + (f" ({len(missing) - len(real_missing)} tied weight(s) stored once)"
+                       if len(missing) != len(real_missing) else "")),
+            data={"missing": list(real_missing)[:10], "unexpected": list(unexpected)[:10]},
         ))
 
         # --- parameter identity ------------------------------------------
+        model_state = model.state_dict()
         mismatched = [
-            name for name, tensor in model.state_dict().items()
+            name for name, tensor in model_state.items()
             if name in saved_state and not torch.equal(tensor.cpu(), saved_state[name].cpu())
         ]
         report.checks.append(CheckResult(
@@ -234,12 +283,14 @@ def validate_resume(checkpoint_dir: str | Path) -> ResumeReport:
     Resuming at the wrong step silently corrupts a learning-rate schedule and makes a
     run non-reproducible, so this verifies the step and history survive the round trip.
     """
-    path = Path(checkpoint_dir)
+    path = resolve_checkpoint_argument(checkpoint_dir)
     report = ResumeReport(checkpoint=str(path))
     try:
-        state_file = path / "state.json"
+        state_file = path / "training_state.json"
         if not state_file.is_file():
-            report.error = f"no state.json in {path}"
+            state_file = path / "state.json"   # pre-atomic-format checkpoints
+        if not state_file.is_file():
+            report.error = f"no training_state.json or state.json in {path}"
             return report
         saved = json.loads(state_file.read_text(encoding="utf-8"))
         report.expected_step = saved.get("step")

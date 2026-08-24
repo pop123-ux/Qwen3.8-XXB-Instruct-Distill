@@ -50,13 +50,90 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, help="override runtime.output_dir")
     parser.add_argument("--max-steps", type=int, help="override training.max_steps")
     parser.add_argument("--seed", type=int, help="override training.seed")
-    parser.add_argument("--resume-from", type=Path, help="resume from a checkpoint directory")
+    parser.add_argument(
+        "--resume", metavar="REF",
+        help='resume training: "latest" for the newest verified checkpoint, a step '
+             'number, or a checkpoint directory. Refuses to start if nothing valid '
+             'matches, rather than silently restarting from step 0.',
+    )
+    parser.add_argument(
+        "--resume-from", type=Path,
+        help="deprecated alias for --resume, kept so existing commands keep working",
+    )
+    parser.add_argument(
+        "--status", action="store_true",
+        help="report where this experiment got to and how to resume it, then exit",
+    )
     parser.add_argument("--json", type=Path, help="write the dry-run report here")
     parser.add_argument(
         "--force", action="store_true",
         help="train even when the feasibility check says NOT FEASIBLE (expect an OOM)",
     )
     return parser
+
+
+def report_status(config: ExperimentConfig) -> int:
+    """Where did this experiment get to, and how do I continue it?
+
+    Answers from files on disk alone, so it works in a fresh Colab session that has
+    never seen the run — which is precisely when the question gets asked.
+    """
+    from qwen_distill.training.checkpoints import (
+        list_checkpoints,
+        read_latest_pointer,
+        resolve_checkpoint,
+    )
+    from qwen_distill.training.progress import ProgressWriter
+
+    output = Path(config.runtime.output_dir)
+    checkpoint_root = output / "checkpoints"
+    print(f"{RULE}\nEXPERIMENT STATUS: {config.name}\n{RULE}\n")
+    print(f"  run directory : {output}")
+
+    if not output.is_dir():
+        print("\n  Nothing here yet — this experiment has not been run in this directory.")
+        print("  Start it with:\n    python scripts/train_student.py --config <config>")
+        return 0
+
+    latest = ProgressWriter(output).read_latest()
+    if latest:
+        print("\n  latest progress record")
+        print(f"    step            : {latest.get('step')} of {config.training.max_steps}")
+        for key, label in (("loss", "training loss"), ("validation_loss", "validation loss"),
+                           ("bits_per_byte", "bits per byte"),
+                           ("validation_bits_per_byte", "validation bpb"),
+                           ("tokens_seen", "tokens seen")):
+            if latest.get(key) is not None:
+                print(f"    {label:<16}: {latest[key]}")
+        print(f"    recorded at     : {latest.get('timestamp')}")
+    else:
+        print("\n  no progress records — the run has not logged a step yet")
+
+    checkpoints = list_checkpoints(checkpoint_root)
+    pointer = read_latest_pointer(checkpoint_root)
+    print(f"\n  complete checkpoints: {len(checkpoints)}")
+    for path in checkpoints[-5:]:
+        age = ""
+        try:
+            metadata = json.loads((path / "metadata.json").read_text(encoding="utf-8"))
+            age = f"  ({metadata.get('created_at', '')})"
+        except (OSError, json.JSONDecodeError):
+            pass
+        print(f"    {path.name}{age}")
+    if len(checkpoints) > 5:
+        print(f"    ... and {len(checkpoints) - 5} older")
+
+    resolved = resolve_checkpoint(checkpoint_root, "latest")
+    if resolved is None:
+        print("\n  RESUMABLE: no. No complete checkpoint exists.")
+        if pointer:
+            print(f"  (latest.json names {pointer.get('path')!r}, which did not verify)")
+        return 0
+
+    print(f"\n  RESUMABLE: yes, from {resolved.name}")
+    print("  Resume with:")
+    print("    python scripts/train_student.py --config <config> --resume latest")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -74,8 +151,14 @@ def main(argv: list[str] | None = None) -> int:
         config.training.max_steps = args.max_steps
     if args.seed is not None:
         config.training.seed = args.seed
-    if args.resume_from:
+    # --resume supersedes --resume-from; both set the same field.
+    if args.resume:
+        config.runtime.resume_from = str(args.resume)
+    elif args.resume_from:
         config.runtime.resume_from = str(args.resume_from)
+
+    if args.status:
+        return report_status(config)
 
     print(RULE)
     print(f"EXPERIMENT: {config.name}")

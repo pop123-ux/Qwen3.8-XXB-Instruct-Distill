@@ -127,7 +127,12 @@ def test_a_truncated_state_dict_is_caught(tmp_path):
 
     directory = write_checkpoint(tmp_path / "truncated")
     payload = torch.load(directory / "training_state.pt", weights_only=False)
-    dropped = next(iter(payload["model"]))
+    # Not a tied embedding: those are legitimately stored once, so dropping one is
+    # expected rather than corruption. A layer weight going missing is corruption.
+    dropped = next(
+        name for name in payload["model"]
+        if not name.endswith(("lm_head.weight", "embed_tokens.weight"))
+    )
     del payload["model"][dropped]
     torch.save(payload, directory / "training_state.pt")
 
