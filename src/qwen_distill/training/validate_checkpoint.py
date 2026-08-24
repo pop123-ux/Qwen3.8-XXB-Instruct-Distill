@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .checkpoints import is_complete
+from .checkpoints import is_complete, resolve_checkpoint
 
 #: Fixed byte-level prompts for the generation sanity check. Short, deterministic, and
 #: chosen so a model that learned anything about English produces plausible completions.
@@ -84,6 +84,28 @@ class CheckpointReport:
         return "\n".join(lines)
 
 
+def resolve_checkpoint_argument(reference: str | Path) -> Path:
+    """Accept a checkpoint directory, a run directory, or ``latest``.
+
+    A run directory holds ``checkpoints/``, not a checkpoint, so pointing this script at
+    one used to fail with "no training_state.json" — accurate but unhelpful. Resolving it
+    to the newest verified checkpoint is what the user meant, and it keeps the interface
+    unambiguous: an actual checkpoint directory is still used exactly as given.
+    """
+    path = Path(reference)
+
+    # A directory that is itself a checkpoint wins, always.
+    if (path / "metadata.json").is_file() or (path / "training_state.pt").is_file():
+        return path
+
+    for candidate in (path / "checkpoints", path):
+        if candidate.is_dir():
+            resolved = resolve_checkpoint(candidate, "latest")
+            if resolved is not None:
+                return resolved
+    return path
+
+
 def _build_from_config(config_path: Path, device: str):
     """Rebuild an empty model from a saved experiment config."""
     from transformers import AutoConfig, AutoModelForCausalLM
@@ -124,7 +146,7 @@ def validate_checkpoint(
     max_new_tokens: int = 48,
 ) -> CheckpointReport:
     """Reload a checkpoint into a fresh model and verify it behaves identically."""
-    path = Path(checkpoint_dir)
+    path = resolve_checkpoint_argument(checkpoint_dir)
     report = CheckpointReport(checkpoint=str(path))
 
     try:
@@ -261,7 +283,7 @@ def validate_resume(checkpoint_dir: str | Path) -> ResumeReport:
     Resuming at the wrong step silently corrupts a learning-rate schedule and makes a
     run non-reproducible, so this verifies the step and history survive the round trip.
     """
-    path = Path(checkpoint_dir)
+    path = resolve_checkpoint_argument(checkpoint_dir)
     report = ResumeReport(checkpoint=str(path))
     try:
         state_file = path / "training_state.json"

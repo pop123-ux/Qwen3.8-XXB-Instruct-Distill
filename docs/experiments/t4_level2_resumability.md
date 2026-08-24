@@ -104,6 +104,22 @@ So if step 600's write dies halfway:
 - `.step_000600.incomplete/` is ignored by discovery and deleted on next startup
 - `--resume latest` resumes from 500
 
+## One checkpoint format, agreed on by every tool
+
+There is exactly one canonical layout, written by the trainer and read by the validator
+and by resume. There is **no `final/` directory** — an earlier implementation wrote one
+in a bespoke layout while the other tools expected `checkpoints/step_NNNNNN/`, and that
+disagreement produced a real T4 session where a successful 20-step run left nothing the
+validator or `--resume` could find. Two checkpoint systems is the bug; a compatibility
+alias would have kept it.
+
+A note on how that failure presented, because it is a trap worth naming: `--resume` did
+not exist as an option at the time, only `--resume-from`. **argparse silently accepts an
+unambiguous prefix**, so `--resume latest` bound to `--resume-from` and `latest` became a
+literal relative path — the loader then looked for `latest/training_state.pt`. A missing
+option became a wrong value instead of an error. `--resume` is now a real option, typed
+as a string rather than a `Path`, so `latest` stays a token for the resolver to interpret.
+
 ## Resume
 
 ```bash
@@ -118,9 +134,45 @@ a path.
 **If nothing valid matches, it exits 2 rather than starting from step 0.** Silently
 restarting is how you lose 500 steps twice.
 
-Resuming under a different `max_steps` is also refused: OneCycleLR's shape is a function
-of its total length, so transplanting its state onto a schedule of a different length
-would train on a curve neither run intended.
+### Extending a run
+
+`max_steps` is the intended **total** training length, so raising it continues the run:
+
+```bash
+python scripts/train_student.py --config <config> --max-steps 20            # 0 -> 20
+python scripts/train_student.py --config <config> --resume latest --max-steps 40   # 20 -> 40
+```
+
+OneCycleLR's learning rate at step *t* is a function of `total_steps`, so its saved state
+cannot be replayed against a longer horizon. The schedule is **rebuilt for the new total
+and fast-forwarded** to the restored step — verified to be exactly a fresh 40-step curve
+advanced 20 steps. That genuinely changes the LR curve for the remaining steps, so it is
+reported, never silent:
+
+```
+    training target extended: 20 -> 40 steps
+    the one-cycle LR schedule is rebuilt for the new total and fast-forwarded;
+    remaining steps follow the new curve, not the original one
+```
+
+Nothing else resets: model, optimizer, scaler, RNG, data position and token count all
+carry over.
+
+### What is still refused
+
+Flexibility about `max_steps` is not permission to resume onto anything. Differences that
+would make the weights or the saved data position meaningless remain fatal:
+
+| change | why it is fatal |
+|---|---|
+| `model.architecture`, `model.pretrained`, `model.spec_path` | the checkpoint's tensors have different shapes |
+| `data.max_sequence_length` | the corpus is re-chunked, so the saved data position addresses sequences that no longer exist |
+| `training.batch_size` | the saved position is a batch index, which does not carry across |
+| `training.strategy` | a different strategy holds different parameters |
+
+Changes that alter what is being optimised — learning rate, optimizer, precision,
+accumulation, corpus — are **allowed and itemised** in the resume banner rather than
+being either blocked or hidden.
 
 ### Is a resumed run the same run?
 
@@ -167,6 +219,20 @@ training:
 
 A backup failure is reported and does not stop training. Losing the copy is recoverable;
 losing the run is not.
+
+## Validating a checkpoint
+
+```bash
+# an explicit checkpoint
+python scripts/validate_checkpoint.py experiments/runs/t4_level2_100m_ckpt/checkpoints/step_000020
+
+# or the run directory, which resolves to its newest verified checkpoint
+python scripts/validate_checkpoint.py experiments/runs/t4_level2_100m_ckpt
+```
+
+A directory that is itself a checkpoint is always used exactly as given, so the interface
+stays unambiguous. Checkpoints written before this format are still readable, so existing
+Level-1 artifacts do not become unverifiable.
 
 ## Where did my run get to?
 

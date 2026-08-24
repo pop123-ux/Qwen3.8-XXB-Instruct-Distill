@@ -50,6 +50,10 @@ from .memory_probe import (
     take,
 )
 from .progress import ProgressWriter
+from .resume_compat import (
+    check_resume_compatibility,
+    rebuild_schedule,
+)
 from .text_data import (
     BYTE_VOCAB_SIZE,
     ResumableBatchSampler,
@@ -291,42 +295,55 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
             print("  Resuming from a partial write would silently produce a different "
                   "run, so this stops instead.", file=sys.stderr)
             return 2
-        # OneCycleLR's shape is a function of total_steps, so its state cannot be
-        # transplanted onto a schedule of a different length. Catching that here beats
-        # the scheduler's own error ("Tried to step 5 times...") thirty seconds later.
-        saved_total = _checkpoint_total_steps(resolved)
-        if saved_total is not None and saved_total != config.training.max_steps:
-            print(
-                f"\n  ERROR: this checkpoint was written under max_steps={saved_total}, "
-                f"but the config says {config.training.max_steps}.\n"
-                "  The one-cycle learning-rate schedule is shaped by its total length, so "
-                "resuming\n  across a change would silently train on a different curve "
-                "than either run intended.\n"
-                f"  Either set max_steps back to {saved_total}, or start a new run "
-                "directory.",
-                file=sys.stderr,
-            )
+        # max_steps is the intended TOTAL training length, so raising it is a normal
+        # thing to want: train 20, look at the curve, continue to 40. Differences that
+        # would make the weights or the saved data position meaningless are still fatal.
+        compatibility = check_resume_compatibility(
+            _checkpoint_config(resolved), config.to_dict()
+        )
+        if not compatibility.ok:
+            print(f"\n  ERROR: cannot resume from {resolved}.", file=sys.stderr)
+            print(compatibility.render(), file=sys.stderr)
             return 2
+
         loaded = load_checkpoint(
             resolved, model=model, optimizer=optimizer, scheduler=scheduler,
             scaler=scaler, map_location=device,
         )
         state = TrainingState.from_dict(loaded["training_state"])
+
+        if compatibility.extends_schedule:
+            # OneCycleLR's LR at step t is a function of total_steps, so a longer run
+            # needs a new schedule rather than the restored one replayed further.
+            scheduler = rebuild_schedule(
+                scheduler, optimizer,
+                total_steps=config.training.max_steps, completed=state.step,
+                max_lr=config.training.learning_rate,
+            )
         rng_restored = restore_rng_state(loaded["rng_state"])
         if text_mode and state.data_state:
             batches.load_state_dict(state.data_state)
-        print(f"\n  RESUMED from {resolved}")
-        print(f"    step            : {state.step} of {config.training.max_steps}")
-        print(f"    restored        : {', '.join(loaded['restored']) or 'nothing'}")
-        print(f"    RNG restored    : {', '.join(rng_restored) or 'none'}")
+        print("\n  RESUMED")
+        print(f"    resume requested   : {config.runtime.resume_from}")
+        print(f"    resolved checkpoint: {resolved}")
+        print(f"    restored step      : {state.step} of {config.training.max_steps}")
+        print(f"    restored           : {', '.join(loaded['restored']) or 'nothing'}")
+        print(f"    RNG restored       : {', '.join(rng_restored) or 'none'}")
         if text_mode:
-            print(f"    data position   : epoch {batches.epoch}, batch {batches.index}")
-        print(f"    tokens seen     : {state.tokens_seen:,}")
+            print(f"    data position      : epoch {batches.epoch}, batch {batches.index}")
+        print(f"    tokens seen        : {state.tokens_seen:,}")
+        if compatibility.extends_schedule or compatibility.notable:
+            print(compatibility.render())
+        # The compatibility check above itemises every difference it knows about. The
+        # digest catches anything it does not classify — a renamed run, a changed eval
+        # interval — which is worth stating once without dressing it up as a problem.
         saved_digest = (loaded.get("metadata") or {}).get("config_sha256")
-        if saved_digest and saved_digest != config_digest:
-            print("    ! WARNING: the config differs from the one this checkpoint was "
-                  "written with.\n"
-                  "      The run continues, but it is no longer the same experiment.")
+        if (
+            saved_digest and saved_digest != config_digest
+            and not compatibility.extends_schedule and not compatibility.notable
+        ):
+            print("    note               : the config differs from the checkpoint's in "
+                  "ways that do not affect resuming")
 
     print("\n  CHECKPOINTING")
     print(f"    full checkpoint : every {config.training.save_every} steps -> {checkpoint_root}")
@@ -784,16 +801,15 @@ def _validate(model, config: ExperimentConfig, vocab: int, device: str) -> float
     return total / batches
 
 
-def _checkpoint_total_steps(checkpoint: Path) -> int | None:
-    """The ``max_steps`` a checkpoint was written under, from its saved config."""
+def _checkpoint_config(checkpoint: Path) -> dict[str, Any] | None:
+    """The config a checkpoint was written under, for compatibility checking."""
     config_file = Path(checkpoint) / "config.json"
     if not config_file.is_file():
         return None
     try:
-        saved = json.loads(config_file.read_text(encoding="utf-8"))
+        return json.loads(config_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
-    return (saved.get("training") or {}).get("max_steps")
 
 
 def _git_commit() -> str | None:

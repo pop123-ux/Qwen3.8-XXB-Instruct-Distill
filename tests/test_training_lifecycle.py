@@ -156,12 +156,31 @@ def test_resume_continues_to_max_steps_without_repeating_work(tmp_path):
     ]
 
 
-def test_resuming_under_a_different_max_steps_is_refused(tmp_path):
-    """OneCycleLR's shape depends on its total length, so its state cannot be moved onto
-    a schedule of a different length. Failing clearly beats a confusing scheduler error
-    thirty seconds in."""
+def test_resuming_under_a_larger_max_steps_extends_the_run(tmp_path):
+    """`max_steps` is the intended TOTAL training length, so raising it continues the run
+    rather than being an error.
+
+    OneCycleLR's LR at step t is a function of total_steps, so its saved state cannot be
+    replayed against a longer horizon: the schedule is rebuilt for the new total and
+    fast-forwarded to the restored step. The remaining steps therefore follow the new
+    curve, which is reported rather than applied silently.
+    """
     output = interrupt_at(tmp_path, 4, max_steps=8, save_every=4)
-    assert run(make_config(output, max_steps=20, save_every=4, resume="latest")) == 2
+
+    assert run(make_config(output, max_steps=20, save_every=4, resume="latest")) == 0
+
+    assert read_latest_pointer(output / "checkpoints")["step"] == 20
+
+
+def test_resuming_onto_an_incompatible_config_is_still_refused(tmp_path):
+    """The flexibility above must not become "accept anything": a changed sequence
+    length re-chunks the corpus, so the saved data position addresses sequences that no
+    longer exist."""
+    output = interrupt_at(tmp_path, 4, max_steps=8, save_every=4)
+    config = make_config(output, max_steps=8, save_every=4, resume="latest")
+    config.data.max_sequence_length = 32
+
+    assert run(config) == 2
 
 
 def test_resume_restores_step_tokens_and_data_position(tmp_path):
