@@ -37,6 +37,7 @@ from qwen_distill.architecture.spec import HybridArchSpec
 from qwen_distill.diagnostics import (
     analyse_inference_fit,
     calibrate,
+    calibrate_training_run,
     classify,
     collect_devices,
     collect_system,
@@ -77,6 +78,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--spec", type=Path, help="path to a saved HybridArchSpec JSON")
     parser.add_argument("--matrix", action="store_true", help="print a quantisation x context fit grid")
     parser.add_argument("--recommend", action="store_true", help="print experiment recommendations")
+    parser.add_argument(
+        "--calibrate-run", type=Path, metavar="SUMMARY_JSON",
+        help="compare a finished training run's summary.json against what was estimated, "
+             "term by term",
+    )
     parser.add_argument(
         "--calibrate", action="store_true",
         help="measure the analytical memory model against this machine (needs CUDA)",
@@ -180,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
         payload["simulated"] = {"vram_gib": total, "name": device_label}
         payload["tier"] = {"level": tier.level, "name": tier.name, "summary": tier.summary}
         print(f"\n{RULE}")
-        print(f"SIMULATING A {total:.0f} GiB DEVICE: {device_label}")
+        print(f"SIMULATING A {total:.2f} GiB DEVICE: {device_label}")
         print("Detected hardware above is unchanged; everything below is hypothetical.")
         print(RULE)
         print(f"\n  Capability tier     Tier {tier.level} - {tier.name}")
@@ -194,7 +200,14 @@ def main(argv: list[str] | None = None) -> int:
         specs.append(HybridArchSpec.load(args.spec))
     if args.model:
         specs.append(BUILTIN_MODELS[args.model])
-    if not specs and not args.recommend and not args.calibrate:
+    if args.calibrate_run:
+        print(f"{RULE}\nTRAINING RUN CALIBRATION\n{RULE}\n")
+        calibration = calibrate_training_run(args.calibrate_run)
+        payload["training_calibration"] = calibration.to_dict()
+        print(calibration.render())
+        print()
+
+    if not specs and not args.recommend and not args.calibrate and not args.calibrate_run:
         specs.append(BUILTIN_MODELS["Qwen3.8-27B"])
 
     if specs:
@@ -287,14 +300,27 @@ def main(argv: list[str] | None = None) -> int:
         payload["calibration"] = report.to_dict()
         print(f"  device : {report.device}")
         print(f"  verdict: {report.verdict}")
+        if report.cuda_context_gib is not None:
+            print(f"  CUDA context (before any tensor): {report.cuda_context_gib:.3f} GiB")
         if report.points:
-            print(f"\n  {'phase':<44}{'measured':>10}{'estimated':>11}{'ratio':>8}")
+            header = (f"\n  {'phase':<28}{'ctx':>7}{'alloc':>9}{'reserved':>10}"
+                      f"{'modelled':>10}{'r_alloc':>9}{'r_resv':>8}")
+            print(header)
             for point in report.points:
-                ratio = f"{point.ratio:.3f}" if point.ratio else "-"
-                print(f"  {point.phase[:43]:<44}{point.measured_peak_gib:>10.3f}"
-                      f"{point.estimated_gib:>11.3f}{ratio:>8}")
-        if report.mean_ratio:
-            print(f"\n  mean measured/estimated: {report.mean_ratio:.3f}")
+                r_alloc = f"{point.ratio_allocated:.3f}" if point.ratio_allocated else "-"
+                r_resv = f"{point.ratio_reserved:.3f}" if point.ratio_reserved else "-"
+                print(f"  {point.phase[:27]:<28}{point.context_length:>7}"
+                      f"{point.measured_allocated_gib:>9.3f}{point.measured_reserved_gib:>10.3f}"
+                      f"{point.estimated_tensors_gib:>10.3f}{r_alloc:>9}{r_resv:>8}")
+        # Two ratios, printed apart on purpose: collapsing them into one is what made
+        # the earlier 2.85 "calibration factor" unusable.
+        if report.mean_ratio_allocated:
+            print(f"\n  live tensors / modelled tensors : {report.mean_ratio_allocated:.3f}"
+                  "   <- drives estimator corrections")
+        if report.mean_ratio_reserved:
+            print(f"  allocator reserve / modelled    : {report.mean_ratio_reserved:.3f}"
+                  "   <- what the process occupies")
+        print(f"\n  correction: {report.correction}")
         for note in report.notes:
             print(f"  ! {note}")
         if report.error:

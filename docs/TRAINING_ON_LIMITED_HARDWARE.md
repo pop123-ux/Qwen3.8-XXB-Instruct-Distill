@@ -64,7 +64,7 @@ verification, dataset preparation.
 
 Everything in this repository except training and generation runs here.
 
-### Level 1 — T4 toy model
+### Level 1 — T4 toy model — **PASSED**
 
 **Objective:** verify the training mechanism — forward, backward, optimizer, scheduler,
 checkpointing, resume, validation, logging.
@@ -79,13 +79,55 @@ python scripts/train_student.py --config configs/experiments/t4_prototype.yaml -
 python scripts/train_student.py --config configs/experiments/t4_prototype.yaml
 ```
 
-### Level 2 — T4 small student
+**Result:** 4.03M params on a real Tesla T4, 200 steps in ~56 s. Train loss
+8.2565 → 2.1008, validation 4.4904 → 2.0910. The architecture instantiates, trains and
+checkpoints on real CUDA hardware.
+
+Two false starts are worth recording, because both produced a *flat* loss that looked
+like a broken training loop and was not. The first two synthetic tasks were not
+learnable at toy scale, so the loss sat at `ln(vocab)` regardless. Only the third design
+— a short-period induction task over a 64-token alphabet — moved. **A flat loss on an
+unlearnable task is not evidence of anything**, which is the whole reason this level
+exists as a separate gate.
+
+### Level 2 — T4 small student — **configured, not yet run**
 
 **Objective:** train a real small model on real data. Confirm throughput, memory
 behaviour and checkpoint sizes match the estimates.
 
-**Gate:** a checkpoint that generates coherent output, and measured VRAM within ~15% of
-the estimate (`scripts/hardware_info.py --calibrate`).
+`configs/experiments/t4_level2_100m.yaml`: 94.48M parameters, 16 layers (12 DeltaNet +
+4 full attention), hidden 640, FFN 2176. The 3:1 hybrid layout and 3.40x FFN expansion
+both match the teacher, so this is a scaled-down version of the real architecture rather
+than a generic transformer.
+
+**Byte-level tokenization** (vocab 256) is the deliberate choice for this level:
+
+- No tokenizer to download, version or licence-check — the run is fully offline.
+- Any plain text file works unchanged, so the corpus is a substitution, not a rewrite.
+- Nearly every parameter lands in the layers rather than in an embedding table, which
+  makes a ~100M run a test of the *architecture* rather than of the embedding.
+- The loss is directly interpretable as **bits per byte**: 8.0 is a model that has
+  learned nothing, and good byte-level models on English land near 1.0–1.5. Unlike
+  BPE perplexity it does not depend on a tokenizer's compression rate, so two runs are
+  comparable.
+
+The honest trade-off: byte sequences cover ~4x less text per token than BPE, so a
+1024-byte window is roughly a 250-token window. Fine for the question this level asks.
+
+**Gate:** a checkpoint that generates coherent output, and each *component* of the
+measured VRAM within ~15% of its estimate — not the total (see below).
+
+```bash
+python scripts/train_student.py --config configs/experiments/t4_level2_100m.yaml --dry-run
+python scripts/train_student.py --config configs/experiments/t4_level2_100m.yaml
+python scripts/validate_checkpoint.py experiments/t4_level2_100m/final
+python scripts/hardware_info.py --calibrate-run experiments/t4_level2_100m/summary.json
+```
+
+**Status:** validated end-to-end on CPU — the architecture builds, bits-per-byte falls,
+checkpoints reload bit-for-bit, and resume restores the correct step and history. It has
+**not** run on a GPU; the authoring environment has none. Every memory figure for this
+level is an estimate until someone runs it.
 
 ### Level 3 — T4 small distillation experiment
 
@@ -186,3 +228,153 @@ python scripts/train_student.py --config <config> --dry-run --simulate-vram 24
 ```
 
 The trainer refuses to start on a NOT FEASIBLE configuration unless you pass `--force`.
+
+## Precision: what you asked for is not always what runs
+
+`AutoModelForCausalLM.from_config` takes no dtype, so it always produces an fp32 model.
+A config declaring `precision: fp16` therefore trained in **fp32** — roughly twice the
+weight, gradient and optimizer memory, and none of the T4's fp16 tensor-core speed —
+and nothing in the run artifacts said so. That is a whole GPU window spent on a
+different experiment from the one described.
+
+The trainer now resolves precision explicitly and records both values:
+
+| Requested | Device | Effective | Why |
+|---|---|---|---|
+| `fp32` | any | `fp32` | no change requested |
+| `fp16` | CUDA | `fp16` | autocast + GradScaler |
+| `bf16` | Ampere+ | `bf16` | autocast, no scaler needed |
+| `bf16` | Turing (T4) | `fp16` | Turing has no bf16 |
+| `fp16` / `bf16` | CPU | `fp32` | autocast covers few CPU ops and is usually slower |
+
+Mixed precision here means **autocast, not fp16 weights**. AdamW on fp16 parameters
+underflows, so the master weights and gradients stay fp32 and only the matmuls are cast.
+`GradScaler` then keeps fp16 gradients from flushing to zero, and gradients are unscaled
+before clipping — clipping scaled gradients computes the norm against the loss scale
+rather than against the gradient.
+
+`summary.json` records `requested_precision`, `effective_precision` and a
+`precision_note`, so a memory or throughput figure can be read months later against what
+actually ran.
+
+## Memory: measure the terms, never multiply the total
+
+An earlier calibration reported a measured/estimated ratio of ~**2.85**. That number was
+not usable as a correction factor, and the reason is worth stating plainly: it divided
+**peak reserved** — which includes the CUDA context and every block the caching
+allocator is holding — by **modelled tensors with the overhead term deliberately
+zeroed**. Those are different quantities. On a small probe model the fixed CUDA context
+alone rivals the whole tensor footprint, so the "factor" was mostly measuring the
+context. Multiplying every future estimate by 2.85 would have made the estimator
+permanently wrong in a way that looked calibrated.
+
+What replaced it:
+
+**1. Two predicted quantities, matching the two that are measured.**
+
+| Quantity | Estimator field | Probe field | What it answers |
+|---|---|---|---|
+| Live tensors | `predicted_allocated_gib` | `peak_allocated_gib` | is our arithmetic right? |
+| Process footprint | `predicted_reserved_gib` | `peak_reserved_gib` | will it fit the card? |
+
+Only the first should ever drive a correction to the estimator. The second depends on
+allocator settings and fragmentation, which the estimator does not model and should not
+be blamed for — but it is the one a deployment claim has to satisfy.
+
+**2. Every term attributed separately.** `memory_probe` snapshots seven stages of the
+first training step and attributes each term by difference:
+
+```
+weights          = after_model_creation  - baseline
+activations      = after_forward         - after_model_creation
+gradients (net)  = after_backward        - after_forward
+optimizer state  = after_optimizer_step  - after_backward
+allocator reserve= peak_reserved         - peak_allocated
+```
+
+AdamW allocates its moments lazily on the first `step()`, so a snapshot taken any
+earlier reads zero — and would be reported as a measurement of zero.
+
+A total that happens to be right because two errors cancelled is still two errors, and
+only a per-component comparison can see that. `--calibrate-run` does exactly this
+comparison and names the term to fix:
+
+```bash
+python scripts/hardware_info.py --calibrate-run experiments/<run>/summary.json
+```
+
+It deliberately does **not** compare gradients: the probe's backward delta is net of the
+activations freed during the backward pass, which is not the gross gradient size the
+estimator models. Comparing them would repeat the same category error that produced 2.85.
+
+**3. The precision scheme is modelled, not assumed.** `torch.autocast` holds fp32
+weights and fp32 gradients while computing in fp16; pure-bf16 training holds bf16
+weights and gradients with an fp32 master copy in the optimizer. Both come to 16 bytes
+per parameter for AdamW — so a *total* cannot tell them apart, while a measurement can,
+and would flag two components as wrong on a correct total.
+
+**4. The loss path is counted properly.** `ForCausalLMLoss` does `logits =
+logits.float()`, and `cross_entropy` retains a second fp32 log-softmax buffer for
+backward — verified against the `transformers` source and by enumerating the tensors
+autograd actually retains. Together with the `lm_head` output at the activation dtype,
+the logits are held **three times over**. Modelling them once understates the term by
+2.5–3x; at a 248k vocabulary that is gigabytes, and it is exactly the term that decides
+whether a long-sequence run OOMs.
+
+## Colab: keep the results, not the runtime
+
+Colab runtimes are ephemeral — when the session recycles, anything not in git or on
+Drive is gone. Checkpoints are too large for git, so the split is:
+
+| Where | What |
+|---|---|
+| git | code, configs, `summary.json`, `metrics.jsonl`, small artifacts |
+| Drive | checkpoints, model weights, anything measured in hundreds of MB |
+| nowhere | credentials — see below |
+
+```bash
+python scripts/backup_colab_to_drive.py --dry-run   # exactly what would move
+python scripts/backup_colab_to_drive.py
+```
+
+Run it **after** an experiment, not during one: synchronising every step would slow the
+run and thrash Drive for no benefit.
+
+The destination is someone's personal Drive, so the safety properties are the design
+rather than a feature list:
+
+- **Nothing is deleted by default.** `--delete-extraneous` exists, is off, and refuses
+  to run without `--yes`. `--dry-run` shows precisely what it would remove.
+- **Symlinks are never followed.** A stray link could otherwise pull an unrelated tree
+  onto Drive.
+- **Credential-shaped files are never copied** — `.env`, `*.pem`, `*.key`, `id_rsa*`,
+  `.netrc`, `.git-credentials`, `*token*.json`, `.ssh/`, `.aws/` — at any depth, so a
+  token dropped in the repo root does not end up in cloud storage. The patterns are
+  deliberately broad, with a small exact-filename allowlist for standard model metadata
+  (`tokenizer_config.json`, `tokenizer.json`, ...) that `*token*.json` would otherwise
+  swallow. A backup that silently drops the teacher metadata is worse than one that
+  never ran, because the loss surfaces only after the runtime is gone.
+- **Unchanged files are skipped**, so re-running is cheap and idempotent.
+
+If Drive is not mounted the script exits 2 and prints the `drive.mount` snippet rather
+than silently writing to a local directory that will vanish with the runtime.
+
+### A note on what is currently in git
+
+`.gitignore` already excludes `*.pt`, `*.pth`, `*.ckpt` and `experiments/**/runs/`, but
+`.gitignore` does not untrack files that were committed before it applied. The Level-1
+prototype's three checkpoints are still tracked, at **139 MB**, for a 4.03M-parameter
+toy model whose result is fully captured by the far smaller `summary.json` and
+`metrics.jsonl` beside them.
+
+That is worth deciding on deliberately rather than letting it grow. To stop tracking
+them going forward while keeping the files on disk:
+
+```bash
+git rm --cached experiments/runs/t4_prototype/*/training_state.pt
+```
+
+Note that this does not shrink the repository — the blobs remain in history, and
+removing them from history is a rewrite that invalidates every existing clone. The
+choice to make now is whether Level-2 and later checkpoints go to Drive instead of git.
+They should.

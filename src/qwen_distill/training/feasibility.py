@@ -65,10 +65,16 @@ class FeasibilityReport:
                 f"  {'Optimizer':<24}{fit.optimizer}",
                 f"  {'Gradient checkpointing':<24}{'ON' if fit.gradient_checkpointing else 'OFF'}",
                 "",
+                f"  {'Precision scheme':<24}{fit.precision_scheme}",
+                "",
                 f"  {'Base weights':<24}{fit.base_weights_gib:.2f} GiB",
+                f"  {'Gradients':<24}{fit.gradients_gib:.2f} GiB",
                 f"  {'Optimizer state':<24}{fit.optimizer_state_gib:.2f} GiB",
                 f"  {'Activations':<24}{fit.activations_gib:.2f} GiB",
-                f"  {'Runtime overhead':<24}{fit.overhead_gib:.2f} GiB",
+                f"  {'Logits + loss path':<24}{fit.logits_gib:.2f} GiB",
+                f"  {'  = live tensors':<24}{fit.predicted_allocated_gib:.2f} GiB",
+                f"  {'Runtime overhead':<24}{fit.overhead_gib:.2f} GiB "
+                f"(CUDA context + allocator reserve)",
                 f"  {'Estimated VRAM':<24}{fit.total_gib:.2f} GiB",
                 f"  {'Available VRAM':<24}{fit.available_gib:.2f} GiB",
                 "",
@@ -132,9 +138,14 @@ def check_feasibility(
         # CPU work, and a toy model trains on CPU perfectly well - slowly, but the
         # point of a prototype is to validate mechanics, not to be fast. So estimate
         # against system RAM and let size decide.
+        from .trainer import resolve_precision
+
         system = collect_system()
         ram = system.total_ram_gib or 0.0
         cpu_budget = max(0.0, ram - 2.0)  # leave room for the OS
+        # The trainer falls back to fp32 on CPU, so estimating against the *requested*
+        # fp16 would halve the activation term for a run that will not use it.
+        effective, _ = resolve_precision(config.training.precision, "cpu")
         cpu_fit = estimate_training_memory(
             spec, cpu_budget,
             strategy=config.training.strategy,
@@ -143,7 +154,7 @@ def check_feasibility(
             batch_size=config.training.batch_size,
             gradient_checkpointing=config.training.gradient_checkpointing,
             label=config.name,
-            precision=f"{config.training.precision} (CPU)",
+            precision=f"{effective} (CPU)",
             runtime_overhead_gib=0.5,   # no CUDA context on CPU
         )
         report.fit = cpu_fit

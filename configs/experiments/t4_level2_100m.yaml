@@ -1,0 +1,80 @@
+# Level 2 — ~100M hybrid language model on a Tesla T4.
+#
+# Question: does the hybrid DeltaNet/attention architecture remain trainable and learn
+# real language structure when scaled from the 4.03M Level-1 prototype to ~100M?
+#
+# Level 1 proved the training mechanism works, using a synthetic induction task chosen
+# because it is learnable. It proved nothing about language. Level 2 changes exactly two
+# things — scale, and a real language objective — and holds everything else fixed. No
+# distillation, no MoE, no alternative attention ratios, no long context, no adaptive
+# reasoning. This is a scaling experiment, not an architecture search.
+#
+# Architecture ratios follow the teacher deliberately:
+#   FFN / hidden        2176 / 640  = 3.40   (teacher: 17408 / 5120 = 3.40)
+#   DeltaNet value/key  12 / 4      = 3:1    (teacher: 48 / 16     = 3:1)
+#   value_dim / hidden  768 / 640   = 1.20   (teacher: 6144 / 5120 = 1.20)
+#   layer layout        interval 4  -> 12 linear + 4 full attention (teacher: 48 + 16)
+#
+# Vocabulary is 256 because this trains on RAW BYTES. That needs no tokenizer download,
+# works on any text, is exactly reproducible, and makes the loss directly interpretable
+# as bits per byte (8.0 = learned nothing). It also puts ~99.8% of parameters in the
+# layers rather than an embedding table, so this measures the ARCHITECTURE.
+
+name: t4_level2_100m
+level: "Level 2 — T4 small student (~100M)"
+description: >-
+  ~94.5M hybrid DeltaNet/attention model trained on byte-level language data. Tests
+  whether the architecture scales beyond the toy regime and whether the memory
+  estimator becomes trustworthy against real measurements.
+
+model:
+  architecture:
+    hidden_size: 640
+    num_hidden_layers: 16
+    intermediate_size: 2176
+    vocab_size: 256              # byte-level
+    num_attention_heads: 10
+    num_key_value_heads: 2
+    head_dim: 64
+    linear_num_key_heads: 4
+    linear_num_value_heads: 12
+    linear_key_head_dim: 64
+    linear_value_head_dim: 64
+    linear_conv_kernel_dim: 4
+    full_attention_interval: 4   # -> 12 linear_attention + 4 full_attention
+    max_position_embeddings: 4096
+    tie_word_embeddings: true
+
+data:
+  text_corpus: true
+  # Leave text_path unset to use the deterministic procedural corpus, which needs no
+  # download and works offline. To train on real prose instead, point this at any UTF-8
+  # file — a public-domain book, documentation, source code. The corpus SHA-256 is
+  # recorded in summary.json either way, so a result is tied to the exact bytes.
+  text_path: null
+  procedural_bytes: 8000000      # ~8 MB
+  validation_fraction: 0.05
+  max_sequence_length: 1024
+  shuffle_seed: 0
+
+training:
+  strategy: full                 # architecture compression needs real student parameters
+  optimizer: adamw
+  precision: fp16                # T4 is Turing (CC 7.5): NO bf16
+  objective: sft                 # plain next-token causal LM; no KD at this level
+  learning_rate: 0.0006
+  weight_decay: 0.01
+  max_steps: 2000
+  warmup_steps: 100
+  batch_size: 8
+  gradient_accumulation_steps: 2 # effective batch 16 sequences = 16384 bytes/step
+  gradient_checkpointing: false  # 94M at seq 1024 fits without it; keeps the run fast
+  seed: 0
+  eval_every: 200
+  save_every: 500
+  log_every: 25
+
+runtime:
+  output_dir: experiments/runs/t4_level2_100m
+  device: auto
+  reserved_vram_gib: 1.0

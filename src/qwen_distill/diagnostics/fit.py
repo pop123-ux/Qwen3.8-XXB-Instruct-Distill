@@ -25,16 +25,69 @@ from ..architecture.memory import (
 from ..architecture.params import count_parameters
 from ..architecture.spec import HybridArchSpec
 
-#: Bytes per *trained* parameter, beyond the frozen weights themselves.
-#: Mixed-precision AdamW keeps an fp32 master copy (4) + two fp32 moments (8) and a
-#: gradient (2 in bf16). 8-bit optimizers replace the 8 with 2.
-OPTIMIZER_BYTES_PER_PARAM: dict[str, float] = {
-    "adamw": 4 + 8 + 2,          # fp32 master + m,v + bf16 grad = 14
-    "adamw_8bit": 4 + 2 + 2,     # fp32 master + 8-bit m,v + bf16 grad = 8
-    "adafactor": 4 + 1 + 2,      # factored second moment
-    "sgd": 4 + 4 + 2,            # master + momentum + grad
-    "sgd_no_momentum": 4 + 2,
+#: Bytes of *optimizer moment* state per trained parameter — the running statistics
+#: only. Gradients and any fp32 master copy are counted separately (see
+#: :data:`PRECISION_SCHEMES`) because the memory probe measures them at different
+#: stages: gradients appear during ``backward()``, moments only on the first
+#: ``optimizer.step()``, since AdamW allocates them lazily. Folding all three into one
+#: number made the estimate impossible to check against a measurement component-wise.
+OPTIMIZER_MOMENT_BYTES: dict[str, float] = {
+    "adamw": 8.0,            # fp32 first and second moments
+    "adamw_8bit": 2.0,       # 8-bit quantised moments (bitsandbytes)
+    "adafactor": 1.0,        # factored second moment, no first moment
+    "sgd": 4.0,              # fp32 momentum buffer
+    "sgd_no_momentum": 0.0,  # stateless
 }
+
+
+@dataclass(frozen=True)
+class PrecisionScheme:
+    """How a training precision actually holds weights, gradients and activations.
+
+    This distinction is not cosmetic. `torch.autocast` — what a T4 run uses — leaves
+    **parameters and gradients in fp32** and casts only the compute, whereas a "pure
+    bf16" run holds bf16 parameters and gradients with a separate fp32 master copy
+    inside the optimizer. Both land near 16 bytes per parameter in total for AdamW, so
+    a single total hides the difference; the per-component attribution the memory probe
+    produces does not, and would flag a correct total as two wrong components.
+    """
+
+    name: str
+    weight_bytes: float          # per parameter, as held for training
+    gradient_bytes: float        # per trainable parameter
+    master_copy_bytes: float     # extra fp32 optimizer-side copy; 0 when weights are fp32
+    activation_bytes: float      # per activation element
+    description: str
+
+
+#: Keyed by the user-facing ``precision`` value, plus the explicit scheme names.
+PRECISION_SCHEMES: dict[str, PrecisionScheme] = {
+    "fp32": PrecisionScheme(
+        "fp32", 4.0, 4.0, 0.0, 4.0,
+        "no mixed precision: fp32 weights, gradients and activations",
+    ),
+    "fp16": PrecisionScheme(
+        "amp_fp16", 4.0, 4.0, 0.0, 2.0,
+        "torch.autocast(fp16) + GradScaler: fp32 weights and gradients, fp16 compute",
+    ),
+    "bf16": PrecisionScheme(
+        "amp_bf16", 4.0, 4.0, 0.0, 2.0,
+        "torch.autocast(bf16): fp32 weights and gradients, bf16 compute",
+    ),
+    "pure_bf16": PrecisionScheme(
+        "pure_bf16", 2.0, 2.0, 4.0, 2.0,
+        "bf16 weights and gradients with an fp32 master copy in the optimizer",
+    ),
+}
+
+#: During training the loss path materialises the logits three times over, which a
+#: single ``tokens x vocab x 4`` term understates by 2.5-3x. Verified against
+#: ``transformers.loss.loss_utils.ForCausalLMLoss``, which does ``logits =
+#: logits.float()`` (one fp32 copy), and against the tensors autograd retains for
+#: ``cross_entropy`` (a second fp32 log-softmax buffer). The ``lm_head`` output itself
+#: is live alongside both, at the activation dtype. On a 248k-vocab model this term is
+#: measured in gigabytes, so getting it wrong is not a rounding error.
+LOSS_PATH_FP32_LOGIT_COPIES = 2
 
 #: How much of the model is actually trained under each strategy.
 #: LoRA ranks typically touch well under 1% of parameters.
@@ -163,16 +216,61 @@ class TrainingFit:
     available_gib: float
     verdict: str
     headroom_gib: float
+    #: Gradients, separated from optimizer state because the probe measures them at a
+    #: different stage: gradients during ``backward()``, moments on the first ``step()``.
+    gradients_gib: float = 0.0
+    #: Logits and the two fp32 copies the loss path makes of them, separated because on
+    #: a large vocabulary this term rivals the weights and is easy to get wrong alone.
+    logits_gib: float = 0.0
+    precision_scheme: str = ""
+    #: What the estimate predicts for each of the two quantities the probe reports.
+    #: ``allocated`` is live tensors — the estimator's own arithmetic, and the one a
+    #: correction should be derived from. ``reserved`` adds the CUDA context and
+    #: allocator allowance, and is what the process actually occupies.
+    predicted_allocated_gib: float = 0.0
+    predicted_reserved_gib: float = 0.0
     suggestions: list[str] = field(default_factory=list)
 
     @property
     def feasible(self) -> bool:
         return self.verdict != "NOT FEASIBLE"
 
+    def component_estimate(self) -> dict[str, float]:
+        """The estimate keyed the way :mod:`qwen_distill.training.memory_probe` keys
+        its measurements, so the two can be compared term by term rather than only in
+        total. A correct total made of two compensating errors is still two errors."""
+        return {
+            "weights_gib": self.base_weights_gib,
+            "activations_gib": self.activations_gib + self.logits_gib,
+            "gradients_gib": self.gradients_gib,
+            "optimizer_state_gib": self.optimizer_state_gib,
+            "peak_allocated_gib": self.predicted_allocated_gib,
+            "peak_reserved_gib": self.predicted_reserved_gib,
+        }
+
     def to_dict(self) -> dict[str, Any]:
         data = self.__dict__.copy()
         data["feasible"] = self.feasible
         return data
+
+
+def resolve_precision_scheme(precision: str | None) -> PrecisionScheme:
+    """Map a configured precision onto how memory is actually held.
+
+    Labels arrive from configs and from run summaries, so they carry decoration —
+    ``"fp16 (CPU)"``, ``"4-bit base + bf16 compute"``. The first recognised token wins,
+    and an unrecognised label falls back to the AMP bf16 scheme rather than raising:
+    a feasibility check must still produce an estimate for a label it has not seen.
+    """
+    if not precision:
+        return PRECISION_SCHEMES["bf16"]
+    if precision in PRECISION_SCHEMES:
+        return PRECISION_SCHEMES[precision]
+    lowered = precision.lower()
+    for key in ("pure_bf16", "fp32", "fp16", "bf16"):
+        if key in lowered:
+            return PRECISION_SCHEMES[key]
+    return PRECISION_SCHEMES["bf16"]
 
 
 def estimate_training_memory(
@@ -200,15 +298,24 @@ def estimate_training_memory(
     """
     if strategy not in TRAINABLE_FRACTION:
         raise ValueError(f"unknown strategy {strategy!r}; known: {sorted(TRAINABLE_FRACTION)}")
-    if optimizer not in OPTIMIZER_BYTES_PER_PARAM:
-        raise ValueError(f"unknown optimizer {optimizer!r}; known: {sorted(OPTIMIZER_BYTES_PER_PARAM)}")
+    if optimizer not in OPTIMIZER_MOMENT_BYTES:
+        raise ValueError(f"unknown optimizer {optimizer!r}; known: {sorted(OPTIMIZER_MOMENT_BYTES)}")
+
+    scheme = resolve_precision_scheme(precision)
 
     params = count_parameters(spec)
     total_params = params.total
     trainable = int(total_params * TRAINABLE_FRACTION[strategy])
 
-    base_bytes = total_params * BASE_BYTES_PER_PARAM[strategy]
-    optimizer_bytes = trainable * OPTIMIZER_BYTES_PER_PARAM[optimizer]
+    # QLoRA freezes a 4-bit base; everything else holds the base at the scheme's
+    # training weight precision, which under autocast is fp32 and not the compute dtype.
+    base_bytes = total_params * (
+        BASE_BYTES_PER_PARAM["qlora"] if strategy == "qlora" else scheme.weight_bytes
+    )
+    gradient_bytes = trainable * scheme.gradient_bytes
+    optimizer_bytes = trainable * (
+        scheme.master_copy_bytes + OPTIMIZER_MOMENT_BYTES[optimizer]
+    )
 
     tokens = sequence_length * batch_size
     if gradient_checkpointing:
@@ -220,14 +327,20 @@ def estimate_training_memory(
         per_token = spec.num_hidden_layers * (
             2 * spec.hidden_size + 3 * spec.intermediate_size
         )
-    activation_bytes = tokens * per_token * 2  # bf16
+    activation_bytes = tokens * per_token * scheme.activation_bytes
 
-    # Logits over a large vocabulary are material during training: they are produced in
-    # fp32 and retained for the loss.
-    activation_bytes += tokens * spec.vocab_size * 4
+    # The loss path holds the logits three times over: the lm_head output at the
+    # activation dtype, its fp32 upcast, and cross_entropy's retained log-softmax
+    # buffer. See LOSS_PATH_FP32_LOGIT_COPIES.
+    logit_bytes = tokens * spec.vocab_size * (
+        scheme.activation_bytes + 4.0 * LOSS_PATH_FP32_LOGIT_COPIES
+    )
 
+    # Tensors the estimator can actually derive, kept separate from the allowance for
+    # things it cannot: the CUDA context and the caching allocator's reserve.
+    allocated_bytes = base_bytes + gradient_bytes + optimizer_bytes + activation_bytes + logit_bytes
     overhead_bytes = runtime_overhead_gib * GIB
-    total_bytes = base_bytes + optimizer_bytes + activation_bytes + overhead_bytes
+    total_bytes = allocated_bytes + overhead_bytes
     total_gib = total_bytes / GIB
 
     verdict = "PLAUSIBLE" if total_gib <= available_gib else "NOT FEASIBLE"
@@ -238,10 +351,7 @@ def estimate_training_memory(
         label=label or spec.name,
         strategy=strategy,
         optimizer=optimizer,
-        precision=(
-            precision if precision
-            else ("4-bit base + bf16 compute" if strategy == "qlora" else "bf16")
-        ),
+        precision=precision or ("4-bit base + bf16 compute" if strategy == "qlora" else "bf16"),
         sequence_length=sequence_length,
         batch_size=batch_size,
         gradient_checkpointing=gradient_checkpointing,
@@ -250,6 +360,11 @@ def estimate_training_memory(
         base_weights_gib=base_bytes / GIB,
         optimizer_state_gib=optimizer_bytes / GIB,
         activations_gib=activation_bytes / GIB,
+        gradients_gib=gradient_bytes / GIB,
+        logits_gib=logit_bytes / GIB,
+        precision_scheme=scheme.name,
+        predicted_allocated_gib=allocated_bytes / GIB,
+        predicted_reserved_gib=total_gib,
         overhead_gib=runtime_overhead_gib,
         total_gib=total_gib,
         available_gib=available_gib,

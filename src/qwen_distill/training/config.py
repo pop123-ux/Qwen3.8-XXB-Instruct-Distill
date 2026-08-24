@@ -62,12 +62,31 @@ class DataConfig:
 
     train_path: str | None = None
     validation_path: str | None = None
-    #: Use a deterministic synthetic corpus instead of a file. For pipeline tests.
+    #: Use a deterministic synthetic *induction* task instead of a corpus. This is the
+    #: Level-1 mechanism test: it proves the optimizer works, not that the model learns
+    #: language. Do not use it to claim a language result.
     synthetic: bool = False
     synthetic_examples: int = 256
+    #: Byte-level language modelling on real text. `text_path` points at any UTF-8 file;
+    #: when `text_corpus` is set without a path, a deterministic procedural corpus is
+    #: generated offline. This is the Level-2 objective.
+    text_corpus: bool = False
+    text_path: str | None = None
+    procedural_bytes: int = 2_000_000
+    validation_fraction: float = 0.05
+    max_corpus_bytes: int | None = None
     max_sequence_length: int = 1024
     streaming: bool = False
     shuffle_seed: int = 0
+
+    @property
+    def mode(self) -> str:
+        """Which data path this config selects."""
+        if self.text_corpus:
+            return "text"
+        if self.synthetic:
+            return "synthetic"
+        return "distillation"
 
 
 @dataclass
@@ -152,15 +171,21 @@ class ExperimentConfig:
                 "    A config shipped with `pretrained: null` is a template: choose a base "
                 "model before running it"
             )
-        if not (self.data.train_path or self.data.synthetic):
-            errors.append("data needs either train_path or synthetic: true")
+        if not (self.data.train_path or self.data.synthetic or self.data.text_corpus):
+            errors.append("data needs one of: train_path, synthetic: true, text_corpus: true")
+        if self.data.synthetic and self.data.text_corpus:
+            errors.append(
+                "data.synthetic and data.text_corpus are different objectives "
+                "(induction task vs byte-level language modelling); set exactly one"
+            )
         if self.training.batch_size < 1:
             errors.append("batch_size must be >= 1")
         if self.training.gradient_accumulation_steps < 1:
             errors.append("gradient_accumulation_steps must be >= 1")
-        if self.training.objective != "sft" and self.data.synthetic:
+        if self.training.objective != "sft" and (self.data.synthetic or self.data.text_corpus):
             errors.append(
-                "KD objectives need teacher outputs; synthetic data cannot provide them"
+                "KD objectives need teacher outputs; synthetic and text corpora "
+                "cannot provide them"
             )
         if errors:
             raise ValueError(f"invalid experiment {self.name!r}:\n  - " + "\n  - ".join(errors))
