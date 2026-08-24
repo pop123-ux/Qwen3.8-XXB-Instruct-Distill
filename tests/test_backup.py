@@ -12,6 +12,7 @@ and the "Drive" is an ordinary tmp_path.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -260,6 +261,88 @@ def test_dry_run_changes_nothing(tmp_path):
     assert code == 0
     assert stale.is_file(), "dry run must not delete"
     assert list(destination.iterdir()) == [stale], "dry run must not copy"
+
+
+# --- checkpoints ----------------------------------------------------------
+def make_checkpoint(root, step: int, *, complete: bool = True):
+    """A checkpoint directory shaped like the trainer's, complete or otherwise."""
+    directory = root / f"step_{step:06d}"
+    directory.mkdir(parents=True, exist_ok=True)
+    for name in ("model.safetensors", "optimizer.pt", "training_state.json"):
+        (directory / name).write_text("x", encoding="utf-8")
+    (directory / "metadata.json").write_text(
+        json.dumps({"step": step, "complete": complete}), encoding="utf-8"
+    )
+    if complete:
+        (directory / "COMPLETE").write_text(f"step {step}\n", encoding="utf-8")
+    return directory
+
+
+def test_an_incomplete_checkpoint_is_never_copied(tmp_path):
+    """Publishing a half-written checkpoint to Drive is worse than not copying it: it
+    becomes the newest thing there, and recovery reaches for the newest."""
+    source = make_source(tmp_path)
+    checkpoints = source / "checkpoints"
+    make_checkpoint(checkpoints, 100)
+    make_checkpoint(checkpoints, 200, complete=False)
+
+    plan = backup.build_plan(source, tmp_path / "drive")
+
+    copied = {path.relative_to(source).as_posix() for path, _ in plan.to_copy}
+    assert any(name.startswith("checkpoints/step_000100/") for name in copied)
+    assert not any(name.startswith("checkpoints/step_000200/") for name in copied)
+    assert "checkpoints/step_000200" in plan.incomplete_checkpoints
+
+
+def test_staging_directories_from_a_killed_write_are_never_copied(tmp_path):
+    source = make_source(tmp_path)
+    staging = source / "checkpoints" / ".step_000300.incomplete"
+    staging.mkdir(parents=True)
+    (staging / "model.safetensors").write_text("half", encoding="utf-8")
+
+    plan = backup.build_plan(source, tmp_path / "drive")
+
+    assert not any(".incomplete" in path.as_posix() for path, _ in plan.to_copy)
+    assert "checkpoints/.step_000300.incomplete" in plan.incomplete_checkpoints
+
+
+def test_a_complete_checkpoint_survives_a_real_backup(tmp_path):
+    source = make_source(tmp_path)
+    destination = tmp_path / "drive"
+    make_checkpoint(source / "checkpoints", 100)
+    make_checkpoint(source / "checkpoints", 200, complete=False)
+
+    backup.execute(backup.build_plan(source, destination))
+
+    assert (destination / "checkpoints" / "step_000100" / "COMPLETE").is_file()
+    assert (destination / "checkpoints" / "step_000100" / "model.safetensors").is_file()
+    assert not (destination / "checkpoints" / "step_000200").exists()
+
+
+def test_checkpoints_only_skips_code_but_keeps_the_run_record(tmp_path):
+    """Code belongs in git. Drive should hold what git cannot."""
+    source = make_source(tmp_path)
+    make_checkpoint(source / "checkpoints", 100)
+    (source / "metrics.jsonl").write_text('{"step": 1}\n', encoding="utf-8")
+    (source / "progress").mkdir()
+    (source / "progress" / "latest.json").write_text("{}", encoding="utf-8")
+
+    plan = backup.build_plan(source, tmp_path / "drive", checkpoints_only=True)
+
+    copied = {path.relative_to(source).as_posix() for path, _ in plan.to_copy}
+    assert "checkpoints/step_000100/model.safetensors" in copied
+    assert "metrics.jsonl" in copied
+    assert "progress/latest.json" in copied
+    assert "src/qwen_distill/model.py" not in copied
+
+
+def test_the_default_backup_still_copies_everything_it_used_to(tmp_path):
+    """--checkpoints-only is opt-in; the whole-repository backup must not change."""
+    source = make_source(tmp_path)
+    plan = backup.build_plan(source, tmp_path / "drive")
+    copied = {path.relative_to(source).as_posix() for path, _ in plan.to_copy}
+    assert "src/qwen_distill/model.py" in copied
+    assert "README.md" in copied
 
 
 # --- CLI ------------------------------------------------------------------

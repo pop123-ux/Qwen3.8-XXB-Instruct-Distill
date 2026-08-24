@@ -100,10 +100,35 @@ training:
   gradient_checkpointing: true   # THE FIX: 67x less retained activation. See the header.
   seed: 0
   eval_every: 200
-  save_every: 500
+
+  # --- interruption safety (Phase 2B) --------------------------------------
+  # The first attempt at this config trained correctly on a T4 and reached ~step 500
+  # before the Colab runtime disconnected and took the ephemeral filesystem with it.
+  # These two intervals decide how much work a disconnect can cost.
+  #
+  # At ~2100 tokens/s and 16,384 bytes per step, 200 steps is about 26 minutes. That is
+  # the maximum work at risk. 500 steps would be ~65 minutes, which is too much to lose
+  # to something as routine as a Colab timeout.
+  #
+  # Storage: one checkpoint is ~1.1 GB (360 MB weights + 720 MB AdamW state), so a
+  # 2000-step run leaves 10 checkpoints, ~11 GB. Prune older ones, or raise the interval
+  # if Drive is tight — the trade is disk against work-at-risk.
+  save_every: 200
   log_every: 25
+  # Progress records are ~400 bytes and carry no weights, so they can be frequent. They
+  # are what survives between checkpoints.
+  progress_every: 25
+  # Copy each completed checkpoint to persistent storage. Off by default: the trainer
+  # must work with no Drive, no network and no mounted volume. Set to a Drive path to
+  # enable, e.g.
+  #   persistent_backup: /content/drive/MyDrive/qwen-distill/t4_level2_100m_ckpt/checkpoints
+  # Or leave it off and run scripts/backup_colab_to_drive.py after the run.
+  persistent_backup: null
 
 runtime:
   output_dir: experiments/runs/t4_level2_100m_ckpt
   device: auto
   reserved_vram_gib: 1.0
+  # "latest" resolves to the newest VERIFIED checkpoint under checkpoints/. Usually set
+  # on the command line instead: --resume latest
+  resume_from: null

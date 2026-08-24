@@ -17,12 +17,26 @@ from __future__ import annotations
 
 import contextlib
 import json
+import signal
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from ..architecture.spec import HybridArchSpec
+from .checkpoints import (
+    CheckpointMetadata,
+    capture_rng_state,
+    cleanup_incomplete,
+    config_sha256,
+    is_complete,
+    load_checkpoint,
+    resolve_checkpoint,
+    restore_rng_state,
+    save_checkpoint,
+    step_dirname,
+)
 from .config import ExperimentConfig
 from .data import DistillationExample, read_jsonl, synthetic_corpus
 from .memory_probe import (
@@ -35,7 +49,13 @@ from .memory_probe import (
     reset_peak,
     take,
 )
-from .text_data import BYTE_VOCAB_SIZE, bits_per_byte, iterate_batches, prepare_corpus
+from .progress import ProgressWriter
+from .text_data import (
+    BYTE_VOCAB_SIZE,
+    ResumableBatchSampler,
+    bits_per_byte,
+    prepare_corpus,
+)
 
 
 @dataclass
@@ -46,12 +66,24 @@ class TrainingState:
     epoch: int = 0
     best_validation_loss: float | None = None
     history: list[dict[str, Any]] = field(default_factory=list)
+    #: Cumulative tokens, so throughput and data coverage survive a resume. Recomputing
+    #: it from the step count would be wrong the moment batch size ever changed.
+    tokens_seen: int = 0
+    #: Where the batch stream was, from ResumableBatchSampler.state_dict(). Without it a
+    #: resumed run silently rewinds to epoch 0 and re-trains on data it has already seen.
+    data_state: dict[str, Any] = field(default_factory=dict)
+    #: Wall-clock from previous segments, so a run resumed three times still reports the
+    #: total time it actually took.
+    elapsed_seconds: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "step": self.step, "epoch": self.epoch,
             "best_validation_loss": self.best_validation_loss,
             "history": self.history,
+            "tokens_seen": self.tokens_seen,
+            "data_state": self.data_state,
+            "elapsed_seconds": self.elapsed_seconds,
         }
 
     @classmethod
@@ -60,6 +92,9 @@ class TrainingState:
             step=data.get("step", 0), epoch=data.get("epoch", 0),
             best_validation_loss=data.get("best_validation_loss"),
             history=data.get("history", []),
+            tokens_seen=data.get("tokens_seen", 0),
+            data_state=data.get("data_state") or {},
+            elapsed_seconds=data.get("elapsed_seconds", 0.0),
         )
 
 
@@ -186,7 +221,7 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
               f"of {corpus_stats.sequence_length} "
               f"({corpus_stats.n_train} train / {corpus_stats.n_validation} validation)")
         print(f"          sha256 {corpus_stats.sha256[:16]}")
-        batches = iterate_batches(
+        batches = ResumableBatchSampler(
             train_sequences, config.training.batch_size, seed=config.training.seed
         )
     else:
@@ -233,15 +268,76 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
             if use_amp else contextlib.nullcontext()
         )
 
+    # --- persistence ----------------------------------------------------
+    checkpoint_root = output / "checkpoints"
+    checkpoint_root.mkdir(parents=True, exist_ok=True)
+    # A previous process killed mid-write leaves a staging directory behind. It is
+    # ignored by discovery, but removing it keeps the run directory honest.
+    for removed in cleanup_incomplete(checkpoint_root):
+        print(f"  removed incomplete checkpoint from a previous run: {removed}")
+
+    config_digest = config_sha256(config.to_dict())
+    progress = ProgressWriter(output, git_commit=_git_commit(), config_sha256=config_digest)
+
     state = TrainingState()
     if config.runtime.resume_from:
-        state = _resume(model, optimizer, Path(config.runtime.resume_from), state)
-        print(f"  resumed at step {state.step}")
+        resolved = resolve_checkpoint(checkpoint_root, config.runtime.resume_from)
+        if resolved is None:
+            print(
+                f"\n  ERROR: no complete checkpoint matches {config.runtime.resume_from!r} "
+                f"under {checkpoint_root}.",
+                file=sys.stderr,
+            )
+            print("  Resuming from a partial write would silently produce a different "
+                  "run, so this stops instead.", file=sys.stderr)
+            return 2
+        # OneCycleLR's shape is a function of total_steps, so its state cannot be
+        # transplanted onto a schedule of a different length. Catching that here beats
+        # the scheduler's own error ("Tried to step 5 times...") thirty seconds later.
+        saved_total = _checkpoint_total_steps(resolved)
+        if saved_total is not None and saved_total != config.training.max_steps:
+            print(
+                f"\n  ERROR: this checkpoint was written under max_steps={saved_total}, "
+                f"but the config says {config.training.max_steps}.\n"
+                "  The one-cycle learning-rate schedule is shaped by its total length, so "
+                "resuming\n  across a change would silently train on a different curve "
+                "than either run intended.\n"
+                f"  Either set max_steps back to {saved_total}, or start a new run "
+                "directory.",
+                file=sys.stderr,
+            )
+            return 2
+        loaded = load_checkpoint(
+            resolved, model=model, optimizer=optimizer, scheduler=scheduler,
+            scaler=scaler, map_location=device,
+        )
+        state = TrainingState.from_dict(loaded["training_state"])
+        rng_restored = restore_rng_state(loaded["rng_state"])
+        if text_mode and state.data_state:
+            batches.load_state_dict(state.data_state)
+        print(f"\n  RESUMED from {resolved}")
+        print(f"    step            : {state.step} of {config.training.max_steps}")
+        print(f"    restored        : {', '.join(loaded['restored']) or 'nothing'}")
+        print(f"    RNG restored    : {', '.join(rng_restored) or 'none'}")
+        if text_mode:
+            print(f"    data position   : epoch {batches.epoch}, batch {batches.index}")
+        print(f"    tokens seen     : {state.tokens_seen:,}")
+        saved_digest = (loaded.get("metadata") or {}).get("config_sha256")
+        if saved_digest and saved_digest != config_digest:
+            print("    ! WARNING: the config differs from the one this checkpoint was "
+                  "written with.\n"
+                  "      The run continues, but it is no longer the same experiment.")
+
+    print("\n  CHECKPOINTING")
+    print(f"    full checkpoint : every {config.training.save_every} steps -> {checkpoint_root}")
+    print(f"    progress record : every {config.training.resolved_progress_every} steps "
+          f"-> {progress.metrics_path.name} + progress/latest.json")
+    print(f"    resume          : "
+          f"{config.runtime.resume_from or 'no (starting from step 0)'}")
+    print(f"    persistent copy : {config.training.persistent_backup or 'off (local only)'}")
 
     vocab = BYTE_VOCAB_SIZE if text_mode else (spec.vocab_size if spec else model.config.vocab_size)
     generator = torch.Generator().manual_seed(config.training.seed)
-    metrics_path = output / "metrics.jsonl"
-    metrics_handle = metrics_path.open("a", encoding="utf-8")
     # Computed before the loop so an OOM can be compared against it in place. The
     # estimate is the thing on trial when a run fails.
     estimated_total_gib = None
@@ -257,17 +353,79 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
             precision=precision,
         ).total_gib
 
+    def write_checkpoint(step: int, *, reason: str) -> Path | None:
+        """Persist everything needed to resume, atomically. Returns the directory."""
+        state.data_state = batches.state_dict() if text_mode else {}
+        state.elapsed_seconds = resumed_elapsed + (time.perf_counter() - started)
+        last_loss = next(
+            (h["loss"] for h in reversed(state.history) if "loss" in h), None
+        )
+        metadata = CheckpointMetadata(
+            step=step,
+            parameter_count=_parameter_count(spec),
+            architecture_sha256=config_sha256(spec.to_dict()) if spec else None,
+            config_sha256=config_digest,
+            precision=precision,
+            optimizer=config.training.optimizer,
+            sequence_length=config.data.max_sequence_length,
+            batch_size=config.training.batch_size,
+            effective_batch_size=config.training.effective_batch_size,
+            gradient_checkpointing=config.training.gradient_checkpointing,
+            tokens_seen=state.tokens_seen,
+            training_loss=last_loss,
+            validation_loss=state.best_validation_loss,
+            validation_bits_per_byte=(
+                bits_per_byte(state.best_validation_loss)
+                if text_mode and state.best_validation_loss is not None else None
+            ),
+        )
+        try:
+            path = save_checkpoint(
+                checkpoint_root, step,
+                model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler,
+                training_state=state.to_dict(), config=config.to_dict(),
+                rng_state=capture_rng_state(), metadata=metadata,
+            )
+        except Exception as exc:  # noqa: BLE001 - a failed write must not kill the run
+            print(f"  ! checkpoint at step {step} FAILED to write: "
+                  f"{type(exc).__name__}: {exc}", file=sys.stderr)
+            print("    The previous checkpoint is untouched and still resumable.",
+                  file=sys.stderr)
+            return None
+        print(f"  checkpoint: {path.name} ({reason})")
+        _persist_checkpoint(config, path, checkpoint_root)
+        return path
+
+    resumed_elapsed = state.elapsed_seconds
     started = time.perf_counter()
-    tokens_seen = 0
+    tokens_seen = state.tokens_seen
     first_step = True
     #: The phase currently executing, so an OOM can say *where* it ran out rather than
     #: only that it did. The first Level-2 attempt died in the forward pass and the
     #: traceback named SDPA, which was the next allocation rather than the cause.
     phase = ["before first step"]
     oom: OOMRecord | None = None
+    #: Set by a signal handler. The loop finishes the step in flight and then stops
+    #: cleanly, so the checkpoint written on the way out is a real one. A hard kill
+    #: (SIGKILL, a Colab runtime teardown) cannot be caught at all — that case is
+    #: covered by atomic writes, not by this.
+    stopping = {"requested": False, "signal": None}
+
+    def request_stop(signum, _frame):
+        stopping["requested"] = True
+        stopping["signal"] = signal.Signals(signum).name
+        print(f"\n  received {stopping['signal']}: finishing this step, then saving "
+              "a checkpoint and stopping.")
+
+    previous_handlers = {}
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        # Not the main thread, or a platform without the signal: training still runs,
+        # it just cannot stop gracefully. Atomic writes cover that case anyway.
+        with contextlib.suppress(ValueError, OSError):
+            previous_handlers[sig] = signal.signal(sig, request_stop)
 
     try:
-        while state.step < config.training.max_steps:
+        while state.step < config.training.max_steps and not stopping["requested"]:
             optimizer.zero_grad(set_to_none=True)
             accumulated = 0.0
             for _ in range(config.training.gradient_accumulation_steps):
@@ -297,6 +455,7 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
                 scaler.scale(loss).backward()
                 accumulated += float(loss.item())
                 tokens_seen += batch.numel()
+                state.tokens_seen += batch.numel()
                 if first_step:
                     take(profile, "after_backward")
                     first_step = False
@@ -313,21 +472,31 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
                 take(profile, "after_optimizer_step")
 
             if state.step % config.training.log_every == 0:
-                elapsed = time.perf_counter() - started
+                segment = time.perf_counter() - started
+                elapsed = resumed_elapsed + segment
                 record = {
                     "step": state.step, "loss": accumulated,
                     "lr": scheduler.get_last_lr()[0], "elapsed_s": round(elapsed, 1),
-                    "tokens_seen": tokens_seen,
-                    "tokens_per_second": round(tokens_seen / elapsed, 1) if elapsed else 0.0,
+                    "tokens_seen": state.tokens_seen,
+                    "tokens_per_second": round(tokens_seen / segment, 1) if segment else 0.0,
+                    "epoch": batches.epoch if text_mode else state.epoch,
                 }
                 if text_mode:
                     record["bits_per_byte"] = round(bits_per_byte(accumulated), 4)
                 state.history.append(record)
-                metrics_handle.write(json.dumps(record) + "\n")
-                metrics_handle.flush()
                 extra = f"  bpb {record['bits_per_byte']:.3f}" if text_mode else ""
                 print(f"  step {state.step:>6}  loss {accumulated:8.4f}{extra}  "
                       f"{record['tokens_per_second']:>8.0f} tok/s  {elapsed:6.1f}s")
+
+            # Progress is written on its own interval, independently of checkpoints:
+            # it costs kilobytes, so it can be frequent, and it is what survives when
+            # the process dies between checkpoints.
+            if state.step % config.training.resolved_progress_every == 0:
+                latest = next(
+                    (h for h in reversed(state.history) if h.get("step") == state.step),
+                    {"step": state.step, "loss": accumulated},
+                )
+                progress.write({**latest, "best_validation_loss": state.best_validation_loss})
 
             if state.step % config.training.eval_every == 0:
                 validation_loss = (
@@ -339,8 +508,7 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
                 if text_mode:
                     record["validation_bits_per_byte"] = round(bits_per_byte(validation_loss), 4)
                 state.history.append(record)
-                metrics_handle.write(json.dumps(record) + "\n")
-                metrics_handle.flush()
+                progress.write({**record, "step": state.step}, status="validated")
                 extra = f"  bpb {record['validation_bits_per_byte']:.3f}" if text_mode else ""
                 print(f"  step {state.step:>6}  validation {validation_loss:8.4f}{extra}")
                 if state.best_validation_loss is None or validation_loss < state.best_validation_loss:
@@ -348,7 +516,7 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
 
             if state.step % config.training.save_every == 0:
                 phase[0] = "checkpoint"
-                _checkpoint(model, optimizer, state, output / f"step-{state.step}", config)
+                write_checkpoint(state.step, reason="periodic")
     except Exception as exc:  # noqa: BLE001 - an OOM is a result, not just a crash
         if not is_oom(exc):
             raise
@@ -371,18 +539,33 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
         )
         print(f"\n{oom.render()}\n")
     finally:
-        metrics_handle.close()
+        for sig, handler in previous_handlers.items():
+            with contextlib.suppress(ValueError, OSError):
+                signal.signal(sig, handler)
 
     take(profile, "peak_training")
     derive_components(profile)
 
-    if oom is None:
+    final_checkpoint = None
+    if oom is None and state.step > 0:
+        # Unconditional, so a run whose last step does not land on save_every — a
+        # 20-step smoke test against save_every=500, or an interrupted run — still
+        # leaves something resumable. Previously that produced no recoverable artifact.
         phase[0] = "final checkpoint"
-        _checkpoint(model, optimizer, state, output / "final", config)
-    elapsed = time.perf_counter() - started
+        existing = checkpoint_root / step_dirname(state.step)
+        if is_complete(existing):
+            final_checkpoint = existing
+        else:
+            reason = "interrupted" if stopping["requested"] else "final step"
+            final_checkpoint = write_checkpoint(state.step, reason=reason)
+    elapsed = resumed_elapsed + (time.perf_counter() - started)
     if oom is None:
-        print(f"\n  finished {state.step} steps in {elapsed:.1f}s "
-              f"({tokens_seen / elapsed:,.0f} tokens/s)")
+        verb = "stopped at" if stopping["requested"] else "finished"
+        print(f"\n  {verb} step {state.step} of {config.training.max_steps} "
+              f"in {elapsed:.1f}s ({state.tokens_seen:,} tokens seen)")
+        if stopping["requested"]:
+            print(f"  interrupted by {stopping['signal']}. Resume with:\n"
+                  f"    python scripts/train_student.py --config <config> --resume latest")
 
     _write_summary(
         output, config, spec, state, profile, corpus_stats,
@@ -393,7 +576,15 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
         print(f"  wrote {output / 'summary.json'} recording the OOM.")
         print("  This is usable data: run scripts/hardware_info.py --calibrate-run on it.")
         return 1
-    print(f"  wrote {output / 'final'} and summary.json")
+    if final_checkpoint is not None:
+        print(f"  wrote {final_checkpoint} and summary.json")
+    elif state.step == 0:
+        print(f"  wrote {output / 'summary.json'} (no steps ran, so no checkpoint)")
+    else:
+        # Never report success for a checkpoint that failed to write: the run looks
+        # complete and is not recoverable, which is the exact failure being fixed here.
+        print(f"  ! no checkpoint could be written at step {state.step}.", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -593,25 +784,46 @@ def _validate(model, config: ExperimentConfig, vocab: int, device: str) -> float
     return total / batches
 
 
-def _checkpoint(model, optimizer, state: TrainingState, path: Path, config: ExperimentConfig) -> None:
-    import torch
+def _checkpoint_total_steps(checkpoint: Path) -> int | None:
+    """The ``max_steps`` a checkpoint was written under, from its saved config."""
+    config_file = Path(checkpoint) / "config.json"
+    if not config_file.is_file():
+        return None
+    try:
+        saved = json.loads(config_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return (saved.get("training") or {}).get("max_steps")
 
-    path.mkdir(parents=True, exist_ok=True)
-    torch.save(
-        {"model": model.state_dict(), "optimizer": optimizer.state_dict()},
-        path / "training_state.pt",
-    )
-    (path / "state.json").write_text(json.dumps(state.to_dict(), indent=2), encoding="utf-8")
-    (path / "config.json").write_text(json.dumps(config.to_dict(), indent=2), encoding="utf-8")
+
+def _git_commit() -> str | None:
+    """The commit this run is executing, recorded with every progress line."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10, check=False
+        )
+        return result.stdout.strip() or None if result.returncode == 0 else None
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None
 
 
-def _resume(model, optimizer, path: Path, state: TrainingState) -> TrainingState:
-    import torch
+def _persist_checkpoint(config: ExperimentConfig, checkpoint: Path, root: Path) -> None:
+    """Copy a completed checkpoint to persistent storage, if the config asks for it.
 
-    payload = torch.load(path / "training_state.pt", map_location="cpu", weights_only=False)
-    model.load_state_dict(payload["model"])
-    optimizer.load_state_dict(payload["optimizer"])
-    state_file = path / "state.json"
-    if state_file.is_file():
-        state = TrainingState.from_dict(json.loads(state_file.read_text(encoding="utf-8")))
-    return state
+    Optional by design: the trainer must run with no Drive, no network and no mounted
+    volume. A backup that fails is reported and does not stop training — losing the copy
+    is recoverable, losing the run is not.
+    """
+    destination = config.training.persistent_backup
+    if not destination:
+        return
+    try:
+        from .persist import persist_checkpoint
+
+        target = persist_checkpoint(checkpoint, destination, checkpoint_root=root)
+        print(f"    persisted -> {target}")
+    except Exception as exc:  # noqa: BLE001 - a backup failure must not end the run
+        print(f"    ! persistent backup failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        print("      Training continues; the local checkpoint is intact.", file=sys.stderr)

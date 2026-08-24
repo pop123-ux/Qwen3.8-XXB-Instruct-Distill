@@ -108,6 +108,28 @@ Byte-level tokenization is the deliberate choice here: no tokenizer to download 
 version, any text file works unchanged, and the loss is directly comparable across runs
 because it does not depend on a tokenizer's compression rate.
 
+**Second attempt: it trains.** No OOM, ~2100 tokens/s, validation bits-per-byte down
+from 1.317 at step 200 to 1.279 at step 400 (8.0 = learned nothing). Then the Colab
+runtime disconnected at ~step 500 and took the ephemeral filesystem with it — see
+[`experiments/runs/t4_level2_100m_ckpt_interrupted_2026-08-24/`](experiments/runs/t4_level2_100m_ckpt_interrupted_2026-08-24/).
+**That is ~25% of a 2000-step run, not a finished experiment**, and it says nothing
+about final model quality.
+
+Training is now interruption-safe: checkpoints are written atomically with a `COMPLETE`
+marker and a verified `latest.json` pointer, and they carry everything a resume needs —
+scheduler, GradScaler, RNG, data position, tokens seen. Previously 11 of 17 required
+items were not persisted, so even a surviving checkpoint would have restarted the
+one-cycle schedule and rewound the data to epoch 0.
+
+```bash
+python scripts/train_student.py --config configs/experiments/t4_level2_100m_ckpt.yaml --status
+python scripts/train_student.py --config configs/experiments/t4_level2_100m_ckpt.yaml --resume latest
+```
+
+A crash may lose the step in flight; it can no longer invalidate the last completed
+checkpoint. Full design and the Colab recovery workflow:
+[`docs/experiments/t4_level2_resumability.md`](docs/experiments/t4_level2_resumability.md).
+
 **The first attempt OOMed on a real T4** — predicted 4.53 GiB, demanded ~24.8 GiB, died
 in the forward pass with zero steps completed. The failure is kept as an artifact in
 `experiments/runs/t4_level2_100m_oom_2026-08-24/` and its config is preserved unchanged.
@@ -202,7 +224,7 @@ development ladder from CPU to the final run.
 
 ```bash
 pip install -e ".[dev]"
-pytest                                    # 522 tests, no GPU required
+pytest                                    # 575 tests, no GPU required
 
 python scripts/estimate_vram.py --preset teacher --matrix --max-context
 python scripts/search_architectures.py --vram 16 --context 32768 --top 15
@@ -224,7 +246,7 @@ scripts/          hardware_info, train_student, estimate_vram, validate_checkpoi
 docs/             plans and analysis (start with VERIFICATION.md)
 experiments/      architecture search outputs
 vendor/           teacher metadata, supplied out-of-band
-tests/            522 tests pinning every formula
+tests/            575 tests pinning every formula
 ```
 
 ## Verification status

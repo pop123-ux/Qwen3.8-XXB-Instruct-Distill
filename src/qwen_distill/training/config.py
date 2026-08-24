@@ -118,12 +118,26 @@ class TrainingConfig:
 
     seed: int = 0
     eval_every: int = 50
+    #: Full resumable checkpoint interval. Deliberately separate from `progress_every`:
+    #: a checkpoint writes ~1.1 GB for a 94.5M model at fp32 with AdamW state, so writing
+    #: one per step would make the experiment I/O-bound and hammer Drive. Progress
+    #: records are kilobytes and can be frequent.
     save_every: int = 100
     log_every: int = 10
+    #: How often to write a lightweight progress record (metrics only, no weights).
+    #: Defaults to `log_every` when unset, so logging and progress stay in step.
+    progress_every: int | None = None
+    #: Copy each completed checkpoint to persistent storage. Off by default: the trainer
+    #: must work with no Drive, no network and no mounted volume.
+    persistent_backup: str | None = None
 
     @property
     def effective_batch_size(self) -> int:
         return self.batch_size * self.gradient_accumulation_steps
+
+    @property
+    def resolved_progress_every(self) -> int:
+        return self.progress_every if self.progress_every else self.log_every
 
 
 @dataclass
@@ -132,6 +146,8 @@ class RuntimeConfig:
 
     output_dir: str = "experiments/runs/unnamed"
     device: str = "auto"
+    #: A checkpoint directory, a step number, or "latest" to discover the newest
+    #: *verified* checkpoint under the run's own checkpoints/ directory.
     resume_from: str | None = None
     reserved_vram_gib: float = 1.0
 

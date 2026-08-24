@@ -76,7 +76,8 @@ def test_text_mode_open_declares_utf8():
     offenders: list[str] = []
     for path in _python_files():
         source = path.read_text(encoding="utf-8")
-        for line, args in _call_sites(source, r"\.open\(|(?<![\w.])open\("):
+        # os.open returns a file descriptor: it has no text mode and no encoding.
+        for line, args in _call_sites(source, r"(?<!os)\.open\(|(?<![\w.])open\("):
             modes = re.findall(r"['\"]([rwax+bt]*)['\"]", args)
             if modes and "b" in modes[0]:
                 continue  # binary mode takes no encoding

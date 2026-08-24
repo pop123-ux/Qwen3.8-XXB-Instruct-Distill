@@ -33,6 +33,10 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+from qwen_distill.training.checkpoints import is_complete  # noqa: E402
+
 DEFAULT_SOURCE = Path("/content/Qwen3.8-XXB-Instruct-Distill")
 DEFAULT_DESTINATION = Path("/content/drive/MyDrive/Qwen3.8-XXB-Instruct-Distill")
 DRIVE_MOUNT = Path("/content/drive/MyDrive")
@@ -85,6 +89,9 @@ class BackupPlan:
     skipped_unchanged: int = 0
     excluded: int = 0
     secrets_excluded: list[str] = field(default_factory=list)
+    #: Checkpoints skipped because they were still being written. Copying one
+    #: would put a corrupt checkpoint where recovery looks first.
+    incomplete_checkpoints: list[str] = field(default_factory=list)
     symlinks_skipped: list[str] = field(default_factory=list)
     extraneous: list[Path] = field(default_factory=list)
     total_bytes: int = 0
@@ -99,6 +106,12 @@ class BackupPlan:
         ]
         if self.secrets_excluded:
             lines.append(f"  secrets     : {len(self.secrets_excluded)} excluded (never copied)")
+        if self.incomplete_checkpoints:
+            lines.append(
+                f"  incomplete  : {len(self.incomplete_checkpoints)} checkpoint(s) skipped "
+                "— still being written, so not resumable"
+            )
+            lines += [f"                {name}" for name in self.incomplete_checkpoints[:5]]
         if self.symlinks_skipped:
             lines.append(f"  symlinks    : {len(self.symlinks_skipped)} skipped (never followed)")
         if self.extraneous:
@@ -121,18 +134,71 @@ def drive_mounted(mount: Path = DRIVE_MOUNT) -> bool:
     return mount.is_dir()
 
 
+def _incomplete_checkpoint_roots(source: Path) -> list[Path]:
+    """Checkpoint directories that must not be copied, whatever else is going on.
+
+    A checkpoint is only resumable once its COMPLETE marker exists. Copying one that is
+    mid-write publishes a corrupt checkpoint to Drive as the *newest* thing there — the
+    one a recovery would reach for first. So a directory under `checkpoints/` that looks
+    like a checkpoint but has no marker is excluded wholesale.
+    """
+    roots: list[Path] = []
+    for checkpoints in source.rglob("checkpoints"):
+        if not checkpoints.is_dir() or checkpoints.is_symlink():
+            continue
+        for child in checkpoints.iterdir():
+            if not child.is_dir() or child.is_symlink():
+                continue
+            staging = child.name.endswith(".incomplete") or child.name.startswith(".")
+            if staging or (child.name.startswith("step_") and not is_complete(child)):
+                roots.append(child)
+    return roots
+
+
+#: What `--checkpoints-only` keeps: checkpoints plus the kilobyte-sized files that make
+#: a recovered checkpoint interpretable. Code belongs in git, not in a Drive copy.
+ARTIFACT_NAMES = frozenset({
+    "metrics.jsonl", "summary.json", "hardware.json", "git_commit.txt",
+    "latest.json", "FAILURE.json", "README.md",
+})
+
+
+def _is_experiment_artifact(relative: Path) -> bool:
+    parts = relative.parts
+    return (
+        "checkpoints" in parts
+        or "progress" in parts
+        or relative.name in ARTIFACT_NAMES
+    )
+
+
 def build_plan(
-    source: Path, destination: Path, *, include_extraneous: bool = False
+    source: Path,
+    destination: Path,
+    *,
+    include_extraneous: bool = False,
+    checkpoints_only: bool = False,
 ) -> BackupPlan:
     """Walk the source and decide what needs copying. Touches nothing."""
     plan = BackupPlan(source=source, destination=destination)
+    incomplete = _incomplete_checkpoint_roots(source)
 
     for path in sorted(source.rglob("*")):
         relative = path.relative_to(source)
 
+        if checkpoints_only and path.is_file() and not _is_experiment_artifact(relative):
+            plan.excluded += 1
+            continue
+
         if path.is_symlink():
             # Never followed: a symlink could point anywhere on the filesystem.
             plan.symlinks_skipped.append(relative.as_posix())
+            continue
+        if any(path == root or root in path.parents for root in incomplete):
+            root = next(r for r in incomplete if path == r or r in path.parents)
+            name = root.relative_to(source).as_posix()
+            if name not in plan.incomplete_checkpoints:
+                plan.incomplete_checkpoints.append(name)
             continue
         if matches(relative, SECRET_PATTERNS) and path.name not in NOT_SECRET_FILENAMES:
             plan.secrets_excluded.append(relative.as_posix())
@@ -202,6 +268,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="do not require /content/drive/MyDrive (for testing or a non-Colab target)",
     )
     parser.add_argument("--quiet", action="store_true", help="print only the summary")
+    parser.add_argument(
+        "--checkpoints-only", action="store_true",
+        help="copy only complete checkpoints and the small files that describe a run "
+             "(metrics, summary, progress) — skip code, which belongs in git",
+    )
     return parser
 
 
@@ -232,7 +303,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    plan = build_plan(args.source, args.destination, include_extraneous=args.delete_extraneous)
+    plan = build_plan(
+        args.source, args.destination,
+        include_extraneous=args.delete_extraneous,
+        checkpoints_only=args.checkpoints_only,
+    )
 
     print("=" * 60)
     print("COLAB -> DRIVE BACKUP" + (" (DRY RUN)" if args.dry_run else ""))

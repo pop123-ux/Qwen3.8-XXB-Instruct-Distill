@@ -184,6 +184,22 @@ python scripts/probe_activations.py --config <config> --scaling  # extrapolate b
 Tensor shapes and dtypes do not depend on the device, so this runs on CPU and is a
 **pre-flight check, not a post-mortem**. It is what would have caught this.
 
+### Second attempt: it trains, then Colab took it away
+
+The revised config ran on a real T4 with no OOM at ~2100 tokens/s, and the model was
+learning — validation BPB 1.317 at step 200, 1.279 at step 400, against a uniform-byte
+baseline of 8.0. At ~step 500 the runtime disconnected and `/content` was reclaimed.
+
+That is a **feasibility result, not a completed experiment**: roughly a quarter of the
+configured 2000 steps. It is preserved in
+`experiments/runs/t4_level2_100m_ckpt_interrupted_2026-08-24/`.
+
+The steps could not be recovered for four separate reasons — checkpoints written in
+place, checkpoints missing the scheduler/scaler/RNG/data position, nothing copied off
+the ephemeral filesystem, and no pointer to the newest valid checkpoint. All four are
+fixed; see
+[`docs/experiments/t4_level2_resumability.md`](experiments/t4_level2_resumability.md).
+
 ### The revised configuration
 
 `configs/experiments/t4_level2_100m_ckpt.yaml`, estimated at **3.57 GiB**. Unchanged:

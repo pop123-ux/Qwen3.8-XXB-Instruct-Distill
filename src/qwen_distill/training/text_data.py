@@ -204,3 +204,102 @@ def bits_per_byte(cross_entropy_nats: float) -> float:
     import math
 
     return cross_entropy_nats / math.log(2)
+
+
+class ResumableBatchSampler:
+    """A batch stream that can say where it is, and be put back there.
+
+    :func:`iterate_batches` is a plain generator: its position lives in the interpreter
+    and dies with the process. Resuming from a checkpoint then silently restarts the
+    data at epoch 0, so the resumed run re-sees sequences it has already trained on and
+    the "continued" run is not the run it claims to be.
+
+    This tracks ``epoch`` and ``index`` explicitly and restores them by *replaying* the
+    per-epoch shuffles. Replay is exact — ``random.Random(seed)`` is deterministic — and
+    cheap, because it permutes an index list rather than touching the data.
+    """
+
+    def __init__(
+        self,
+        sequences: list[list[int]],
+        batch_size: int,
+        *,
+        seed: int = 0,
+        shuffle: bool = True,
+    ) -> None:
+        if batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {batch_size}")
+        self.sequences = sequences
+        self.batch_size = batch_size
+        self.seed = seed
+        self.shuffle = shuffle
+        self.epoch = 0
+        self.index = 0
+        self._rng = random.Random(seed)
+        self._order = list(range(len(sequences)))
+        self._start_epoch()
+
+    @property
+    def batches_per_epoch(self) -> int:
+        return max(0, (len(self.sequences) - self.batch_size) // self.batch_size + 1)
+
+    def _start_epoch(self) -> None:
+        if self.shuffle:
+            self._rng.shuffle(self._order)
+
+    def __iter__(self) -> Iterator[list[list[int]]]:
+        return self
+
+    def __next__(self) -> list[list[int]]:
+        if self.batches_per_epoch == 0:
+            raise ValueError(
+                f"{len(self.sequences)} sequences cannot fill a batch of {self.batch_size}"
+            )
+        if self.index >= self.batches_per_epoch:
+            self.epoch += 1
+            self.index = 0
+            self._start_epoch()
+        start = self.index * self.batch_size
+        batch = [self.sequences[i] for i in self._order[start : start + self.batch_size]]
+        self.index += 1
+        return batch
+
+    def state_dict(self) -> dict[str, object]:
+        """Where the stream is, in terms that survive a process restart."""
+        return {
+            "epoch": self.epoch,
+            "index": self.index,
+            "seed": self.seed,
+            "shuffle": self.shuffle,
+            "batch_size": self.batch_size,
+            "n_sequences": len(self.sequences),
+        }
+
+    def load_state_dict(self, state: dict[str, object]) -> None:
+        """Restore the position by replaying the shuffles that produced it.
+
+        Refuses a state that describes a different corpus or batch size rather than
+        resuming onto data it does not match, which would corrupt the run quietly.
+        """
+        n_sequences = state.get("n_sequences")
+        if n_sequences is not None and n_sequences != len(self.sequences):
+            raise ValueError(
+                f"checkpoint was taken over {n_sequences} sequences but this corpus has "
+                f"{len(self.sequences)}; the data changed, so the position is meaningless"
+            )
+        batch_size = state.get("batch_size")
+        if batch_size is not None and batch_size != self.batch_size:
+            raise ValueError(
+                f"checkpoint used batch_size={batch_size} but this run uses "
+                f"{self.batch_size}; batch indices do not carry across"
+            )
+        self.seed = int(state.get("seed", self.seed))
+        self.shuffle = bool(state.get("shuffle", self.shuffle))
+        self.epoch = int(state.get("epoch", 0))
+        self.index = int(state.get("index", 0))
+
+        # Replay: one shuffle per epoch reached, from a freshly seeded generator.
+        self._rng = random.Random(self.seed)
+        self._order = list(range(len(self.sequences)))
+        for _ in range(self.epoch + 1):
+            self._start_epoch()
