@@ -86,10 +86,19 @@ def test_amp_and_pure_bf16_agree_on_the_total_but_not_the_components():
     assert amp.optimizer_state_gib < pure.optimizer_state_gib
 
 
-def test_fp32_costs_twice_the_activations_of_a_mixed_precision_run():
-    assert estimate(precision="fp32").activations_gib == pytest.approx(
-        2 * estimate(precision="bf16").activations_gib
+def test_fp32_doubles_only_the_activations_that_autocast_actually_affects():
+    """DeltaNet force-upcasts to fp32 internally, so its term does not move with the
+    scheme. That is the whole reason fp16 bought so much less than expected."""
+    fp32 = estimate(precision="fp32")
+    bf16 = estimate(precision="bf16")
+
+    assert fp32.non_attention_activations_gib == pytest.approx(
+        2 * bf16.non_attention_activations_gib
     )
+    assert fp32.attention_activations_gib == pytest.approx(
+        2 * bf16.attention_activations_gib
+    )
+    assert fp32.deltanet_activations_gib == pytest.approx(bf16.deltanet_activations_gib)
 
 
 @pytest.mark.parametrize(

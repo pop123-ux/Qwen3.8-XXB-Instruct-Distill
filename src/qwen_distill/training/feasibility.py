@@ -71,6 +71,9 @@ class FeasibilityReport:
                 f"  {'Gradients':<24}{fit.gradients_gib:.2f} GiB",
                 f"  {'Optimizer state':<24}{fit.optimizer_state_gib:.2f} GiB",
                 f"  {'Activations':<24}{fit.activations_gib:.2f} GiB",
+                f"  {'  DeltaNet (fp32)':<24}{fit.deltanet_activations_gib:.2f} GiB",
+                f"  {'  full attention':<24}{fit.attention_activations_gib:.2f} GiB",
+                f"  {'  MLP + residual':<24}{fit.non_attention_activations_gib:.2f} GiB",
                 f"  {'Logits + loss path':<24}{fit.logits_gib:.2f} GiB",
                 f"  {'  = live tensors':<24}{fit.predicted_allocated_gib:.2f} GiB",
                 f"  {'Runtime overhead':<24}{fit.overhead_gib:.2f} GiB "

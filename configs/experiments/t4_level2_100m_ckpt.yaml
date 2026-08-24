@@ -1,0 +1,109 @@
+# Level 2 (revised) — ~100M hybrid language model on a Tesla T4.
+#
+# This supersedes t4_level2_100m.yaml, which OOMed on a real T4 at ~24.8 GiB against a
+# 4.53 GiB estimate. That config is kept unchanged as the failed baseline; the failure
+# is documented in experiments/runs/t4_level2_100m_oom_2026-08-24/.
+#
+# WHAT IS UNCHANGED, deliberately — this is the same experiment:
+#   * 94.48M parameters, 16 layers, hidden 640, FFN 2176
+#   * the 3:1 hybrid layout (12 Gated DeltaNet + 4 full attention)
+#   * sequence length 1024
+#   * effective batch 16 sequences per step
+#   * byte-level vocabulary, procedural corpus, fp16, AdamW, 2000 steps
+#
+# WHAT CHANGED, and why each change was made:
+#
+#   1. gradient_checkpointing: false -> TRUE            [the fix]
+#      Measured with scripts/probe_activations.py: retained activations fall from
+#      3273.6 MiB to 49.1 MiB at batch=1 — a 67x reduction. This is the change that
+#      makes the run fit, and it is the only one that was strictly necessary.
+#
+#      It matters here far more than for a normal transformer. transformers' pure-torch
+#      torch_chunk_gated_delta_rule (the fallback used when `fla` is not installed)
+#      force-upcasts to fp32 and runs a 63-iteration Python loop that clones and retains
+#      O(chunk_size^2) tensors per chunk. Those 12 DeltaNet layers held 66% of all
+#      retained activations across 5,244 saved tensors, against 86 for all four
+#      attention layers combined. Checkpointing discards them and recomputes.
+#
+#      Cost: roughly 30% slower per step. Worth it against an OOM.
+#
+#   2. batch_size 8 -> 4, gradient_accumulation_steps 2 -> 4    [margin, not necessity]
+#      Effective batch is unchanged at 16, so the experiment is identical. Estimated
+#      4.54 GiB at batch 8 versus 3.57 GiB at batch 4, both feasible. Batch 4 was chosen
+#      because the evidence behind the estimate is CPU-side tensor accounting, which
+#      cannot see CUDA allocator fragmentation, and a second OOM costs another GPU
+#      window. Once batch 4 completes, batch 8 / accum 2 is a reasonable next try.
+#
+# WHAT WAS CONSIDERED AND REJECTED:
+#
+#   * SDPA backend configuration. SDPA receives attn_mask=None and is_causal=True, so no
+#     batch x heads x seq x seq matrix is materialised; all four attention layers retain
+#     110 MiB at batch=1, about 3% of the total. Tuning the backend would not have
+#     helped, and the traceback naming scaled_dot_product_attention was misleading.
+#   * Reducing sequence length. Not needed once checkpointing is on, and 1024 bytes is
+#     already only ~250 BPE-equivalent tokens.
+#   * Reducing model size or changing the architecture. Not needed, and it would have
+#     replaced the experiment rather than fixed it.
+#
+# OPTIONAL, if the environment allows a download: installing `fla`
+# (flash-linear-attention) replaces the reference DeltaNet kernel with a fused one and
+# removes this problem at the source. The run does not depend on it.
+
+name: t4_level2_100m_ckpt
+level: "Level 2 — T4 small student (~100M)"
+description: >-
+  ~94.5M hybrid DeltaNet/attention model trained on byte-level language data, with
+  gradient checkpointing. Revised after the first attempt OOMed on a Tesla T4; same
+  architecture, sequence length and effective batch as that failed baseline.
+
+model:
+  architecture:
+    hidden_size: 640
+    num_hidden_layers: 16
+    intermediate_size: 2176
+    vocab_size: 256              # byte-level
+    num_attention_heads: 10
+    num_key_value_heads: 2
+    head_dim: 64
+    linear_num_key_heads: 4
+    linear_num_value_heads: 12
+    linear_key_head_dim: 64
+    linear_value_head_dim: 64
+    linear_conv_kernel_dim: 4
+    full_attention_interval: 4   # -> 12 linear_attention + 4 full_attention
+    max_position_embeddings: 4096
+    tie_word_embeddings: true
+
+data:
+  text_corpus: true
+  # Leave text_path unset to use the deterministic procedural corpus, which needs no
+  # download and works offline. To train on real prose instead, point this at any UTF-8
+  # file — a public-domain book, documentation, source code. The corpus SHA-256 is
+  # recorded in summary.json either way, so a result is tied to the exact bytes.
+  text_path: null
+  procedural_bytes: 8000000      # ~8 MB
+  validation_fraction: 0.05
+  max_sequence_length: 1024
+  shuffle_seed: 0
+
+training:
+  strategy: full                 # architecture compression needs real student parameters
+  optimizer: adamw
+  precision: fp16                # T4 is Turing (CC 7.5): NO bf16
+  objective: sft                 # plain next-token causal LM; no KD at this level
+  learning_rate: 0.0006
+  weight_decay: 0.01
+  max_steps: 2000
+  warmup_steps: 100
+  batch_size: 4
+  gradient_accumulation_steps: 4 # effective batch 16 — identical to the failed run
+  gradient_checkpointing: true   # THE FIX: 67x less retained activation. See the header.
+  seed: 0
+  eval_every: 200
+  save_every: 500
+  log_every: 25
+
+runtime:
+  output_dir: experiments/runs/t4_level2_100m_ckpt
+  device: auto
+  reserved_vram_gib: 1.0

@@ -124,10 +124,80 @@ python scripts/validate_checkpoint.py experiments/t4_level2_100m/final
 python scripts/hardware_info.py --calibrate-run experiments/t4_level2_100m/summary.json
 ```
 
-**Status:** validated end-to-end on CPU — the architecture builds, bits-per-byte falls,
-checkpoints reload bit-for-bit, and resume restores the correct step and history. It has
-**not** run on a GPU; the authoring environment has none. Every memory figure for this
-level is an estimate until someone runs it.
+**Status: the first attempt OOMed on a real T4.** It is kept as a documented failure in
+`experiments/runs/t4_level2_100m_oom_2026-08-24/`, and `configs/experiments/t4_level2_100m.yaml`
+is preserved unchanged as the failed baseline. `t4_level2_100m_ckpt.yaml` supersedes it.
+
+### What the OOM taught us
+
+Predicted 4.53 GiB. Demanded ~24.8 GiB. Died in the forward pass, zero steps completed.
+
+The traceback named `torch.nn.functional.scaled_dot_product_attention`, **and that was
+misleading**. SDPA receives `attn_mask=None` and `is_causal=True`, so it never
+materialises a `batch x heads x seq x seq` matrix; all four attention layers together
+retain 110 MiB at batch=1, about 3% of the total. SDPA was simply the next sizeable
+allocation after the DeltaNet layers had already consumed the card.
+
+The real cause: **the estimator had no Gated DeltaNet term at all.** It treated all 16
+layers as generic transformer blocks scaling with `hidden_size` and `intermediate_size`.
+Measured by attributing every tensor autograd retains to its creating module:
+
+| scope | retained (batch=1, seq=1024) | tensors |
+|---|---:|---:|
+| **DeltaNet mixers** | **2155.6 MiB** | **5244** |
+| MLP (DeltaNet layers) | 629.2 MiB | 96 |
+| MLP (attention layers) | 209.8 MiB | 32 |
+| embedding / norms / logits | 169.4 MiB | 138 |
+| attention mixers | 109.7 MiB | 86 |
+
+Two properties of `torch_chunk_gated_delta_rule` — the pure-PyTorch fallback that runs
+when `fla` is not installed — explain it:
+
+1. **It force-upcasts to fp32.** The function opens by casting q, k, v, beta and g to
+   `torch.float32`, so 12 of 16 layers ignore fp16 autocast entirely. This is also why
+   fp16 bought far less speed than expected.
+
+2. **A 63-iteration Python loop retains O(chunk²) clones.** Inside
+   `for i in range(1, chunk_size)` it does `sub = attn[..., :i, :i].clone()` and
+   multiplies by it, so autograd saves every one:
+
+   ```
+   sum(i² for i in 1..63) = 85,344 elements per (chunk, head)
+   -> v_heads x 85,344 x 4 / chunk_size = 64,008 bytes per token per DeltaNet layer
+   ```
+
+   That single term is larger than the estimator's entire previous activation budget.
+
+The corrected estimator models this explicitly. The loop term is derived exactly; the
+remainder is fitted to six measured configurations spanning 4x in head count and 4x in
+head dimension, reproducing them to within 3.4%, with a 1.10 margin so it never
+underestimates. Re-run against the failed config it now reports **23.87 GiB, NOT
+FEASIBLE** — which is what a dry run should have said before the GPU window was spent.
+
+### Diagnosing this without a GPU
+
+```bash
+python scripts/probe_activations.py --config <config>            # attribute by module
+python scripts/probe_activations.py --config <config> --scaling  # extrapolate by batch
+```
+
+Tensor shapes and dtypes do not depend on the device, so this runs on CPU and is a
+**pre-flight check, not a post-mortem**. It is what would have caught this.
+
+### The revised configuration
+
+`configs/experiments/t4_level2_100m_ckpt.yaml`, estimated at **3.57 GiB**. Unchanged:
+94.48M parameters, the 3:1 hybrid layout, sequence length 1024, effective batch 16.
+Changed:
+
+| Change | Why |
+|---|---|
+| `gradient_checkpointing: false -> true` | **The fix.** Measured 67x reduction in retained activations (3273.6 MiB -> 49.1 MiB at batch=1). Costs ~30% throughput. |
+| `batch_size 8 -> 4`, `accum 2 -> 4` | **Margin, not necessity.** Batch 8 also fits at 4.54 GiB. The evidence is CPU-side tensor accounting that cannot see allocator fragmentation, and a second OOM costs another window. Effective batch is identical. |
+
+Rejected: SDPA backend tuning (attention is 3% of the problem), shorter sequences (not
+needed), and any architecture change (would replace the experiment rather than fix it).
+Installing `fla` would remove the problem at source, but the run does not depend on it.
 
 ### Level 3 — T4 small distillation experiment
 
