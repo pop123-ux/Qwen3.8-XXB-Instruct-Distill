@@ -329,12 +329,48 @@ class ComponentResidual:
 
 
 @dataclass
+class OOMOutcome:
+    """A run that ran out of memory, expressed as a bound rather than a failure."""
+
+    phase: str
+    allocated_at_failure_gib: float | None = None
+    reserved_at_failure_gib: float | None = None
+    total_vram_gib: float | None = None
+    estimated_total_gib: float | None = None
+    configuration: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def underestimate_factor(self) -> float | None:
+        """How far the estimate was out, *at minimum*.
+
+        The allocation failed, so the true requirement exceeds what was held. This is a
+        floor on the error, never the error itself.
+        """
+        if not self.estimated_total_gib or self.allocated_at_failure_gib is None:
+            return None
+        return self.allocated_at_failure_gib / self.estimated_total_gib
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "phase": self.phase,
+            "allocated_at_failure_gib": self.allocated_at_failure_gib,
+            "reserved_at_failure_gib": self.reserved_at_failure_gib,
+            "total_vram_gib": self.total_vram_gib,
+            "estimated_total_gib": self.estimated_total_gib,
+            "lower_bound_on_requirement_gib": self.allocated_at_failure_gib,
+            "underestimate_factor_at_least": self.underestimate_factor,
+            "configuration": self.configuration,
+        }
+
+
+@dataclass
 class TrainingCalibration:
     """Which *term* of the training estimate is wrong, and by how much."""
 
     experiment: str
     device: str | None = None
     residuals: list[ComponentResidual] = field(default_factory=list)
+    oom: OOMOutcome | None = None
     error: str | None = None
 
     @property
@@ -348,6 +384,14 @@ class TrainingCalibration:
         if self.error:
             return [self.error]
         lines: list[str] = []
+        if self.oom:
+            factor = self.oom.underestimate_factor
+            detail = f" by at least {factor:.2f}x" if factor else ""
+            lines.append(
+                f"the run OOMed during the {self.oom.phase}, so the estimate was low"
+                f"{detail}. The component residuals below are bounded by the failure "
+                "point, not by a completed run: the true requirement is higher."
+            )
         for residual in self.residuals:
             if residual.verdict in ("OK", "NOT MODELLED"):
                 continue
@@ -364,6 +408,8 @@ class TrainingCalibration:
         return {
             "experiment": self.experiment,
             "device": self.device,
+            "outcome": "OOM" if self.oom else "completed",
+            "oom": self.oom.to_dict() if self.oom else None,
             "residuals": [r.to_dict() for r in self.residuals],
             "worst_component": self.worst.component if self.worst else None,
             "corrections": self.corrections(),
@@ -376,6 +422,17 @@ class TrainingCalibration:
             lines.append(f"  device: {self.device}")
         if self.error:
             return "\n".join(lines + [f"  ERROR: {self.error}"])
+        if self.oom:
+            lines.append(f"  outcome: OOM during the {self.oom.phase}")
+            if self.oom.total_vram_gib:
+                lines.append(f"  card   : {self.oom.total_vram_gib:.2f} GiB")
+            if self.oom.allocated_at_failure_gib is not None:
+                lines.append(
+                    f"  held at failure: {self.oom.allocated_at_failure_gib:.2f} GiB "
+                    "(a LOWER BOUND on the requirement — the allocation failed)"
+                )
+            if self.oom.estimated_total_gib:
+                lines.append(f"  estimated      : {self.oom.estimated_total_gib:.2f} GiB")
         lines.append(f"\n  {'component':<28}{'modelled':>10}{'measured':>10}{'ratio':>8}  verdict")
         for residual in self.residuals:
             ratio = f"{residual.ratio:.3f}" if residual.ratio is not None else "-"
@@ -418,6 +475,20 @@ def calibrate_training_run(summary_path: str | Path) -> TrainingCalibration:
             "Re-run on a GPU; a CPU run cannot validate a VRAM model."
         )
         return calibration
+
+    # An OOM is data, not a missing result: the allocation failed, so the configuration
+    # provably needs MORE than what was held at the moment of failure. That is a real
+    # lower bound on the requirement and an unambiguous refutation of the estimate.
+    oom = summary.get("oom")
+    if oom:
+        calibration.oom = OOMOutcome(
+            phase=oom.get("phase", "unknown"),
+            allocated_at_failure_gib=oom.get("allocated_at_failure_gib"),
+            reserved_at_failure_gib=oom.get("reserved_at_failure_gib"),
+            total_vram_gib=oom.get("total_vram_gib"),
+            estimated_total_gib=oom.get("estimated_total_gib") or estimate.get("total_gib"),
+            configuration=oom.get("configuration") or {},
+        )
     if not estimate:
         calibration.error = "the run recorded no analytical estimate to compare against"
         return calibration

@@ -32,11 +32,20 @@ from typing import Any
 GIB = 1024 ** 3
 
 #: The stages worth snapshotting, in execution order.
+#:
+#: ``after_model_creation`` and ``after_model_to_device`` are separate because building
+#: on CPU and moving to CUDA are separate allocations, and only the second shows on the
+#: card. ``after_input_allocation`` and ``after_loss`` isolate two terms that the failed
+#: Level-2 run made relevant: the batch itself, and the three copies of the logits the
+#: loss path holds.
 STAGES = (
     "baseline",
     "after_model_creation",
+    "after_model_to_device",
     "after_optimizer_creation",
+    "after_input_allocation",
     "after_forward",
+    "after_loss",
     "after_backward",
     "after_optimizer_step",
     "peak_training",
@@ -164,8 +173,12 @@ def derive_components(profile: MemoryProfile) -> dict[str, float]:
         return snapshot.allocated_gib if snapshot else None
 
     baseline = allocated("baseline")
-    model = allocated("after_model_creation")
+    # Weights only appear on the card once the model is moved there, so prefer that
+    # stage when it exists; a model built directly on CUDA has only the creation stage.
+    model = allocated("after_model_to_device") or allocated("after_model_creation")
+    inputs = allocated("after_input_allocation")
     forward = allocated("after_forward")
+    loss = allocated("after_loss")
     backward = allocated("after_backward")
     stepped = allocated("after_optimizer_step")
 
@@ -174,8 +187,19 @@ def derive_components(profile: MemoryProfile) -> dict[str, float]:
         components["cuda_context_and_baseline_gib"] = baseline
     if model is not None and baseline is not None:
         components["weights_gib"] = max(0.0, model - baseline)
-    if forward is not None and model is not None:
-        components["activations_gib"] = max(0.0, forward - model)
+    if inputs is not None and model is not None:
+        components["input_batch_gib"] = max(0.0, inputs - model)
+    if forward is not None:
+        # Measure activations from the last stage before the forward pass, so the input
+        # batch is not counted twice.
+        before_forward = inputs if inputs is not None else model
+        if before_forward is not None:
+            components["activations_gib"] = max(0.0, forward - before_forward)
+    if loss is not None and forward is not None:
+        components["loss_path_gib"] = max(0.0, loss - forward)
+    reference_for_backward = loss if loss is not None else forward
+    if backward is not None and reference_for_backward is not None:
+        forward = reference_for_backward
     if backward is not None and forward is not None:
         # The backward pass frees activations as it consumes them and allocates
         # gradients, so this difference is a net figure, not gross gradient size.
@@ -227,3 +251,110 @@ def compare_with_estimate(
             "Do not apply either as a blind multiplier."
         ),
     }
+
+
+@dataclass
+class OOMRecord:
+    """An out-of-memory failure, recorded as data rather than lost to a traceback.
+
+    A run that OOMs is an experimental result: it establishes an upper bound on what the
+    configuration costs, which is exactly what the estimator needs. Throwing that away
+    and retrying with a smaller batch discards the measurement.
+    """
+
+    phase: str
+    device_name: str | None = None
+    total_vram_gib: float | None = None
+    allocated_at_failure_gib: float | None = None
+    reserved_at_failure_gib: float | None = None
+    free_at_failure_gib: float | None = None
+    estimated_total_gib: float | None = None
+    configuration: dict[str, Any] = field(default_factory=dict)
+    message: str = ""
+
+    @property
+    def lower_bound_gib(self) -> float | None:
+        """What the configuration provably needs *more* than.
+
+        The allocation failed, so the true requirement exceeds what was held at the
+        moment of failure. That is a real bound, and it is what makes an OOM useful.
+        """
+        return self.allocated_at_failure_gib
+
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["lower_bound_gib"] = self.lower_bound_gib
+        if self.estimated_total_gib and self.allocated_at_failure_gib:
+            data["estimate_underestimated_by_at_least"] = (
+                self.allocated_at_failure_gib / self.estimated_total_gib
+            )
+        return data
+
+    def render(self) -> str:
+        lines = [
+            "OUT OF MEMORY — recorded as an experimental result",
+            f"  phase                : {self.phase}",
+            f"  device               : {self.device_name or 'unknown'}",
+        ]
+        if self.total_vram_gib:
+            lines.append(f"  total VRAM           : {self.total_vram_gib:.2f} GiB")
+        if self.allocated_at_failure_gib is not None:
+            lines.append(f"  allocated at failure : {self.allocated_at_failure_gib:.2f} GiB")
+        if self.reserved_at_failure_gib is not None:
+            lines.append(f"  reserved at failure  : {self.reserved_at_failure_gib:.2f} GiB")
+        if self.estimated_total_gib:
+            lines.append(f"  estimated total      : {self.estimated_total_gib:.2f} GiB")
+            if self.allocated_at_failure_gib:
+                ratio = self.allocated_at_failure_gib / self.estimated_total_gib
+                lines.append(
+                    f"  the estimate was low by AT LEAST {ratio:.2f}x — the allocation "
+                    "failed, so the true requirement is higher still"
+                )
+        return "\n".join(lines)
+
+
+def is_oom(exc: BaseException) -> bool:
+    """Whether an exception is a CUDA out-of-memory failure.
+
+    Matches on the message as well as the type: some allocation failures surface as a
+    plain ``RuntimeError`` depending on where in the allocator they are raised.
+    """
+    try:
+        import torch
+
+        if isinstance(exc, torch.cuda.OutOfMemoryError):
+            return True
+    except (ImportError, AttributeError):
+        pass
+    return isinstance(exc, RuntimeError) and "out of memory" in str(exc).lower()
+
+
+def record_oom(
+    profile: MemoryProfile,
+    phase: str,
+    exc: BaseException,
+    *,
+    estimated_total_gib: float | None = None,
+    configuration: dict[str, Any] | None = None,
+) -> OOMRecord:
+    """Capture the memory state at the moment an allocation failed."""
+    record = OOMRecord(
+        phase=phase,
+        device_name=profile.device_name,
+        total_vram_gib=profile.total_vram_gib,
+        estimated_total_gib=estimated_total_gib,
+        configuration=configuration or {},
+        message=str(exc)[:2000],
+    )
+    if not profile.cuda_available:
+        return record
+    try:
+        import torch
+
+        record.allocated_at_failure_gib = torch.cuda.memory_allocated() / GIB
+        record.reserved_at_failure_gib = torch.cuda.memory_reserved() / GIB
+        free, _total = torch.cuda.mem_get_info()
+        record.free_at_failure_gib = free / GIB
+    except Exception:  # noqa: BLE001 - never fail while reporting a failure
+        pass
+    return record

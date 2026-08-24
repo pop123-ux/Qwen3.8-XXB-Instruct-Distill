@@ -26,9 +26,12 @@ from ..architecture.spec import HybridArchSpec
 from .config import ExperimentConfig
 from .data import DistillationExample, read_jsonl, synthetic_corpus
 from .memory_probe import (
+    OOMRecord,
     compare_with_estimate,
     derive_components,
+    is_oom,
     new_profile,
+    record_oom,
     reset_peak,
     take,
 )
@@ -190,11 +193,18 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
         train_examples, validation_examples = load_examples(config)
         print(f"  data  : {len(train_examples)} train / {len(validation_examples)} validation")
 
-    model = build_model(config, spec).to(device)
-    if config.training.gradient_checkpointing and hasattr(model, "gradient_checkpointing_enable"):
-        model.gradient_checkpointing_enable()
-    model.train()
+    model = build_model(config, spec)
     take(profile, "after_model_creation")
+    model = model.to(device)
+    if config.training.gradient_checkpointing and hasattr(model, "gradient_checkpointing_enable"):
+        # Non-reentrant checkpointing composes correctly with autocast and does not
+        # require the inputs to have requires_grad, unlike the legacy reentrant path.
+        model.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs={"use_reentrant": False}
+        )
+        print("  gradient checkpointing: ON")
+    model.train()
+    take(profile, "after_model_to_device")
 
     trainable = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(
@@ -232,9 +242,29 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
     generator = torch.Generator().manual_seed(config.training.seed)
     metrics_path = output / "metrics.jsonl"
     metrics_handle = metrics_path.open("a", encoding="utf-8")
+    # Computed before the loop so an OOM can be compared against it in place. The
+    # estimate is the thing on trial when a run fails.
+    estimated_total_gib = None
+    if spec is not None and profile.total_vram_gib:
+        from ..diagnostics.fit import estimate_training_memory
+
+        estimated_total_gib = estimate_training_memory(
+            spec, profile.total_vram_gib,
+            strategy=config.training.strategy, optimizer=config.training.optimizer,
+            sequence_length=config.data.max_sequence_length,
+            batch_size=config.training.batch_size,
+            gradient_checkpointing=config.training.gradient_checkpointing,
+            precision=precision,
+        ).total_gib
+
     started = time.perf_counter()
     tokens_seen = 0
     first_step = True
+    #: The phase currently executing, so an OOM can say *where* it ran out rather than
+    #: only that it did. The first Level-2 attempt died in the forward pass and the
+    #: traceback named SDPA, which was the next allocation rather than the cause.
+    phase = ["before first step"]
+    oom: OOMRecord | None = None
 
     try:
         while state.step < config.training.max_steps:
@@ -248,13 +278,22 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
                         config.training.batch_size, config.data.max_sequence_length,
                         vocab, generator,
                     ).to(device)
+                phase[0] = "input allocation"
+                if first_step:
+                    take(profile, "after_input_allocation")
+                phase[0] = "forward pass"
                 with autocast():
                     outputs = model(input_ids=batch, labels=batch)
+                    if first_step:
+                        # Activations are live between forward and backward; snapshot
+                        # here or the backward pass will have already freed them.
+                        take(profile, "after_forward")
                     loss = outputs.loss / config.training.gradient_accumulation_steps
                 if first_step:
-                    # Activations are live between forward and backward; snapshot here
-                    # or the backward pass will have already freed them.
-                    take(profile, "after_forward")
+                    # The loss path holds the logits three times over, so it gets its
+                    # own stage rather than being folded into the forward pass.
+                    take(profile, "after_loss")
+                phase[0] = "backward pass"
                 scaler.scale(loss).backward()
                 accumulated += float(loss.item())
                 tokens_seen += batch.numel()
@@ -263,6 +302,7 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
                     first_step = False
             # Gradients must be unscaled before clipping, or the norm is computed
             # against the loss scale rather than the true gradient.
+            phase[0] = "optimizer step"
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(trainable, 1.0)
             scaler.step(optimizer)
@@ -307,23 +347,52 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
                     state.best_validation_loss = validation_loss
 
             if state.step % config.training.save_every == 0:
+                phase[0] = "checkpoint"
                 _checkpoint(model, optimizer, state, output / f"step-{state.step}", config)
+    except Exception as exc:  # noqa: BLE001 - an OOM is a result, not just a crash
+        if not is_oom(exc):
+            raise
+        # Record the memory state *before* anything is freed, then let the summary be
+        # written: a run that OOMs establishes a lower bound on what the configuration
+        # costs, and discarding that throws away the most expensive measurement here.
+        oom = record_oom(
+            profile, phase[0], exc,
+            estimated_total_gib=estimated_total_gib,
+            configuration={
+                "parameters": _parameter_count(spec),
+                "sequence_length": config.data.max_sequence_length,
+                "batch_size": config.training.batch_size,
+                "gradient_accumulation_steps": config.training.gradient_accumulation_steps,
+                "precision": precision,
+                "optimizer": config.training.optimizer,
+                "gradient_checkpointing": config.training.gradient_checkpointing,
+                "steps_completed": state.step,
+            },
+        )
+        print(f"\n{oom.render()}\n")
     finally:
         metrics_handle.close()
 
     take(profile, "peak_training")
     derive_components(profile)
 
-    _checkpoint(model, optimizer, state, output / "final", config)
+    if oom is None:
+        phase[0] = "final checkpoint"
+        _checkpoint(model, optimizer, state, output / "final", config)
     elapsed = time.perf_counter() - started
-    print(f"\n  finished {state.step} steps in {elapsed:.1f}s "
-          f"({tokens_seen / elapsed:,.0f} tokens/s)")
+    if oom is None:
+        print(f"\n  finished {state.step} steps in {elapsed:.1f}s "
+              f"({tokens_seen / elapsed:,.0f} tokens/s)")
 
     _write_summary(
         output, config, spec, state, profile, corpus_stats,
         elapsed=elapsed, tokens_seen=tokens_seen, device=device, text_mode=text_mode,
-        effective_precision=precision, precision_note=precision_note,
+        effective_precision=precision, precision_note=precision_note, oom=oom,
     )
+    if oom is not None:
+        print(f"  wrote {output / 'summary.json'} recording the OOM.")
+        print("  This is usable data: run scripts/hardware_info.py --calibrate-run on it.")
+        return 1
     print(f"  wrote {output / 'final'} and summary.json")
     return 0
 
@@ -367,6 +436,14 @@ def _validate_text(model, sequences: list[list[int]], config: ExperimentConfig, 
     return total / max(batches, 1)
 
 
+def _parameter_count(spec: HybridArchSpec | None) -> int | None:
+    if spec is None:
+        return None
+    from ..architecture.params import count_parameters
+
+    return count_parameters(spec).total
+
+
 def _write_summary(
     output: Path,
     config: ExperimentConfig,
@@ -381,6 +458,7 @@ def _write_summary(
     text_mode: bool,
     effective_precision: str,
     precision_note: str | None,
+    oom: OOMRecord | None = None,
 ) -> None:
     """Write the full artifact set: summary, hardware, git commit, resolved config.
 
@@ -453,6 +531,10 @@ def _write_summary(
         "first_validation_loss": validations[0] if validations else None,
         "final_validation_loss": validations[-1] if validations else None,
         "corpus": corpus_stats.to_dict() if corpus_stats else None,
+        # A run either completed or ran out of memory. Both are results; only one of
+        # them is a success, and the artifact must say which without being read closely.
+        "outcome": "OOM" if oom else "completed",
+        "oom": oom.to_dict() if oom else None,
         "memory": profile.to_dict(),
         "analytical_estimate": estimate,
         "estimate_vs_measured": comparison,

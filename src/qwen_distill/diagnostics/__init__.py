@@ -3,6 +3,7 @@
 from .calibrate import (
     CalibrationReport,
     ComponentResidual,
+    OOMOutcome,
     TrainingCalibration,
     calibrate,
     calibrate_training_run,
@@ -25,5 +26,5 @@ __all__ = [
     "fit_matrix",
     "Recommendations", "recommend",
     "CalibrationReport", "calibrate",
-    "ComponentResidual", "TrainingCalibration", "calibrate_training_run",
+    "ComponentResidual", "OOMOutcome", "TrainingCalibration", "calibrate_training_run",
 ]

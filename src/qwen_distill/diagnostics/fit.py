@@ -80,6 +80,95 @@ PRECISION_SCHEMES: dict[str, PrecisionScheme] = {
     ),
 }
 
+#: Chunk size hard-coded in ``transformers``' ``torch_chunk_gated_delta_rule``.
+DELTANET_CHUNK_SIZE = 64
+
+#: ``sum(i^2 for i in 1..chunk_size-1)`` — the exact size of the clones the reference
+#: implementation's sequential loop retains. See :func:`deltanet_activation_bytes`.
+DELTANET_LOOP_SUM_I_SQUARED = (
+    (DELTANET_CHUNK_SIZE - 1) * DELTANET_CHUNK_SIZE * (2 * DELTANET_CHUNK_SIZE - 1) // 6
+)
+
+#: Fitted coefficients for everything the DeltaNet reference path retains *besides* the
+#: sequential loop: the fp32 q/k/v/beta/g copies, the per-chunk decay masks, and the
+#: per-chunk intermediates. Two parameters, fitted against six measured configurations
+#: spanning 4x in head count and 4x in head dimension (see DELTANET_MEASUREMENT), where
+#: they reproduce the measurement to within 3.4%.
+DELTANET_FIXED_BYTES_PER_HEAD = 292.0
+DELTANET_BYTES_PER_HEAD_PER_DIM = 36.68
+
+#: The model above underestimates by at most 3.4% across the measured sweep. A
+#: feasibility check must not underestimate, so the term carries a margin that covers it.
+DELTANET_SAFETY_MARGIN = 1.10
+
+#: Provenance for the numbers above, so the fit can be re-derived or refuted.
+DELTANET_MEASUREMENT: dict[str, Any] = {
+    "what": "retained activation bytes per token per DeltaNet layer, forward pass",
+    "how": (
+        "torch.autograd.graph.saved_tensors_hooks, attributing every tensor the "
+        "autograd graph retains to the module that created it. Device-independent: "
+        "tensor shapes and dtypes do not depend on CUDA."
+    ),
+    "implementation": "transformers.models.qwen3_5.torch_chunk_gated_delta_rule (pure-torch fallback)",
+    "transformers_version": "5.15.1",
+    "measurements": [
+        {"v_heads": 12, "head_dim": 64, "bytes_per_token_per_layer": 190_681},
+        {"v_heads": 6, "head_dim": 64, "bytes_per_token_per_layer": 96_625},
+        {"v_heads": 24, "head_dim": 64, "bytes_per_token_per_layer": 378_794},
+        {"v_heads": 12, "head_dim": 32, "bytes_per_token_per_layer": 138_949},
+        {"v_heads": 12, "head_dim": 128, "bytes_per_token_per_layer": 303_362},
+        {"v_heads": 6, "head_dim": 128, "bytes_per_token_per_layer": 152_965},
+    ],
+    "caveat": (
+        "this describes the pure-torch REFERENCE path. Installing `fla` "
+        "(flash-linear-attention) replaces it with a fused kernel whose retained "
+        "footprint is far smaller, and these numbers no longer apply."
+    ),
+}
+
+
+def deltanet_activation_bytes(spec: HybridArchSpec, tokens: int) -> int:
+    """Activation bytes the Gated DeltaNet layers retain for the backward pass.
+
+    **This term is why the Level-2 T4 run OOMed at 24.8 GiB against a 4.53 GiB
+    estimate.** It was not modelled at all: the estimator treated every layer as a
+    generic transformer block whose activations scale with ``hidden_size`` and
+    ``intermediate_size``. A DeltaNet layer does not.
+
+    Two structural facts make it large, both read off the reference implementation:
+
+    1. **It runs in fp32 regardless of autocast.** ``torch_chunk_gated_delta_rule``
+       opens by casting q, k, v, beta and g to ``torch.float32``, so 12 of this
+       architecture's 16 layers ignore fp16 and retain 4-byte activations.
+
+    2. **A 63-iteration Python loop retains O(chunk^2) clones per chunk.** The
+       ``for i in range(1, chunk_size)`` loop does ``sub = attn[..., :i, :i].clone()``
+       and multiplies by it, so autograd saves every one:
+
+           sum(i^2 for i in 1..63) = 85,344 elements per (chunk, head)
+
+       which comes to ``v_heads * 85,344 * 4 / chunk_size`` bytes per token — 64 KB per
+       token per layer at 12 heads, before any other tensor. That single term is larger
+       than the estimator's entire previous activation budget.
+
+    The first term is derived exactly; the rest is fitted to measurement. Returns bytes
+    for the *retained* set, which is what a no-checkpointing run holds at peak.
+    """
+    if spec.num_linear_attention_layers == 0:
+        return 0
+    heads = spec.linear_num_value_heads
+    mean_head_dim = (spec.linear_key_head_dim + spec.linear_value_head_dim) / 2
+
+    # Exact: the sequential loop's retained clones.
+    loop = heads * DELTANET_LOOP_SUM_I_SQUARED * 4.0 / DELTANET_CHUNK_SIZE
+    # Fitted: fp32 q/k/v copies, decay masks, per-chunk intermediates.
+    rest = heads * 4.0 * (
+        DELTANET_FIXED_BYTES_PER_HEAD + DELTANET_BYTES_PER_HEAD_PER_DIM * mean_head_dim
+    )
+    per_token_per_layer = (loop + rest) * DELTANET_SAFETY_MARGIN
+    return int(per_token_per_layer * tokens * spec.num_linear_attention_layers)
+
+
 #: During training the loss path materialises the logits three times over, which a
 #: single ``tokens x vocab x 4`` term understates by 2.5-3x. Verified against
 #: ``transformers.loss.loss_utils.ForCausalLMLoss``, which does ``logits =
@@ -219,6 +308,12 @@ class TrainingFit:
     #: Gradients, separated from optimizer state because the probe measures them at a
     #: different stage: gradients during ``backward()``, moments on the first ``step()``.
     gradients_gib: float = 0.0
+    #: Activations broken out by what produces them. The DeltaNet term is the one whose
+    #: absence caused the Level-2 T4 OOM: it dominates this architecture and does not
+    #: behave like a transformer block's activations at all.
+    deltanet_activations_gib: float = 0.0
+    attention_activations_gib: float = 0.0
+    non_attention_activations_gib: float = 0.0
     #: Logits and the two fp32 copies the loss path makes of them, separated because on
     #: a large vocabulary this term rivals the weights and is easy to get wrong alone.
     logits_gib: float = 0.0
@@ -242,6 +337,9 @@ class TrainingFit:
         return {
             "weights_gib": self.base_weights_gib,
             "activations_gib": self.activations_gib + self.logits_gib,
+            "deltanet_activations_gib": self.deltanet_activations_gib,
+            "attention_activations_gib": self.attention_activations_gib,
+            "non_attention_activations_gib": self.non_attention_activations_gib,
             "gradients_gib": self.gradients_gib,
             "optimizer_state_gib": self.optimizer_state_gib,
             "peak_allocated_gib": self.predicted_allocated_gib,
@@ -318,16 +416,45 @@ def estimate_training_memory(
     )
 
     tokens = sequence_length * batch_size
+    n_full = spec.num_full_attention_layers
+    n_linear = spec.num_linear_attention_layers
+
+    # --- activations, split by what actually produces them -------------------
+    # Attention layers reach SDPA with is_causal=True and no materialised mask, so the
+    # efficient backend applies and there is no b*h*s*s term. What they retain is q/k/v,
+    # the gate, and the output projection input.
+    attention_per_token = (
+        2 * spec.num_attention_heads * spec.head_dim      # q and its sigmoid gate
+        + 2 * spec.num_key_value_heads * spec.head_dim    # k and v
+        + spec.num_attention_heads * spec.head_dim        # SDPA output
+    )
+    # MLP and residual stream, in every layer.
+    mlp_per_token = 3 * spec.intermediate_size + 2 * spec.hidden_size
+
     if gradient_checkpointing:
-        # One saved activation per layer boundary, plus a working buffer for the layer
-        # currently being recomputed.
-        per_token = spec.num_hidden_layers * spec.hidden_size + 4 * spec.intermediate_size
+        # Only layer boundaries are retained across the forward pass; the peak adds back
+        # whichever single layer the backward pass is currently recomputing. A DeltaNet
+        # layer is by far the most expensive to recompute, so it sets the peak — and it
+        # is still counted as DeltaNet memory, not folded into a generic term.
+        deltanet_bytes = (
+            deltanet_activation_bytes(spec, tokens) // n_linear if n_linear else 0
+        )
+        attention_activation_bytes = int(tokens * attention_per_token * scheme.activation_bytes)
+        non_attention_bytes = int(
+            tokens * spec.num_hidden_layers * spec.hidden_size * scheme.activation_bytes
+            + tokens * mlp_per_token * scheme.activation_bytes
+        )
+        activation_bytes = deltanet_bytes + attention_activation_bytes + non_attention_bytes
     else:
         # Every layer retains its intermediates for the backward pass.
-        per_token = spec.num_hidden_layers * (
-            2 * spec.hidden_size + 3 * spec.intermediate_size
+        deltanet_bytes = deltanet_activation_bytes(spec, tokens)
+        attention_activation_bytes = int(
+            tokens * n_full * attention_per_token * scheme.activation_bytes
         )
-    activation_bytes = tokens * per_token * scheme.activation_bytes
+        non_attention_bytes = int(
+            tokens * spec.num_hidden_layers * mlp_per_token * scheme.activation_bytes
+        )
+        activation_bytes = deltanet_bytes + attention_activation_bytes + non_attention_bytes
 
     # The loss path holds the logits three times over: the lm_head output at the
     # activation dtype, its fp32 upcast, and cross_entropy's retained log-softmax
@@ -338,7 +465,9 @@ def estimate_training_memory(
 
     # Tensors the estimator can actually derive, kept separate from the allowance for
     # things it cannot: the CUDA context and the caching allocator's reserve.
-    allocated_bytes = base_bytes + gradient_bytes + optimizer_bytes + activation_bytes + logit_bytes
+    allocated_bytes = (
+        base_bytes + gradient_bytes + optimizer_bytes + activation_bytes + logit_bytes
+    )
     overhead_bytes = runtime_overhead_gib * GIB
     total_bytes = allocated_bytes + overhead_bytes
     total_gib = total_bytes / GIB
@@ -360,6 +489,9 @@ def estimate_training_memory(
         base_weights_gib=base_bytes / GIB,
         optimizer_state_gib=optimizer_bytes / GIB,
         activations_gib=activation_bytes / GIB,
+        deltanet_activations_gib=deltanet_bytes / GIB,
+        attention_activations_gib=attention_activation_bytes / GIB,
+        non_attention_activations_gib=non_attention_bytes / GIB,
         gradients_gib=gradient_bytes / GIB,
         logits_gib=logit_bytes / GIB,
         precision_scheme=scheme.name,

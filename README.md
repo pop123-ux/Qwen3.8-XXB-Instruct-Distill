@@ -102,21 +102,32 @@ question.
 | Vocabulary | **256** — byte-level, so nearly every parameter is in the layers rather than an embedding table |
 | Objective | causal LM on real text, scored in **bits per byte** (8.0 = learned nothing) |
 | Target | Tesla T4, 14.56 GiB, fp16 autocast, seq 1024, 2000 steps |
-| Estimate | 3.33 GiB live tensors + 1.20 GiB overhead = **4.53 GiB**, `PLAUSIBLE` |
+| Estimate | **3.57 GiB** with the corrected model (the original 4.53 GiB estimate was wrong — see below) |
 
 Byte-level tokenization is the deliberate choice here: no tokenizer to download or
 version, any text file works unchanged, and the loss is directly comparable across runs
 because it does not depend on a tokenizer's compression rate.
 
-**This has not run on a GPU.** The authoring environment has no accelerator, so it is
-validated end-to-end on CPU only — architecture builds, loss falls, checkpoints reload
-bit-for-bit, resume restores the right step. To run it:
+**The first attempt OOMed on a real T4** — predicted 4.53 GiB, demanded ~24.8 GiB, died
+in the forward pass with zero steps completed. The failure is kept as an artifact in
+`experiments/runs/t4_level2_100m_oom_2026-08-24/` and its config is preserved unchanged.
+
+The cause was not batch size. The estimator had **no Gated DeltaNet activation term at
+all**, and those 12 layers held 66% of every retained activation: `transformers`'
+pure-torch DeltaNet kernel force-upcasts to fp32 and runs a 63-iteration loop that
+retains O(chunk²) clones per chunk. The traceback named `scaled_dot_product_attention`,
+which was the next allocation rather than the cause — attention is ~3% of the total.
+[Full analysis](docs/TRAINING_ON_LIMITED_HARDWARE.md#what-the-oom-taught-us).
+
+The revised config adds gradient checkpointing (measured 67x less retained activation)
+and keeps the architecture, sequence length and effective batch identical:
 
 ```bash
-python scripts/train_student.py --config configs/experiments/t4_level2_100m.yaml --dry-run
-python scripts/train_student.py --config configs/experiments/t4_level2_100m.yaml
-python scripts/validate_checkpoint.py experiments/t4_level2_100m/final
-python scripts/hardware_info.py --calibrate-run experiments/t4_level2_100m/summary.json
+python scripts/probe_activations.py --config configs/experiments/t4_level2_100m_ckpt.yaml --scaling
+python scripts/train_student.py --config configs/experiments/t4_level2_100m_ckpt.yaml --dry-run
+python scripts/train_student.py --config configs/experiments/t4_level2_100m_ckpt.yaml
+python scripts/validate_checkpoint.py experiments/runs/t4_level2_100m_ckpt/final
+python scripts/hardware_info.py --calibrate-run experiments/runs/t4_level2_100m_ckpt/summary.json
 ```
 
 The last command is the point of the exercise: it compares each estimated term against
@@ -191,7 +202,7 @@ development ladder from CPU to the final run.
 
 ```bash
 pip install -e ".[dev]"
-pytest                                    # 490 tests, no GPU required
+pytest                                    # 522 tests, no GPU required
 
 python scripts/estimate_vram.py --preset teacher --matrix --max-context
 python scripts/search_architectures.py --vram 16 --context 32768 --top 15
@@ -213,7 +224,7 @@ scripts/          hardware_info, train_student, estimate_vram, validate_checkpoi
 docs/             plans and analysis (start with VERIFICATION.md)
 experiments/      architecture search outputs
 vendor/           teacher metadata, supplied out-of-band
-tests/            490 tests pinning every formula
+tests/            522 tests pinning every formula
 ```
 
 ## Verification status
