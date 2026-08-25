@@ -41,6 +41,28 @@ class DistillationExample:
     source: str = "unknown"
     dataset_version: str = SCHEMA_VERSION
 
+    # --- provenance -----------------------------------------------------
+    # Which teacher produced this, and under what settings. A record without these is
+    # still trainable but is not reproducible: the same repo id serves different weights
+    # over time, and prompt rendering depends on the exact template.
+    teacher_model: str | None = None
+    teacher_revision: str | None = None
+    chat_template_sha256: str | None = None
+    generation_config_sha256: str | None = None
+    #: Whether reasoning was enabled at all. Separate from the effort level, because
+    #: `thinking_disabled` is reached through a different template control.
+    reasoning_enabled: bool | None = None
+    #: Answer tokens are recorded separately from thinking and total, so the reasoning
+    #: cost of an example can be read off without re-tokenising it.
+    teacher_answer_tokens: int | None = None
+    teacher_prompt_tokens: int | None = None
+    finish_reason: str | None = None
+    #: Digests over the exact strings, so a corrupted or edited record is detectable and
+    #: a prompt set can be matched across files without comparing full text.
+    prompt_sha256: str | None = None
+    response_sha256: str | None = None
+    created_at: str | None = None
+
     # --- optional, for later phases -------------------------------------
     #: Path to stored teacher logits. Full distributions over a ~248k vocabulary are
     #: expensive, so this stays optional and top-k is the intended first step.
@@ -71,9 +93,48 @@ class DistillationExample:
             problems.append("empty prompt")
         if not self.teacher_answer.strip():
             problems.append("empty teacher_answer")
-        if self.teacher_thinking_tokens is not None and self.teacher_thinking_tokens < 0:
-            problems.append("negative teacher_thinking_tokens")
+        for name in ("teacher_thinking_tokens", "teacher_answer_tokens",
+                     "teacher_total_tokens", "teacher_prompt_tokens"):
+            value = getattr(self, name)
+            if value is not None and value < 0:
+                problems.append(f"negative {name}")
+        # Token accounting must add up, or every downstream reasoning-cost number is
+        # quietly wrong. Only checked when all three are present.
+        parts = (self.teacher_thinking_tokens, self.teacher_answer_tokens)
+        if (
+            self.teacher_total_tokens is not None
+            and all(p is not None for p in parts)
+            and sum(parts) != self.teacher_total_tokens  # type: ignore[arg-type]
+        ):
+            problems.append(
+                f"token counts do not add up: thinking {self.teacher_thinking_tokens} "
+                f"+ answer {self.teacher_answer_tokens} != total "
+                f"{self.teacher_total_tokens}"
+            )
         return problems
+
+    def content_hashes(self) -> tuple[str, str]:
+        """``(prompt_sha256, response_sha256)`` over the exact strings."""
+        import hashlib
+
+        return (
+            hashlib.sha256(self.prompt.encode("utf-8")).hexdigest(),
+            hashlib.sha256(self.teacher_answer.encode("utf-8")).hexdigest(),
+        )
+
+    def hashes_match(self) -> bool:
+        """Whether the recorded digests still describe this record's content.
+
+        A mismatch means the file was edited or corrupted after generation — the record
+        may look fine and no longer be what the teacher produced.
+        """
+        if self.prompt_sha256 is None and self.response_sha256 is None:
+            return True
+        prompt_hash, response_hash = self.content_hashes()
+        return (
+            (self.prompt_sha256 is None or self.prompt_sha256 == prompt_hash)
+            and (self.response_sha256 is None or self.response_sha256 == response_hash)
+        )
 
     @property
     def has_kd_targets(self) -> bool:

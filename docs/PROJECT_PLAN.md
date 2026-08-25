@@ -85,6 +85,28 @@ Established in Phase 0, analytically:
 - The feasible ceiling under 15.0 GiB usable is ~21B at 32k context, ~16.5B at 128k,
   ~13.5B at 262k.
 
+## The research ladder
+
+Where the project actually is. Nothing below is claimed complete unless it is marked so.
+
+| level | what it establishes | status |
+|---|---|---|
+| **L0** | analysis, verification and training infrastructure | done |
+| **L1** | 4.03M hybrid trains on a real T4 | done — mechanism validated, says nothing about language |
+| **L2** | ~94.5M byte-level LM: does the architecture scale past toy? | **running** — reached step 1925/2000 once before a Colab disconnect; ~2050 tok/s, validation BPB 1.279 at step 400 |
+| **L3** | larger scaling experiment | later |
+| **L4** | teacher-data generation | **infrastructure ready, never run** — the real backend raises rather than loading 27B |
+| **L5** | first distillation (SFT from teacher data) | later — the objective is implemented, the trainer connection is not |
+| **L6** | reasoning-efficiency study | later — metrics and sweep table built, no generation done |
+| **L7** | final architecture search | later |
+| **L8** | large student training | later |
+| **L9** | final benchmark | later — harness built, no benchmark run |
+| **L10** | public release | later |
+
+The teacher has never been loaded. No teacher data has been generated, no benchmark run,
+no student distilled. L4's infrastructure exists so that when a GPU is rented, the
+expensive part produces a durable artifact instead of a session that has to be repeated.
+
 ## Phases
 
 ### Phase 0 — Analysis infrastructure ✅

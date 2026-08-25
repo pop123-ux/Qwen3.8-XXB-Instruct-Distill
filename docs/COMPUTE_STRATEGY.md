@@ -93,6 +93,43 @@ alternatives — Vast.ai, Lambda, and others occupy similar tiers.
 
 Prices appear only in documentation, never in code, so they go stale visibly.
 
+## The teacher does not need to coexist with the student
+
+The single architectural decision that makes this project affordable on a personal
+budget:
+
+```
+local / free T4                rented GPU (once)              free T4
+     |                               |                            |
+create prompt set  ------------>  run teacher  ------------>  train student
+                                       |                          ^
+                                  sharded JSONL + manifest --------+
+                                  persisted to Drive
+```
+
+Teacher generation needs ~50 GB of VRAM. Student training needs ~4 GB. Coupling them
+would mean renting the big GPU for the whole project; separating them means renting it
+once, for as long as generation takes, and never again.
+
+What makes the split safe rather than merely cheap:
+
+- generation is **resumable by prompt id**, read back from the shards themselves, so a
+  terminated instance costs the generation in flight and nothing else;
+- a shard is complete only once **closed and checksummed**, so a truncated file is never
+  read as a short one;
+- every record carries the teacher model, revision, template hash and generation-config
+  hash, so a dataset consumed weeks later on different hardware is still traceable;
+- the student loader depends on **nothing but the files** — no teacher, no tokenizer
+  download, no network.
+
+Cost control: generate against a small prompt set first, check the manifest, then scale.
+A dry run costs nothing:
+
+```bash
+python scripts/generate_teacher_data.py --input prompts.jsonl --output data/teacher \
+    --reasoning-mode xhigh --dry-run
+```
+
 ## Before spending anything
 
 ```bash

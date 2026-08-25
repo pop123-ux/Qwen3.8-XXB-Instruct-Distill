@@ -49,3 +49,29 @@ __all__ = [
     "compare_rendered_prompts",
     "sweep_reasoning_settings",
 ]
+
+from .benchmark import (  # noqa: E402
+    CATEGORIES,
+    BenchmarkItem,
+    BenchmarkRun,
+    BenchmarkSuite,
+    comparable,
+    new_run,
+)
+from .paired import (  # noqa: E402
+    METRIC_DEFINITIONS,
+    PairedRecord,
+    PairedSummary,
+    accuracy_at_token_budget,
+    format_sweep_table,
+    reasoning_sweep_table,
+    result_to_record,
+    summarise_paired,
+    summarise_side,
+)
+
+__all__ = [*globals().get("__all__", []), "CATEGORIES", "METRIC_DEFINITIONS",
+           "BenchmarkItem", "BenchmarkRun", "BenchmarkSuite", "PairedRecord",
+           "PairedSummary", "accuracy_at_token_budget", "comparable",
+           "format_sweep_table", "new_run", "reasoning_sweep_table",
+           "result_to_record", "summarise_paired", "summarise_side"]

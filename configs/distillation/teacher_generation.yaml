@@ -1,0 +1,42 @@
+# Teacher data generation — the expensive stage, run once on a rented GPU.
+#
+# Nothing here has been run. The real teacher backend is NOT_IMPLEMENTED: loading
+# Qwen3.8-27B needs roughly 50 GB of VRAM, and the infrastructure was finished and
+# tested first, deliberately.
+#
+#   python scripts/generate_teacher_data.py \
+#       --input data/prompts/v1.jsonl \
+#       --output data/teacher/xhigh_v1 \
+#       --backend transformers --model Qwen/Qwen3.8-27B --revision <sha> \
+#       --reasoning-mode xhigh --shard-size 500
+
+name: teacher_generation_xhigh_v1
+description: >-
+  Teacher generation settings. The reasoning mode is a real experimental variable, not a
+  detail: it changes how many tokens the teacher spends, and therefore what the student
+  learns to imitate.
+
+teacher:
+  model: Qwen/Qwen3.8-27B
+  # Leave null and the dataset is not reproducible from the model id alone — the same
+  # repo id can serve different weights over time. The manifest records this as a gap.
+  revision: null
+  metadata_dir: vendor/qwen38-metadata
+
+  # Verified against the real chat template: xhigh | medium | low | thinking_disabled.
+  # 'high' is NOT accepted — it looks like it should be and raises inside the template.
+  # 'medium' is not a no-op: it injects no reasoning instruction, which makes it the
+  # SHORTEST rendered prompt, because the default it replaces is xhigh.
+  reasoning_mode: xhigh
+
+generation:
+  max_new_tokens: 2048
+  temperature: 0.0        # greedy: a teacher dataset should be reproducible
+  seed: 0
+
+output:
+  # Shard size trades manifest granularity against file count. 500 keeps each shard
+  # small enough that losing an open one to a terminated instance costs little.
+  shard_size: 500
+  # Generation is resumable by prompt id, read back from the shards themselves.
+  resume: true

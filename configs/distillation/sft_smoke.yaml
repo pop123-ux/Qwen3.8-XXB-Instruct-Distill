@@ -1,0 +1,64 @@
+# Smallest end-to-end SFT configuration: validates the pipeline, teaches nothing.
+#
+#   python scripts/train_distilled_student.py --config configs/distillation/sft_smoke.yaml --dry-run
+#
+# The student here is toy-sized on purpose. Choosing a real student size is a research
+# result that depends on Level 2 finishing, and this file must not look like that
+# decision has been made.
+
+name: distill_sft_smoke
+level: "infrastructure validation — not a research run"
+description: >-
+  Loads a teacher dataset, validates the objective against it, and reports. The student
+  architecture is a placeholder.
+
+teacher:
+  model: Qwen/Qwen3.8-27B
+  revision: null
+  reasoning_mode: xhigh
+
+objective:
+  type: sft
+  # Whether the student is trained to reproduce the teacher's reasoning trace or only
+  # its answer. A real experimental variable: it decides what the student learns to
+  # spend tokens on, and this project's efficiency goal favours answer-only — which
+  # must be measured, not assumed.
+  include_reasoning_in_target: false
+  kd_temperature: null      # unused by sft; left null rather than given a fake value
+  kd_alpha: null
+
+data:
+  train_path: data/teacher/mock_smoke     # a directory of shards, or a single JSONL
+  max_sequence_length: 1024
+
+model:
+  architecture:
+    hidden_size: 128
+    num_hidden_layers: 4
+    intermediate_size: 384
+    vocab_size: 256
+    num_attention_heads: 2
+    num_key_value_heads: 1
+    head_dim: 64
+    linear_num_key_heads: 1
+    linear_num_value_heads: 2
+    full_attention_interval: 4
+    tie_word_embeddings: true
+
+training:
+  strategy: full
+  objective: sft
+  optimizer: adamw
+  precision: fp16
+  learning_rate: 0.0002
+  max_steps: 20
+  batch_size: 2
+  gradient_accumulation_steps: 1
+  gradient_checkpointing: true
+  save_every: 10
+  log_every: 5
+  eval_every: 20
+
+runtime:
+  output_dir: experiments/runs/distill_sft_smoke
+  device: auto

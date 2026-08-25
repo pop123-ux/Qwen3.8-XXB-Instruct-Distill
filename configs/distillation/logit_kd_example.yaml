@@ -1,0 +1,61 @@
+# What a logit-KD configuration will look like. IT WILL NOT RUN.
+#
+#   python scripts/train_distilled_student.py --config configs/distillation/logit_kd_example.yaml
+#   -> objective 'logit_kd' is NOT_IMPLEMENTED: no teacher logits exist yet [...]
+#
+# That refusal is the point. Silently running SFT under a KD config would make the
+# project's central question — does KD beat SFT? — unanswerable, and nothing in the
+# artifacts would reveal it.
+#
+# What is missing is not the loss function. It is the data: full teacher distributions
+# over a ~248k vocabulary are prohibitive to store per token, so top-k is the intended
+# first step and that decision has not been made or measured.
+
+name: distill_logit_kd_example
+level: "schema example — NOT RUNNABLE"
+description: >-
+  Placeholder showing the KD interface. The objective is NOT_IMPLEMENTED and raises.
+
+teacher:
+  model: Qwen/Qwen3.8-27B
+  revision: null
+  reasoning_mode: xhigh
+
+objective:
+  type: logit_kd
+  kd_temperature: 2.0
+  kd_alpha: 0.5
+  include_reasoning_in_target: false
+
+data:
+  train_path: data/teacher/xhigh_v1
+  max_sequence_length: 2048
+
+model:
+  # Placeholder. The student size is a research result that Level 2 has to inform, and
+  # this file must not look like that decision has been made.
+  architecture:
+    hidden_size: 640
+    num_hidden_layers: 16
+    intermediate_size: 2176
+    vocab_size: 256
+    num_attention_heads: 10
+    num_key_value_heads: 2
+    head_dim: 64
+    linear_num_key_heads: 4
+    linear_num_value_heads: 12
+    full_attention_interval: 4
+    tie_word_embeddings: true
+
+training:
+  strategy: full
+  objective: mixed_kd
+  optimizer: adamw
+  precision: fp16
+  max_steps: 1000
+  batch_size: 2
+  gradient_accumulation_steps: 8
+  gradient_checkpointing: true
+
+runtime:
+  output_dir: experiments/runs/distill_logit_kd

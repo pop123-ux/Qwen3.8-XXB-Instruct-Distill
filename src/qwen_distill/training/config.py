@@ -159,6 +159,12 @@ class ExperimentConfig:
     name: str
     description: str = ""
     level: str = ""             # position on the development ladder, e.g. "Level 1"
+    #: Distillation blocks. Optional and empty by default, so every existing experiment
+    #: config is unaffected — but PRESERVED rather than dropped, because a config asking
+    #: for `logit_kd` that silently loaded as `sft` would invalidate the one comparison
+    #: this project exists to make.
+    objective: dict[str, Any] = field(default_factory=dict)
+    teacher: dict[str, Any] = field(default_factory=dict)
     model: ModelConfig = field(default_factory=ModelConfig)
     data: DataConfig = field(default_factory=DataConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
@@ -215,6 +221,8 @@ class ExperimentConfig:
             name=data.get("name", "unnamed"),
             description=data.get("description", ""),
             level=data.get("level", ""),
+            objective=dict(data.get("objective") or {}),
+            teacher=dict(data.get("teacher") or {}),
             model=ModelConfig(**data.get("model", {})),
             data=DataConfig(**data.get("data", {})),
             training=TrainingConfig(**data.get("training", {})),

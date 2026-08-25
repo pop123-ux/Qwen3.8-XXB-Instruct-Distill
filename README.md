@@ -170,6 +170,34 @@ It never follows symlinks, never copies credential-shaped files (`.env`, `*.pem`
 both `--delete-extraneous` and `--yes`. Code and configs belong in git; checkpoints and
 experiment artifacts belong on Drive.
 
+## Distillation infrastructure — built, never run
+
+The teacher has **never been loaded**. No teacher data has been generated, no benchmark
+run, no student distilled. What exists is the machinery for doing it once, cleanly:
+
+```bash
+python scripts/generate_teacher_data.py --input prompts.jsonl --output data/teacher \
+    --reasoning-mode xhigh --dry-run          # validates; loads nothing
+python scripts/train_distilled_student.py --list-objectives
+```
+
+Three rules it enforces, each protecting a result that would otherwise be worthless:
+
+- **A fake teacher can never stand in for a real one.** The mock backend must be named
+  explicitly; the real backend raises rather than degrading. A synthetic dataset that
+  looks real would train a student, produce numbers, and mean nothing.
+- **KD is never silently SFT.** `logit_kd` is declared and marked `NOT_IMPLEMENTED` —
+  no teacher logits exist yet — and refuses to run. Substituting SFT would make the
+  project's central question, *does KD beat SFT?*, unanswerable.
+- **A partial shard is never read as a complete one.** Generation is resumable by prompt
+  id, shards are checksummed on close, and the loader reads only what the manifest calls
+  complete.
+
+Reasoning modes are validated against the *real* chat template: `xhigh`, `medium`, `low`
+and `thinking_disabled`. `high` is rejected because the template rejects it, and `medium`
+is not a no-op — it renders the shortest prompt, since the default it replaces is `xhigh`.
+See [`docs/EVALUATION_PROTOCOL.md`](docs/EVALUATION_PROTOCOL.md).
+
 ## Memory: measured, not multiplied
 
 An earlier calibration reported a measured/estimated ratio of ~2.85. That number was
