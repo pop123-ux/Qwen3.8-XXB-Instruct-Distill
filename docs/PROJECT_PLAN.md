@@ -93,9 +93,9 @@ Where the project actually is. Nothing below is claimed complete unless it is ma
 |---|---|---|
 | **L0** | analysis, verification and training infrastructure | done |
 | **L1** | 4.03M hybrid trains on a real T4 | done — mechanism validated, says nothing about language |
-| **L2** | ~94.5M byte-level LM: does the architecture scale past toy? | **complete** — 2000/2000 steps, 2,090 tok/s, validation BPB 1.270, checkpoint validated. Trains and persists correctly; **establishes no language capability** (procedural corpus) |
-| **L2R** | the same model on real public-domain English: can it learn language structure? | **prepared, not run** — config, corpus script, sanity checks and tests ready; one variable changes, the corpus |
-| **L3** | larger scaling experiment | later |
+| **L2** | ~94.5M byte-level LM: does the architecture scale past toy? | **complete** — 2000/2000 steps, 2,089.2 tok/s run-wide, validation BPB 1.270, checkpoint validated. Trains and persists correctly; **establishes no language capability** (procedural corpus) |
+| **L2R** | the same model on real public-domain English: can it learn language structure? | **complete** — 2000/2000 steps, 18,963.8 s, 1,727.9 tok/s run-wide, validation BPB **1.797** (8.0 baseline). Learns real English structure and avoids Level 2's collapse; **repetitive and semantically weak**, and **undertrained** at 0.826 epochs |
+| **L3** | does capacity above 94.48M materially help, same corpus and recipe? | **ready to run — NOT RUN** — 236.24M, width-scaled; config, plan, stopping rule and evaluation protocol pre-registered |
 | **L4** | teacher-data generation | **infrastructure ready, never run** — the real backend raises rather than loading 27B |
 | **L5** | first distillation (SFT from teacher data) | later — the objective is implemented, the trainer connection is not |
 | **L6** | reasoning-efficiency study | later — metrics and sweep table built, no generation done |
@@ -104,8 +104,16 @@ Where the project actually is. Nothing below is claimed complete unless it is ma
 | **L9** | final benchmark | later — harness built, no benchmark run |
 | **L10** | public release | later |
 
+**L2R is the project's first meaningful language-learning result** and the point every
+later claim should be measured against. It is also the first run to expose that a
+`OneCycleLR` fitted to the step count makes every run's tail flatten regardless of
+capacity — so "the curve flattened" is never on its own evidence of convergence here.
+
 The teacher has never been loaded. No teacher data has been generated, no benchmark run,
-no student distilled. L4's infrastructure exists so that when a GPU is rented, the
+no student distilled. Knowledge distillation is **not implemented**: `logit_kd` and
+`mixed_kd` raise rather than silently running SFT, and a vocabulary mismatch (teacher
+248,320 BPE vs student 256 bytes) blocks logit KD by design, not merely by storage — see
+[experiments/DISTILLATION_DATA_REQUIREMENTS.md](experiments/DISTILLATION_DATA_REQUIREMENTS.md). L4's infrastructure exists so that when a GPU is rented, the
 expensive part produces a durable artifact instead of a session that has to be repeated.
 
 ## Phases
@@ -149,15 +157,20 @@ Added hardware diagnostics (`scripts/hardware_info.py`), capability tiers 0–6 
 from the project's own memory model rather than a lookup table, and a realistic
 development ladder from CPU to the final run.
 
-### Phase 2A — First scaling experiment ⏳ configured, awaiting a GPU
+### Phase 2A — First scaling experiment ✅ complete (L2, L2R)
 
 > Numbering note: phases 0–2A are the *infrastructure* track and ran in that order.
 > Phase 2 below is the first *research* phase and needs a rented GPU, so it comes after
 > 2A in time despite the number.
 
-Level 1 (4.03M) passed on a real T4. Level 2 (94.48M, byte-level real text) is
-configured, dry-run clean at 4.53 GiB of a T4's 14.56 GiB, and validated end to end on
-CPU — but **has not run on a GPU**, because the authoring environment has none.
+Level 1 (4.03M) passed on a real T4. Level 2 (94.48M, procedural byte text) then ran
+2000/2000 steps and produced `"and and and"`. Level 2R (the same model, real English) ran
+2000/2000 steps and produced repetitive but genuine English at validation BPB 1.797.
+
+Both are complete. The 4.53 GiB estimate quoted below was **wrong** — it omitted the Gated
+DeltaNet activation term, the first attempt OOMed at ~24.8 GiB, and the corrected estimator
+puts the run at 3.57 GiB, which the completed run confirmed by not OOMing on a 14.56 GiB
+card. The history is kept because the error is the lesson.
 
 Three defects were found and fixed while preparing it, each of which would have wasted
 the GPU window rather than failing loudly:
@@ -311,11 +324,26 @@ Named in advance, so they are recognisable when they happen:
 
 ## Immediate next actions
 
-1. Run `scripts/inspect_teacher.py` against the real checkpoint; commit the report.
-2. Resolve the `transformers` support question (open question 1 in `VERIFICATION.md`).
-3. Confirm the license and naming requirements before choosing a public model name.
-4. Determine whether a smaller Qwen3.8-family base exists.
-5. Establish `teacher_baseline_v1`, including reasoning-token metrics at every
-   `reasoning_effort` level.
+**The next substantial action is Level 3**, and everything it needs is committed:
 
-Only then choose an architecture.
+1. Clone `main` in a fresh Colab with a T4.
+2. `python scripts/prepare_level2r_dataset.py --output data/level2r`
+3. `python scripts/verify_corpus.py data/level2r --level2r` — the digest prefix must be
+   `4094c48fdd13266c`, or the comparison against Level 2R is void.
+4. `python scripts/estimate_vram.py --config configs/experiments/t4_level3_236m_real_english.yaml`
+5. Read the pre-registered stopping rule in
+   [experiments/level3_plan.md](experiments/level3_plan.md) §4, then start the run.
+
+Optional and cheap, and it would replace a judgment with evidence: a **seed repeat of
+Level 2R** (~5.3 h) to measure run-to-run variance, which the 0.05 BPB materiality
+threshold currently assumes rather than knows.
+
+Deferred until Level 3 answers whether capacity helps — distillation follows the student,
+not the other way round:
+
+- Run `scripts/inspect_teacher.py` against the real checkpoint; commit the report.
+- Resolve the `transformers` support question (open question 1 in `VERIFICATION.md`).
+- Confirm the license and naming requirements before choosing a public model name.
+- Establish `teacher_baseline_v1`, including reasoning-token metrics at every
+  `reasoning_effort` level.
+- Settle the logit-KD vocabulary question **before** generating any teacher data.

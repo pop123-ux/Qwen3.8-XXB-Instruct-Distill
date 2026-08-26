@@ -71,6 +71,19 @@ MAX_TOP_TOKEN_SHARE = 0.5      # >50% of words being one word is Level 2's failu
 MIN_DISTINCT_CHARS = 8
 MIN_DISTINCT_WORD_RATIO = 0.15
 MAX_CYCLE_SHARE = 0.6          # a short cycle covering most of the output
+
+#: Repeated-n-gram fraction: of all n-word windows, what share are windows seen before.
+#: Level 2R's failure mode was phrase-level repetition — "the street was standing before
+#: the street was standing before" — which clears every threshold above: no single token
+#: dominates, the distinct-word ratio stays well over 0.15, and there is no exact
+#: character cycle because the repeat is interrupted. Measuring it needs its own metric.
+#:
+#: This is REPORTED on every generation and only escalates to a problem at
+#: :data:`MAX_REPEATED_NGRAM_SHARE`, which is set high deliberately: some repetition is
+#: normal English ("of the", "and the"), and a detector that fires on it is a detector
+#: nobody reads. The number matters more than the verdict.
+REPETITION_NGRAM_SIZES: tuple[int, ...] = (3, 4)
+MAX_REPEATED_NGRAM_SHARE = 0.5
 MEMORISATION_WINDOW = 120      # characters that must match verbatim to count
 
 
@@ -88,6 +101,9 @@ class GenerationCheck:
     top_token_share: float = 0.0
     longest_cycle: str | None = None
     cycle_share: float = 0.0
+    #: Repeated-n-gram share keyed by n. Level 2R's actual failure mode, and invisible to
+    #: every other field here.
+    repeated_ngrams: dict[int, float] = field(default_factory=dict)
     memorised: bool = False
     problems: list[str] = field(default_factory=list)
 
@@ -118,6 +134,30 @@ class GenerationCheck:
         data["degenerate"] = self.degenerate
         data["stopped_early"] = self.stopped_early
         return data
+
+
+def repeated_ngram_share(text: str, n: int = 4) -> float:
+    """Fraction of ``n``-word windows that have already been seen in this text.
+
+    0.0 means every window is new; 0.5 means half the text is re-treading phrases it
+    already produced. Word-level rather than character-level, so it survives the
+    punctuation and line breaks that defeat an exact cycle check.
+
+    Returns 0.0 when the text is shorter than one window — with nothing to repeat,
+    "no repetition detected" would be a claim nobody measured.
+    """
+    words = re.findall(r"[A-Za-z']+", text.lower())
+    if len(words) < n + 1:
+        return 0.0
+    windows = [tuple(words[i:i + n]) for i in range(len(words) - n + 1)]
+    seen: set[tuple[str, ...]] = set()
+    repeats = 0
+    for window in windows:
+        if window in seen:
+            repeats += 1
+        else:
+            seen.add(window)
+    return repeats / len(windows)
 
 
 def _longest_cycle(text: str, *, max_period: int = 40) -> tuple[str | None, float]:
@@ -194,6 +234,16 @@ def check_generation(
     if check.distinct_chars < MIN_DISTINCT_CHARS:
         check.problems.append(
             f"only {check.distinct_chars} distinct characters — collapsed output"
+        )
+
+    check.repeated_ngrams = {
+        n: round(repeated_ngram_share(completion, n), 4) for n in REPETITION_NGRAM_SIZES
+    }
+    worst_n = max(check.repeated_ngrams, key=lambda n: check.repeated_ngrams[n], default=None)
+    if worst_n is not None and check.repeated_ngrams[worst_n] > MAX_REPEATED_NGRAM_SHARE:
+        check.problems.append(
+            f"{check.repeated_ngrams[worst_n]:.0%} of {worst_n}-word windows repeat an "
+            f"earlier one — phrase-level looping"
         )
 
     unit, share = _longest_cycle(completion)
@@ -301,6 +351,12 @@ class SanityReport:
                     f"         {check.n_words} words, {check.distinct_word_ratio:.0%} "
                     f"distinct, top token {check.top_token!r} at "
                     f"{check.top_token_share:.0%}"
+                )
+            if check.repeated_ngrams:
+                lines.append(
+                    "         repeated n-grams: "
+                    + ", ".join(f"{n}-gram {v:.0%}"
+                                for n, v in sorted(check.repeated_ngrams.items()))
                 )
             for problem in check.problems:
                 lines.append(f"         ! {problem}")

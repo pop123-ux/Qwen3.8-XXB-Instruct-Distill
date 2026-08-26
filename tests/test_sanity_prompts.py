@@ -221,3 +221,82 @@ def test_generation_check_defaults_stamp_a_time():
     check = GenerationCheck(prompt="a", completion="b")
     assert check.generated_at is None  # only check_generation stamps it
     assert check_generation("a", ENGLISH).generated_at
+
+
+# ----------------------------------------------------------------------------------
+# phrase-level repetition
+# ----------------------------------------------------------------------------------
+#
+# Level 2R's failure mode, and invisible to every other metric here: no single token
+# dominates, the distinct-word ratio stays well over 0.15, and the repeat is interrupted
+# so there is no exact character cycle. Measuring it needs its own number.
+
+
+def test_repetition_metric_separates_level2_from_level2r():
+    """The two failure modes are an order of magnitude apart and must measure that way."""
+    from qwen_distill.training.sanity import repeated_ngram_share
+
+    level2 = "and and and and and and and and and and"
+    level2r = ("the street was standing before the street was standing before the street "
+               "was standing")
+    healthy = ("It was a bright cold day in April and the clocks were striking thirteen "
+               "while Winston hurried through the glass doors")
+
+    assert repeated_ngram_share(level2, 3) > 0.7
+    assert repeated_ngram_share(level2r, 3) > 0.4
+    assert repeated_ngram_share(healthy, 3) == 0.0
+
+
+def test_repetition_is_recorded_on_every_generation():
+    check = check_generation("The ", ENGLISH)
+    assert set(check.repeated_ngrams) == {3, 4}
+    assert all(0.0 <= v <= 1.0 for v in check.repeated_ngrams.values())
+    assert "repeated_ngrams" in check.to_dict()
+
+
+def test_moderate_repetition_is_reported_but_not_called_degenerate():
+    """Level 2R's worst generation loops on 41% of its 3-grams. That is repetitive and it
+    is not the Level-2 collapse, and conflating them would make the metric useless."""
+    from qwen_distill.training.sanity import repeated_ngram_share
+
+    looping = ("road, and the street was still and the stranger was still and the "
+               "stranger was still and the st")
+    assert 0.2 < repeated_ngram_share(looping, 3) < 0.5
+    check = check_generation("In the middle of the", looping)
+    assert not check.degenerate, "moderate looping must not be reported as collapse"
+    assert check.repeated_ngrams[3] > 0.2
+
+
+def test_severe_looping_is_called_out():
+    check = check_generation("The ", "the street was standing before " * 6)
+    assert check.degenerate
+    assert any("phrase-level looping" in p for p in check.problems)
+
+
+def test_repetition_needs_a_window_to_measure():
+    """Below one window there is nothing to repeat, and 0.0 must not read as a finding."""
+    from qwen_distill.training.sanity import repeated_ngram_share
+
+    assert repeated_ngram_share("two words", 4) == 0.0
+    assert repeated_ngram_share("", 3) == 0.0
+
+
+def test_the_committed_level2r_record_can_be_scored_without_regenerating(tmp_path):
+    """The authoritative sanity.json is a permanent artifact. A new metric has to be
+    computable from it retrospectively, or old results become unscoreable the moment the
+    measurement improves."""
+    import json
+    from pathlib import Path
+
+    from qwen_distill.training.sanity import repeated_ngram_share
+
+    record = Path("experiments/runs/t4_level2r_100m_real_english/sanity.json")
+    if not record.is_file():
+        pytest.skip("the Level-2R record is not present in this checkout")
+    payload = json.loads(record.read_text(encoding="utf-8"))
+    shares = [repeated_ngram_share(c["completion"], 3) for c in payload["checks"]]
+    assert len(shares) == 11
+    # Measured at the time of writing: mean 12.4%, 4 of 11 above 10%, none above 50%.
+    assert 0.05 < sum(shares) / len(shares) < 0.25
+    assert max(shares) < 0.5, "no Level-2R generation is a Level-2 style collapse"
+    assert sum(1 for s in shares if s > 0.1) >= 3, "some generations do loop"

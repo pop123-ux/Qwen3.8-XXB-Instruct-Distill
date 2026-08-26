@@ -1,0 +1,155 @@
+# Level 3 — 236M, the SAME design as Level 2R, scaled in width only.
+#
+# STATUS: READY TO RUN. NOT RUN.
+#
+# Level 2R answered "can this architecture learn real English at 94.48M?" with a qualified
+# yes: real word forms, grammatical local structure, no unigram collapse — and heavy
+# phrase-level repetition with no semantic thread. It ended at validation BPB 1.797 with
+# its learning rate at ~0 and 17.4% of the corpus never read.
+#
+# Level 3 asks the one question that follows:
+#
+#     Does increasing model capacity above 94.48M produce a material improvement in
+#     real-language modeling under the same controlled setup?
+#
+# ONE VARIABLE CHANGES: MODEL WIDTH.
+#
+# Everything below the `model:` block is byte-for-byte identical to
+# configs/experiments/t4_level2r_100m_real_english.yaml — same corpus, same sequence
+# length, same batch and accumulation, same optimizer, LR, schedule, warmup, precision,
+# gradient checkpointing, objective, seed, max_steps and eval cadence. The memory
+# estimator says 236M fits at batch 4 with 7.38 GiB spare on a T4, so nothing about the
+# training recipe is FORCED to change — and so nothing does.
+#
+# What changes in `model:`, and only this:
+#
+#     hidden_size            640  ->  1024   (x1.60)
+#     intermediate_size     2176  ->  3456   (x1.59, FFN expansion 3.40 -> 3.375)
+#     num_attention_heads     10  ->    16   (x1.60, head_dim stays 64)
+#     linear_num_key_heads     4  ->     6   (x1.50)
+#     linear_num_value_heads  12  ->    18   (x1.50)
+#
+# What is deliberately NOT changed:
+#
+#     num_hidden_layers        16 — depth held, so this is width scaling and nothing else
+#     full_attention_interval   4 — 12 DeltaNet + 4 full attention, the teacher's 3:1
+#     head_dim                 64
+#     linear_key/value_head_dim 64
+#     linear_conv_kernel_dim    4
+#     vocab_size              256 — byte-level, so BPB stays on one scale across the ladder
+#     max_position_embeddings 4096
+#     tie_word_embeddings    true
+#
+# Measured parameter count: 236,237,488. That is an OUTPUT of the shape rule, not a
+# target that the shape was bent to reach. "236M" is the measurement, rounded.
+#
+# Prepare the corpus first — it is never committed, and it must be the SAME bytes
+# Level 2R used or the comparison is void:
+#
+#   python scripts/prepare_level2r_dataset.py --output data/level2r
+#   python scripts/verify_corpus.py data/level2r --level2r
+#
+# Expected digest prefix: 4094c48fdd13266c
+#
+# Confirm the fit before spending hours, on the actual card:
+#
+#   python scripts/estimate_vram.py --config configs/experiments/t4_level3_236m_real_english.yaml
+#
+# The stopping rule and the continuation rule are written down BEFORE the run, in
+# docs/experiments/level3_plan.md. Read them before extending anything.
+
+name: t4_level3_236m_real_english
+level: "Level 3 — T4 width-scaled student (~236M)"
+description: >-
+  The Level-2R hybrid scaled in width from 640 to 1024 hidden, 94.48M to 236.24M
+  parameters, on the identical corpus and the identical training recipe. Tests whether
+  capacity above 94.48M materially improves real-language modeling. Depth, layer layout,
+  the 3:1 DeltaNet/attention ratio, the byte-level vocabulary and every training
+  hyper-parameter are held at their Level-2R values.
+
+model:
+  architecture:
+    hidden_size: 1024            # was 640
+    num_hidden_layers: 16        # UNCHANGED — depth held, this is a width experiment
+    intermediate_size: 3456      # was 2176; 3.375x expansion, teacher-consistent
+    vocab_size: 256              # byte-level
+    num_attention_heads: 16      # was 10; head_dim stays 64
+    num_key_value_heads: 2       # UNCHANGED — GQA ratio widens from 5:1 to 8:1
+    head_dim: 64                 # UNCHANGED
+    linear_num_key_heads: 6      # was 4
+    linear_num_value_heads: 18   # was 12; 3 value heads per key head, as in Level 2R
+    linear_key_head_dim: 64      # UNCHANGED
+    linear_value_head_dim: 64    # UNCHANGED
+    linear_conv_kernel_dim: 4    # UNCHANGED
+    full_attention_interval: 4   # UNCHANGED -> 12 linear_attention + 4 full_attention
+    max_position_embeddings: 4096
+    tie_word_embeddings: true
+
+data:
+  text_corpus: true
+  # THE SAME BYTES Level 2R trained and validated on. Not "the same books" — the same
+  # bytes, verified by digest. Two preparations that differ by a header are two different
+  # benchmarks, and the whole comparison rests on the validation split being identical.
+  text_path: data/level2r/train.txt
+  validation_path: data/level2r/validation.txt
+  procedural_bytes: 8000000      # unused when text_path is set; kept for schema parity
+  validation_fraction: 0.05
+  max_sequence_length: 1024      # UNCHANGED
+  shuffle_seed: 0                # UNCHANGED — same data order
+
+training:
+  strategy: full
+  optimizer: adamw               # UNCHANGED
+  precision: fp16                # UNCHANGED — T4 is Turing (CC 7.5): NO bf16
+  objective: sft                 # UNCHANGED — plain next-token causal LM, no KD
+  learning_rate: 0.0006          # UNCHANGED
+  weight_decay: 0.01             # UNCHANGED
+  max_steps: 2000                # UNCHANGED — see below, and level3_plan.md §4
+  warmup_steps: 100              # UNCHANGED
+  batch_size: 4                  # UNCHANGED — 6.18 GiB estimated, 7.38 GiB spare
+  gradient_accumulation_steps: 4 # UNCHANGED — effective batch 16
+  gradient_checkpointing: true   # UNCHANGED — non-negotiable for this architecture
+  seed: 0                        # UNCHANGED
+  eval_every: 200                # UNCHANGED — same 10 comparison points
+
+  # max_steps 2000 is NOT "because Level 2 did 2000". It is because Level 2R did 2000, and
+  # a matched comparison needs a matched token budget: 32,768,000 tokens, the same
+  # OneCycleLR shape over the same horizon, the same data order. Change the horizon and
+  # the LR trajectory changes with it, and the two runs stop being comparable at any step.
+  #
+  # Level 2R was UNDERTRAINED at 2000 (0.826 epochs, LR at 0.9% of peak in the final
+  # block). Level 3 will be too, and more so per parameter — 0.139 tokens/parameter against
+  # Level 2R's 0.347. That is a known and accepted property of this comparison: it asks
+  # "at a FIXED 32.8M-token budget, does capacity help?", which is a real question with a
+  # real answer. It does not ask what either model could reach given enough data, and the
+  # result must never be read as answering that. Extending the horizon is Stage 2, it
+  # requires extending Level 2R as well, and the rule for it is pre-registered in
+  # docs/experiments/level3_plan.md §4.
+
+  # STORAGE. A 236M checkpoint is ~2.83 GB (945 MB weights + 1.89 GB fp32 AdamW state).
+  # Ten of them is ~28.3 GB, which EXCEEDS a free 15 GB Drive tier — and Level 2R's ten
+  # checkpoints already occupy ~11.3 GB. Before starting, either free that space or plan
+  # to prune. save_every stays at 200 because raising it trades disk for work-at-risk, and
+  # at ~704 tok/s estimated, 200 steps is already ~1.3 h of exposure per checkpoint.
+  # Pruning is manual and deliberate: delete old step_NNNNNN directories on Drive, then
+  #   python scripts/validate_checkpoint.py <drive-run> --persistent
+  # which re-verifies what remains and re-points `latest` at the newest that validates.
+  save_every: 200
+  log_every: 25
+  progress_every: 25
+
+  # Uncomment and point at a FRESH directory. Do not reuse Level 2R's — that run is
+  # complete and its checkpoints are its record.
+  #
+  # persistent_backup: /content/drive/MyDrive/t4_level3_236m_real_english
+  #
+  # The trainer verifies the mount before training starts and refuses to run if the path
+  # is not really on mounted Drive. Every persisted checkpoint is verified at the
+  # destination — sizes and SHA-256 against the source — before `latest.json` moves.
+  persistent_backup: null
+
+runtime:
+  output_dir: experiments/runs/t4_level3_236m_real_english
+  device: auto
+  reserved_vram_gib: 1.0
+  resume_from: null

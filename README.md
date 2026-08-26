@@ -93,7 +93,70 @@ understands language. Treating 2.09 as a capability number would be a category e
 Level 2 (94.48M, real text) is the experiment that starts to answer the language
 question.
 
-## Level 2 — configured, not yet run
+## The experiment ladder
+
+| level | model | corpus | status |
+|---|---|---|---|
+| **1** | 4.03M prototype | synthetic tokens, vocab 4096 | **complete** — validated the training mechanism |
+| **2** | 94.48M hybrid | procedural byte text, 8 MB | **complete** — validated the stack; generated `"and and and"` |
+| **2R** | 94.48M hybrid | real public-domain English, 44.1 MB | **complete** — the first meaningful language-learning experiment |
+| **3** | 236.24M, width-scaled | the same Level-2R corpus | **ready to run — NOT RUN** |
+| distillation | — | teacher outputs | infrastructure built; **teacher generation not run, logit KD not implemented** |
+
+Each level is a separate record under [`experiments/runs/`](experiments/runs/), with its
+claims split into what it establishes, what it does not, and what is unknown.
+
+## Level 2R — the first real-language result
+
+**COMPLETE.** 2000/2000 steps on a T4 in 18,963.8 s, 32,768,000 tokens, final validation
+**1.797 bits/byte** against an 8.0 uniform-byte baseline — **4.45x compression**.
+
+> The 94.48M hybrid learns non-trivial natural-language structure from real English and
+> avoids catastrophic unigram-style collapse, but its generation remains repetitive and
+> semantically weak at this scale.
+
+Greedy, from the committed [`sanity.json`](experiments/runs/t4_level2r_100m_real_english/sanity.json):
+
+| prompt | continuation |
+|---|---|
+| `"Yesterday, I"` | ` should have thought it a little too much to be a man of the service of the property of the pros` |
+| `"In the beginning "` | `of the state of the present day, and the conversation was the same thing that had been so much a` |
+| `"When the sun "` | `was standing on the steps the street was standing before the street was standing before the stre` |
+
+Real English words, function words in grammatical positions, local clause structure that
+scans — against the identical architecture's `"and and and and"` on procedural text. And
+also: phrase-level looping, motif fixation on *stranger*, *street*, *thing*, *man*, and no
+semantic thread. Measured, 3-gram repetition is **12.4% mean** with 4 of 11 generations
+looping, against **83%** for Level 2's collapse. Nothing memorised.
+
+It is **not** fluent, useful, instruction-following, benchmark-competitive or
+teacher-equivalent, and must not be cited as any of those.
+
+**The run is undertrained, not converged.** It saw **0.826 epochs** — 17.4% of the corpus
+was never read — and `OneCycleLR` put the final 200 steps at **0.9% of peak learning rate**.
+The flat tail is the schedule running out, not the model saturating. 2000 steps was a
+budget, and it now serves as a controlled baseline.
+
+Full record:
+[`experiments/runs/t4_level2r_100m_real_english/`](experiments/runs/t4_level2r_100m_real_english/).
+
+## Level 3 — ready to run, not run
+
+One variable changes: **width**. Hidden 640 -> 1024, 94.48M -> **236.24M** parameters
+(x2.50). Depth stays 16 layers, the layout stays 12 DeltaNet + 4 full attention (the
+teacher's 3:1), the byte vocabulary stays 256, and **all 23 training fields are identical**
+— same corpus bytes, sequence length, batch, accumulation, optimizer, learning rate,
+schedule, precision and gradient checkpointing. The estimator puts it at **6.18 GiB with
+7.38 GiB spare** on a T4, so nothing is forced to change and nothing does.
+
+> Does increasing model capacity above 94.48M produce a material improvement in
+> real-language modeling under the same controlled setup?
+
+Estimated ~12.9 h and ~28.3 GB of Drive for ten checkpoints. The stopping rule, the
+continuation rule and the reading of every outcome are **written down before the run**:
+[`docs/experiments/level3_plan.md`](docs/experiments/level3_plan.md).
+
+## Level 2 — the procedural control
 
 | | |
 |---|---|
@@ -108,9 +171,9 @@ Byte-level tokenization is the deliberate choice here: no tokenizer to download 
 version, any text file works unchanged, and the loss is directly comparable across runs
 because it does not depend on a tokenizer's compression rate.
 
-**Level 2 is complete: 2000/2000 steps, no OOM, ~2,090 tok/s, final checkpoint validated
-bit-for-bit.** Validation BPB 1.270 against an 8.0 uniform-byte baseline — and greedy
-generation from that same checkpoint is `"and and and and…"`.
+**Level 2 is complete: 2000/2000 steps, no OOM, 2,089.2 tok/s run-wide, final checkpoint
+validated bit-for-bit.** Validation BPB 1.270 against an 8.0 uniform-byte baseline — and
+greedy generation from that same checkpoint is `"and and and and…"`.
 
 Both are correct, and they are the same fact. The corpus was procedural text with a
 Zipfian word distribution and **no syntax, no semantics, no long-range dependency**; the
@@ -123,27 +186,9 @@ establishes nothing about language capability, and must not be cited as if it di
 result: [`experiments/runs/t4_level2_100m_ckpt_complete/`](experiments/runs/t4_level2_100m_ckpt_complete/);
 what to run next: [`docs/experiments/level2_report.md`](docs/experiments/level2_report.md).
 
-### Level 2R — prepared, not run
-
-The next experiment changes **one variable: the corpus.** Same 94.48M model, same 12+4
-hybrid layout, same sequence length, batch, optimizer, precision and gradient
-checkpointing — trained on real public-domain English instead of procedural text. The
-config diff against Level 2 is three lines, all corpus and naming.
-
-The split is at **document level**: whole works go to train or validation and never both,
-so validation BPB measures generalisation to prose the model has never seen rather than
-continuation of a passage it is already reading. The corpus is never committed;
-`scripts/prepare_level2r_dataset.py` reconstructs it from catalogue ids and records every
-hash.
-
-```bash
-python scripts/prepare_level2r_dataset.py --output data/level2r
-python scripts/train_student.py --config configs/experiments/t4_level2r_100m_real_english.yaml \
-    --persistent-dir "$DRIVE" --dry-run
-```
-
-Plan, stopping procedure and caveats:
-[`docs/experiments/level2r_plan.md`](docs/experiments/level2r_plan.md).
+Level 2's 1.270 and Level 2R's 1.797 are **not comparable** — different corpora, different
+intrinsic entropy. `scripts/compare_runs.py` refuses that delta and says why:
+[`docs/experiments/level2_vs_level2r.md`](docs/experiments/level2_vs_level2r.md).
 
 ### Earlier attempts
 
@@ -391,7 +436,8 @@ capability regression cannot be presented as an efficiency win. See
 |---|---|
 | [POST_RUN_CHECKLIST.md](docs/experiments/POST_RUN_CHECKLIST.md) | Reaching `max_steps` is not completion. What is. |
 | [level2_report.md](docs/experiments/level2_report.md) | The Level-2 result, formalised |
-| [level2r_plan.md](docs/experiments/level2r_plan.md) | Level 2R: one variable changes, the corpus |
+| [level2r_plan.md](docs/experiments/level2r_plan.md) | Level 2R: the plan as written before the run |
+| [level3_plan.md](docs/experiments/level3_plan.md) | **Level 3: candidates, choice, stopping rule, evaluation — pre-registered** |
 | [level2_vs_level2r.md](docs/experiments/level2_vs_level2r.md) | How to compare them — and the BPB delta that must not be reported |
 | [SCALING_STUDY.md](docs/experiments/SCALING_STUDY.md) | Protocol for 4M → 500M, and why two points are not a law |
 | [DISTILLATION_DATA_REQUIREMENTS.md](docs/experiments/DISTILLATION_DATA_REQUIREMENTS.md) | Teacher-output storage, and the vocabulary mismatch that blocks logit KD |

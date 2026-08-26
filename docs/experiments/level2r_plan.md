@@ -1,3 +1,20 @@
+> **STATUS: SUPERSEDED BY THE RESULT — kept as written.**
+>
+> This is the plan as it stood *before* Level 2R ran, preserved unedited so it cannot be
+> mistaken for a document that predicted its own outcome. Level 2R is now **complete**:
+> 2000/2000 steps, final validation **1.797 bits/byte**, generation that is real English
+> and repetitive.
+>
+> The result, not the plan, is authoritative:
+> [`experiments/runs/t4_level2r_100m_real_english/`](../../experiments/runs/t4_level2r_100m_real_english/).
+> What follows it: [level3_plan.md](level3_plan.md).
+>
+> One thing this plan did not anticipate: the run ended **undertrained**, at 0.826 epochs
+> with the learning rate at 0.9% of peak in the final block. The stopping procedure below
+> assumed the curve would decide when to stop; in the event the LR schedule did.
+
+---
+
 # Level 2R — the same 94.48M model, on real English
 
 **Prepared, not run.** Everything below is ready to launch; nothing has been trained.
