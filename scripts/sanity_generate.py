@@ -8,6 +8,24 @@ Not a benchmark. It answers one question: *is the model obviously broken?* Passi
 not establish language capability; failing establishes that something is wrong, cheaply
 and early.
 
+**Prompt set v2.0** — eleven prompts at two lengths. The six short ones leave the model
+nearly unconstrained, which is where Level 2's collapse showed up fastest. Five longer
+ones supply real syntactic context, so a model that learned local structure has something
+to continue and one that learned only unigram frequencies has nowhere to hide::
+
+    "The beginning of the story was"     "It was a"
+    "In the middle of the"               "The most important thing"
+    "Yesterday, I"
+
+Every generation is recorded with what produced it — prompt, text, checkpoint, step,
+decoding settings, token count (from the generated ids, not the decoded characters) and
+timestamp — so a report can be reproduced or contradicted later. Passing ``--prompts``
+marks the report ``custom``, because a pass rate over different prompts is a different
+measurement.
+
+Deterministic: greedy decoding, so two runs at one checkpoint produce identical text and
+any change between checkpoints is a change in the model.
+
 Examples::
 
     python scripts/sanity_generate.py experiments/runs/t4_level2r_100m_real_english
@@ -40,7 +58,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--prompts", nargs="+", default=list(SANITY_PROMPTS))
     parser.add_argument("--training-text", type=Path,
-                        help="training corpus, to detect verbatim memorisation")
+                        help="training corpus, to detect verbatim memorisation. Without "
+                             "it the memorisation check does not run, and the report "
+                             "says so rather than reporting 'not memorised'")
     parser.add_argument("--json", type=Path, help="write the report here")
     return parser
 
@@ -84,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
     training_text = None
     if args.training_text and args.training_text.is_file():
         # Only a prefix is needed: memorisation shows up in the opening characters, and
-        # holding a 50 MB corpus in memory to check six generations is wasteful.
+        # holding a 50 MB corpus in memory to check eleven generations is wasteful.
         training_text = args.training_text.read_text(
             encoding="utf-8", errors="replace"
         )[:20_000_000]

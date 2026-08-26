@@ -122,20 +122,38 @@ def _build_from_config(config_path: Path, device: str):
     return AutoModelForCausalLM.from_config(hf_config).to(device), spec
 
 
-def generate_bytes(model, prompt: str, *, max_new_tokens: int = 48, device: str = "cpu") -> str:
-    """Greedy byte-level generation. Deterministic by construction."""
+def generate_bytes_detailed(
+    model, prompt: str, *, max_new_tokens: int = 48, device: str = "cpu"
+) -> tuple[str, list[int]]:
+    """Greedy byte-level generation, returning the text **and** the generated ids.
+
+    The ids are not redundant. ``decode`` uses ``errors="replace"``, and a byte-level
+    model routinely emits sequences that are not valid UTF-8, so
+    ``len(text.encode("utf-8"))`` is not the number of tokens produced. Anything
+    recording a token count needs the ids.
+    """
     import torch
 
     from .text_data import decode, encode
 
-    ids = torch.tensor([encode(prompt)], dtype=torch.long, device=device)
+    prompt_ids = encode(prompt)
+    ids = torch.tensor([prompt_ids], dtype=torch.long, device=device)
     model.eval()
     with torch.no_grad():
         out = model.generate(
             ids, max_new_tokens=max_new_tokens, do_sample=False, use_cache=True,
             pad_token_id=0,
         )
-    return decode(out[0].tolist()[len(encode(prompt)) :])
+    generated = out[0].tolist()[len(prompt_ids) :]
+    return decode(generated), generated
+
+
+def generate_bytes(model, prompt: str, *, max_new_tokens: int = 48, device: str = "cpu") -> str:
+    """Greedy byte-level generation. Deterministic by construction."""
+    text, _ids = generate_bytes_detailed(
+        model, prompt, max_new_tokens=max_new_tokens, device=device
+    )
+    return text
 
 
 def validate_checkpoint(
