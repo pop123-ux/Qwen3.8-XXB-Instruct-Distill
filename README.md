@@ -291,7 +291,7 @@ development ladder from CPU to the final run.
 
 ```bash
 pip install -e ".[dev]"
-pytest                                    # 575 tests, no GPU required
+pytest                                    # 894 tests, no GPU required
 
 python scripts/estimate_vram.py --preset teacher --matrix --max-context
 python scripts/search_architectures.py --vram 16 --context 32768 --top 15
@@ -309,11 +309,12 @@ src/qwen_distill/
   diagnostics/    device detection, capability tiers, fit analysis, calibration
   training/       config, feasibility gate, trainer, corpora, memory probe
   evaluation/     harness, backends, reasoning-effort sweeps
+  analysis/       post-hoc run analysis, cross-experiment comparison, scaling candidates
 scripts/          hardware_info, train_student, estimate_vram, validate_checkpoint, ...
 docs/             plans and analysis (start with VERIFICATION.md)
 experiments/      architecture search outputs
 vendor/           teacher metadata, supplied out-of-band
-tests/            575 tests pinning every formula
+tests/            894 tests pinning every formula
 ```
 
 ## Verification status
@@ -382,6 +383,19 @@ capability regression cannot be presented as an efficiency win. See
 | [HARDWARE.md](docs/HARDWARE.md) | Capability tiers, what fits where, rented-GPU options |
 | [TRAINING_ON_LIMITED_HARDWARE.md](docs/TRAINING_ON_LIMITED_HARDWARE.md) | The development ladder: CPU → T4 → rented |
 | [COMPUTE_STRATEGY.md](docs/COMPUTE_STRATEGY.md) | When to rent, and what |
+
+### Experiment protocol and analysis
+
+| Document | Contents |
+|---|---|
+| [POST_RUN_CHECKLIST.md](docs/experiments/POST_RUN_CHECKLIST.md) | Reaching `max_steps` is not completion. What is. |
+| [level2_report.md](docs/experiments/level2_report.md) | The Level-2 result, formalised |
+| [level2r_plan.md](docs/experiments/level2r_plan.md) | Level 2R: one variable changes, the corpus |
+| [level2_vs_level2r.md](docs/experiments/level2_vs_level2r.md) | How to compare them — and the BPB delta that must not be reported |
+| [SCALING_STUDY.md](docs/experiments/SCALING_STUDY.md) | Protocol for 4M → 500M, and why two points are not a law |
+| [DISTILLATION_DATA_REQUIREMENTS.md](docs/experiments/DISTILLATION_DATA_REQUIREMENTS.md) | Teacher-output storage, and the vocabulary mismatch that blocks logit KD |
+| [12GB_DISTILLATION_EXTENSION.md](docs/experiments/12GB_DISTILLATION_EXTENSION.md) | What changes on a 12 GB card |
+| [t4_level2_resumability.md](docs/experiments/t4_level2_resumability.md) | Interruption safety and the checkpoint contract |
 
 ## Reporting standards
 
