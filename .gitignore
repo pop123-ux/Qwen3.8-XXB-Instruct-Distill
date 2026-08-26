@@ -26,8 +26,21 @@ data/
 *.jsonl.gz
 *.parquet
 
-# Experiment outputs (keep committed summaries, ignore bulk generated text)
-experiments/**/runs/
+# Experiment outputs: the lightweight records ARE the point, the bulk never is.
+#
+# `experiments/**/runs/` alone excluded the directory, and git cannot re-include a file
+# whose parent directory is excluded — so every run record had to be `git add -f`'d, and
+# one forgotten flag silently loses the write-up of an experiment that cost hours of GPU.
+# Excluding the CONTENTS instead lets the summaries back in by name.
+experiments/**/runs/**
+!experiments/**/runs/**/
+!experiments/**/runs/**/*.md
+!experiments/**/runs/**/*.json
+# ...and nothing heavy, whatever directory it turns up in.
+experiments/**/*.pt
+experiments/**/*.safetensors
+experiments/**/*.bin
+experiments/**/metrics.jsonl
 evaluations/**/raw/
 # Generations can be hundreds of MB; the summaries next to them are what we commit.
 **/generations.jsonl
