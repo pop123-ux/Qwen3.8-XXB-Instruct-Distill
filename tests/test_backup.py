@@ -12,13 +12,13 @@ and the "Drive" is an ordinary tmp_path.
 from __future__ import annotations
 
 import importlib.util
-import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from conftest import make_checkpoint_dir
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "backup_colab_to_drive.py"
@@ -265,17 +265,11 @@ def test_dry_run_changes_nothing(tmp_path):
 
 # --- checkpoints ----------------------------------------------------------
 def make_checkpoint(root, step: int, *, complete: bool = True):
-    """A checkpoint directory shaped like the trainer's, complete or otherwise."""
-    directory = root / f"step_{step:06d}"
-    directory.mkdir(parents=True, exist_ok=True)
-    for name in ("model.safetensors", "optimizer.pt", "training_state.json"):
-        (directory / name).write_text("x", encoding="utf-8")
-    (directory / "metadata.json").write_text(
-        json.dumps({"step": step, "complete": complete}), encoding="utf-8"
-    )
-    if complete:
-        (directory / "COMPLETE").write_text(f"step {step}\n", encoding="utf-8")
-    return directory
+    """A checkpoint directory shaped like the trainer's, complete or otherwise.
+
+    One shared builder — see ``conftest.make_checkpoint_dir``.
+    """
+    return make_checkpoint_dir(root, step, complete=complete)
 
 
 def test_an_incomplete_checkpoint_is_never_copied(tmp_path):

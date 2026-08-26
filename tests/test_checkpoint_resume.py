@@ -24,10 +24,9 @@ from __future__ import annotations
 import json
 
 import pytest
-from conftest import requires_stack
+from conftest import make_checkpoint_dir, requires_stack
 
 from qwen_distill.training.checkpoints import (
-    COMPLETE_MARKER,
     REQUIRED_FILES,
     CheckpointMetadata,
     cleanup_incomplete,
@@ -52,18 +51,13 @@ def test_step_directories_sort_lexically_in_numeric_order():
 
 
 def make_checkpoint(root, step: int, *, complete: bool = True, files=REQUIRED_FILES):
-    directory = root / step_dirname(step)
-    directory.mkdir(parents=True, exist_ok=True)
-    for name in files:
-        if name == "metadata.json":
-            (directory / name).write_text(
-                json.dumps({"step": step, "complete": complete}), encoding="utf-8"
-            )
-        else:
-            (directory / name).write_bytes(b"x")
-    if complete:
-        (directory / COMPLETE_MARKER).write_text(f"step {step}\n", encoding="utf-8")
-    return directory
+    """One shared builder — see ``conftest.make_checkpoint_dir``.
+
+    It writes plausibly-sized artifacts because the validator now rejects a 32-byte
+    ``model.safetensors``, which is the whole point: a fixture the validator would
+    refuse in production must not pass in a test.
+    """
+    return make_checkpoint_dir(root, step, complete=complete, files=files)
 
 
 def test_a_checkpoint_needs_both_the_marker_and_every_required_file(tmp_path):
@@ -154,7 +148,7 @@ def test_cleanup_never_touches_a_complete_checkpoint(tmp_path):
 
 def test_the_latest_pointer_refuses_to_name_an_incomplete_checkpoint(tmp_path):
     partial = make_checkpoint(tmp_path, 200, complete=False)
-    with pytest.raises(ValueError, match="not a complete checkpoint"):
+    with pytest.raises(ValueError, match="refusing to point `latest`"):
         update_latest_pointer(tmp_path, partial, 200)
 
 
@@ -357,7 +351,7 @@ def test_loading_refuses_an_incomplete_checkpoint(tmp_path):
     from qwen_distill.training.checkpoints import load_checkpoint
 
     partial = make_checkpoint(tmp_path, 100, complete=False)
-    with pytest.raises(ValueError, match="not a complete checkpoint"):
+    with pytest.raises(ValueError, match="not a usable checkpoint"):
         load_checkpoint(partial, model=torch.nn.Linear(4, 4))
 
 
