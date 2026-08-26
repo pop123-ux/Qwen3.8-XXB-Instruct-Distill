@@ -291,7 +291,7 @@ development ladder from CPU to the final run.
 
 ```bash
 pip install -e ".[dev]"
-pytest                                    # 894 tests, no GPU required
+pytest                                    # 925 tests, no GPU required
 
 python scripts/estimate_vram.py --preset teacher --matrix --max-context
 python scripts/search_architectures.py --vram 16 --context 32768 --top 15
@@ -314,7 +314,7 @@ scripts/          hardware_info, train_student, estimate_vram, validate_checkpoi
 docs/             plans and analysis (start with VERIFICATION.md)
 experiments/      architecture search outputs
 vendor/           teacher metadata, supplied out-of-band
-tests/            894 tests pinning every formula
+tests/            925 tests pinning every formula
 ```
 
 ## Verification status
@@ -380,6 +380,7 @@ capability regression cannot be presented as an efficiency win. See
 | [EVALUATION_PLAN.md](docs/EVALUATION_PLAN.md) | Tiers, baselines, contamination, reporting standards |
 | [DEPLOYMENT_PLAN.md](docs/DEPLOYMENT_PLAN.md) | The 16 GB envelope and measurement methodology |
 | [reasoning-efficiency.md](docs/reasoning-efficiency.md) | Adaptive reasoning research direction |
+| [CHECKPOINT_RECOVERY_GUARANTEE.md](docs/CHECKPOINT_RECOVERY_GUARANTEE.md) | What "persisted" means, and how a deleted checkpoint is caught |
 | [HARDWARE.md](docs/HARDWARE.md) | Capability tiers, what fits where, rented-GPU options |
 | [TRAINING_ON_LIMITED_HARDWARE.md](docs/TRAINING_ON_LIMITED_HARDWARE.md) | The development ladder: CPU → T4 → rented |
 | [COMPUTE_STRATEGY.md](docs/COMPUTE_STRATEGY.md) | When to rent, and what |

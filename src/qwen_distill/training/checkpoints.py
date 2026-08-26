@@ -42,18 +42,40 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-#: Marker file written last inside a checkpoint directory. Its presence means every
-#: other file was written and fsynced first.
-COMPLETE_MARKER = "COMPLETE"
+from .checkpoint_validation import (
+    COMPLETE_MARKER,
+    LOAD,
+    MANIFEST,
+    MANIFEST_FILENAME,
+    RESUMABLE_FILES,
+    STRUCTURE,
+    CheckpointValidation,
+    build_manifest,
+    checkpoint_directories,
+    resolve_latest,
+    validate_checkpoint_dir,
+    validate_checkpoint_root,
+)
+
+__all__ = [
+    "COMPLETE_MARKER", "MANIFEST_FILENAME", "REQUIRED_FILES", "CHECKPOINT_FILES",
+    "CheckpointMetadata", "CheckpointValidation",
+    "atomic_write_json", "capture_rng_state", "cleanup_incomplete", "config_sha256",
+    "is_complete", "list_checkpoints", "load_checkpoint", "read_latest_pointer",
+    "resolve_checkpoint", "resolve_latest", "restore_rng_state", "save_checkpoint",
+    "step_dirname", "update_latest_pointer", "validate_checkpoint_dir",
+    "validate_checkpoint_root", "STRUCTURE", "MANIFEST", "LOAD",
+]
 
 #: Prefix for a checkpoint still being written. Directories starting with a dot are
 #: skipped by the discovery logic and by the Drive backup, and are removed on restart.
 INCOMPLETE_PREFIX = "."
 INCOMPLETE_SUFFIX = ".incomplete"
 
-#: Files a checkpoint must contain to be considered loadable. Anything optional (a
-#: scaler on a CPU run, a scheduler for a constant LR) is absent rather than empty.
-REQUIRED_FILES = ("model.safetensors", "optimizer.pt", "training_state.json", "metadata.json")
+#: Files a resumable checkpoint must contain, excluding the marker itself. Derived from
+#: :data:`qwen_distill.training.checkpoint_validation.RESUMABLE_FILES` rather than
+#: restated, so there is exactly one place that decides what a checkpoint must hold.
+REQUIRED_FILES = tuple(name for name in RESUMABLE_FILES if name != COMPLETE_MARKER)
 
 #: Everything a checkpoint may contain, in the order it is written.
 CHECKPOINT_FILES = (
@@ -65,6 +87,7 @@ CHECKPOINT_FILES = (
     "training_state.json",
     "config.json",
     "metadata.json",
+    MANIFEST_FILENAME,
 )
 
 
@@ -207,36 +230,28 @@ def _is_tied(model: Any, name: str) -> bool:
 
 
 def is_complete(path: str | Path) -> bool:
-    """Whether a directory is a checkpoint that can actually be loaded.
+    """Whether a directory is a checkpoint that can actually be resumed from.
 
-    Requires the marker *and* every required file: the marker alone would trust a write
-    that was interrupted after the marker but before an fsync completed, and the files
-    alone would trust a directory mid-write.
+    A thin boolean over :func:`~qwen_distill.training.checkpoint_validation.validate_checkpoint_dir`
+    at ``structure`` level. It used to be a separate existence check::
+
+        if not all((directory / name).is_file() for name in REQUIRED_FILES):
+
+    which is ``True`` for a zero-byte ``model.safetensors``, for one truncated to 50
+    bytes, and for a directory whose weights were deleted after the marker was written —
+    the failure that lost a Level-2R run. Every caller now shares one definition, and
+    callers that need to say *why* should use the validator directly rather than this.
     """
-    directory = Path(path)
-    if not directory.is_dir():
-        return False
-    if not (directory / COMPLETE_MARKER).is_file():
-        return False
-    if not all((directory / name).is_file() for name in REQUIRED_FILES):
-        return False
-    try:
-        metadata = json.loads((directory / "metadata.json").read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    return bool(metadata.get("complete"))
+    return validate_checkpoint_dir(path, level=STRUCTURE).valid
 
 
 def list_checkpoints(root: str | Path) -> list[Path]:
-    """Every complete checkpoint under ``root``, oldest first."""
-    directory = Path(root)
-    if not directory.is_dir():
-        return []
-    found = [
-        child for child in directory.iterdir()
-        if child.is_dir() and child.name.startswith("step_") and is_complete(child)
-    ]
-    return sorted(found, key=lambda p: p.name)
+    """Every **verified** checkpoint under ``root``, oldest first.
+
+    Verified, not merely present: a directory that has lost its weights is not a
+    checkpoint, and counting it is how a run reports four recovery points and has one.
+    """
+    return [candidate for candidate in checkpoint_directories(root) if is_complete(candidate)]
 
 
 def cleanup_incomplete(root: str | Path) -> list[str]:
@@ -277,15 +292,12 @@ def resolve_checkpoint(root: str | Path, reference: str | Path) -> Path | None:
     token = str(reference)
 
     if token == "latest":
-        pointer = read_latest_pointer(directory)
-        if pointer and pointer.get("complete"):
-            candidate = directory / str(pointer.get("path", ""))
-            if is_complete(candidate):
-                return candidate
-        # The pointer is missing, stale or points at a checkpoint that did not survive.
-        # Fall back to the newest directory that verifies on its own terms.
-        existing = list_checkpoints(directory)
-        return existing[-1] if existing else None
+        # `latest.json` records a claim made at write time — `"complete": true` — and that
+        # claim outlives the files it describes. The pointer is a hint; the target is
+        # re-verified now, and any substitution is reported by the caller rather than made
+        # silently. See `resolve_latest` for the structured form.
+        resolution = resolve_latest(directory)
+        return Path(resolution.resolved) if resolution.resolved else None
 
     if token.isdigit():
         candidate = directory / step_dirname(int(token))
@@ -372,7 +384,11 @@ def save_checkpoint(
 
         record = metadata or CheckpointMetadata(step=step)
         record.step = step
-        record.contents = sorted(written) + ["metadata.json", COMPLETE_MARKER]
+        # `contents` is not decoration: it is the checkpoint's own statement of what it
+        # holds, and it is what lets a validator years later distinguish "this run had no
+        # AMP scaler" from "someone deleted the scaler". It is also the only thing that
+        # makes deletion detectable on checkpoints written before manifests existed.
+        record.contents = sorted(written) + ["metadata.json", MANIFEST_FILENAME, COMPLETE_MARKER]
         for key, value in _runtime_metadata().items():
             if getattr(record, key, None) is None:
                 setattr(record, key, value)
@@ -380,12 +396,28 @@ def save_checkpoint(
             record.git_commit = _git_commit()
         if config is not None and record.config_sha256 is None:
             record.config_sha256 = config_sha256(config)
+        if record.parameter_count is None:
+            # `parameters()` yields each storage once, so a tied lm_head is counted with
+            # its embedding rather than twice — matching what `save_model` writes.
+            try:
+                record.parameter_count = sum(p.numel() for p in model.parameters())
+            except (AttributeError, TypeError):
+                record.parameter_count = None
         record.complete = True
         atomic_write_json(staging / "metadata.json", record.to_dict())
 
         missing = [name for name in REQUIRED_FILES if not (staging / name).is_file()]
         if missing:
             raise OSError(f"checkpoint is missing required files: {missing}")
+
+        # Sizes and SHA-256 of everything written, recorded before the marker. This is
+        # what makes a *truncated* or *silently rewritten* file detectable later: an
+        # existence check cannot tell 360 MB of weights from 360 MB of zeros, and a size
+        # check cannot tell the right weights from the wrong ones.
+        atomic_write_json(
+            staging / MANIFEST_FILENAME,
+            build_manifest(staging, step=step, parameter_count=record.parameter_count),
+        )
 
         # The marker goes last, after everything it vouches for is durable.
         marker = staging / COMPLETE_MARKER
@@ -409,16 +441,24 @@ def save_checkpoint(
 
 
 def update_latest_pointer(root: str | Path, checkpoint: Path, step: int) -> None:
-    """Advertise a checkpoint as the newest — only if it verifies first."""
+    """Advertise a checkpoint as the newest — only if it verifies right now.
+
+    The pointer's ``complete`` field is a record of *this* verification, at *this*
+    moment. It is not a standing guarantee, and every reader re-verifies rather than
+    believing it; see :func:`resolve_latest`.
+    """
     directory = Path(root)
-    if not is_complete(checkpoint):
+    validation = validate_checkpoint_dir(checkpoint, level=STRUCTURE)
+    if not validation.valid:
         raise ValueError(
-            f"refusing to point `latest` at {checkpoint}, which is not a complete checkpoint"
+            f"refusing to point `latest` at {checkpoint}: {validation.invalid_reason}"
         )
     atomic_write_json(directory / "latest.json", {
         "step": step,
         "path": checkpoint.name,
         "created_at": _utc_now(),
+        "verified_at": _utc_now(),
+        # True as of `verified_at`, and never re-read as a standing fact.
         "complete": True,
     })
 
@@ -443,10 +483,12 @@ def load_checkpoint(
     import torch
 
     directory = Path(path)
-    if not is_complete(directory):
+    validation = validate_checkpoint_dir(directory, level=STRUCTURE)
+    if not validation.valid:
         raise ValueError(
-            f"{directory} is not a complete checkpoint. Resuming from a partial write "
-            "would silently produce a different run; refusing."
+            f"{directory} is not a usable checkpoint: {validation.invalid_reason}. "
+            "Resuming from a damaged or partial checkpoint would silently produce a "
+            "different run; refusing."
         )
 
     restored: list[str] = []

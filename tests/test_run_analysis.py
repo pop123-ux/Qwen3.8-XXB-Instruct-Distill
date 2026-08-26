@@ -13,6 +13,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from conftest import make_checkpoint_dir
 
 from qwen_distill.analysis import (
     Curve,
@@ -85,14 +86,11 @@ def _write_run(root, records, *, max_steps=2000, checkpoints=(), latest_pointer=
         directory = root / "checkpoints"
         directory.mkdir(exist_ok=True)
         for step, complete in checkpoints:
-            entry = directory / f"step_{step:06d}"
-            entry.mkdir(exist_ok=True)
-            for name in ("model.safetensors", "optimizer.pt", "training_state.json"):
-                (entry / name).write_bytes(b"x")
-            (entry / "metadata.json").write_text(
-                json.dumps({"step": step, "complete": complete, "reason": "periodic"}),
-                encoding="utf-8",
-            )
+            # Built through the one shared fixture so the analyser sees exactly what
+            # the validator would accept in production. A 1-byte model.safetensors is
+            # rejected now, and rightly.
+            make_checkpoint_dir(directory, step, complete=complete,
+                                extra_metadata={"reason": "periodic"})
         if latest_pointer is not None:
             (directory / "latest.json").write_text(
                 json.dumps({"step": latest_pointer}), encoding="utf-8"
@@ -251,7 +249,7 @@ def test_incomplete_checkpoint_is_not_a_resume_point(tmp_path):
     )
     timeline = build_checkpoint_timeline(root / "checkpoints")
     assert timeline.resumable_step == 200
-    assert any("not complete" in f for f in timeline.findings)
+    assert any("cannot be resumed from" in f for f in timeline.findings)
     assert any("latest.json points at step 400" in f for f in timeline.findings)
 
 

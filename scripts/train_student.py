@@ -97,22 +97,39 @@ def _report_persistent_status(config: ExperimentConfig) -> None:
     if not status["exists"]:
         print("    NOT PRESENT — is Drive mounted, and is the path right?")
         return
-    print(f"    checkpoints     : {len(status['checkpoints'])}")
-    for name in status["checkpoints"][-3:]:
-        print(f"      {name}")
+
+    # Every checkpoint is validated now. Counting directories is what let a run with
+    # three hollow checkpoints report four recovery points.
+    valid, invalid = status["checkpoints"], status["invalid_checkpoints"]
+    print(f"    checkpoints     : {len(status['all_checkpoints'])} present, "
+          f"{len(valid)} VERIFIED resumable")
+    for name in status["all_checkpoints"]:
+        reason = next((e["reason"] for e in invalid if e["name"] == name), None)
+        print(f"      {name}  {'INVALID — ' + str(reason) if reason else 'VALID'}")
+    if invalid:
+        print(f"    ! {len(invalid)} checkpoint(s) on persistent storage cannot be "
+              f"resumed from.")
+        print("      Inspect them with:")
+        print(f"        python scripts/validate_checkpoint.py {destination} --persistent")
+
     progress = status["latest_progress"]
     if progress:
-        print(f"    latest step     : {progress.get('step')}")
+        print(f"    last logged step: {progress.get('step')}")
         for key in ("loss", "validation_loss", "validation_bits_per_byte"):
             if progress.get(key) is not None:
                 print(f"    {key:<16}: {progress[key]}")
     if status["resumable_checkpoint"]:
-        print(f"    resumable at    : step {status['resumable_step']}")
+        if status["fell_back"]:
+            print(f"    ! latest.json names {status['pointer'].get('path')}, which is "
+                  f"INVALID: {status['pointer_invalid_reason']}")
+            print("      falling back to the newest checkpoint that verifies")
+        print(f"    resumable at    : step {status['resumable_step']} "
+              f"({Path(status['resumable_checkpoint']).name})")
         print("    Restore and continue with:")
         print("      python scripts/train_student.py --config <config> "
               "--restore --resume latest")
     else:
-        print("    no complete checkpoint there yet")
+        print("    NO VALID CHECKPOINT there — nothing can be resumed from")
 
 
 def restore_experiment(config: ExperimentConfig) -> int:
@@ -138,16 +155,18 @@ def restore_experiment(config: ExperimentConfig) -> int:
         print(f"  restored {len(result['restored'])} checkpoint(s): "
               f"{', '.join(result['restored'])}")
     else:
-        print("  nothing to copy — local disk already has every complete checkpoint")
-    if result["skipped_incomplete"]:
-        # A copy interrupted by a dying runtime. Never restored, never resumed from.
-        print(f"  skipped {len(result['skipped_incomplete'])} incomplete checkpoint(s): "
-              f"{', '.join(result['skipped_incomplete'])}")
+        print("  nothing to copy — local disk already has every verified checkpoint")
+    for entry in result["skipped"]:
+        # Damaged on Drive, or damaged in transit. Never restored, never resumed from,
+        # and never silent: this is exactly the case that used to pass unnoticed.
+        print(f"  ! SKIPPED {entry['name']} — {entry['reason']}", file=sys.stderr)
+    print()
+    print("  " + result["inventory"].replace("\n", "\n  "))
     if result["pointer"]:
-        print(f"  resumable at step {result['pointer']['step']} "
+        print(f"\n  resumable at step {result['pointer']['step']} "
               f"({result['pointer']['path']})")
     else:
-        print("  no complete checkpoint available — nothing to resume from",
+        print("  no valid checkpoint available — nothing to resume from",
               file=sys.stderr)
         return 2
     print()

@@ -684,12 +684,15 @@ class CheckpointRecord:
     reason: str | None = None
     created_at: str | None = None
     missing_files: list[str] = field(default_factory=list)
+    #: Why the validator rejected this checkpoint, when it did. ``None`` when valid.
+    invalid_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "step": self.step, "path": self.path, "complete": self.complete,
             "reason": self.reason, "created_at": self.created_at,
             "missing_files": self.missing_files,
+            "invalid_reason": self.invalid_reason,
         }
 
 
@@ -729,7 +732,15 @@ class CheckpointTimeline:
 
 
 def build_checkpoint_timeline(checkpoints_dir: Path | None) -> CheckpointTimeline:
-    from ..training.checkpoints import REQUIRED_FILES
+    """Which checkpoints exist and which can actually be resumed from.
+
+    Validity comes from
+    :func:`qwen_distill.training.checkpoint_validation.validate_checkpoint_dir` — the one
+    definition the trainer, the backup and the restore all use. This module used to check
+    the required filenames itself, which meant a checkpoint whose weights had been
+    deleted was reported here as complete while the persistence layer disagreed.
+    """
+    from ..training.checkpoint_validation import validate_checkpoint_dir
 
     timeline = CheckpointTimeline()
     if checkpoints_dir is None or not Path(checkpoints_dir).is_dir():
@@ -758,15 +769,16 @@ def build_checkpoint_timeline(checkpoints_dir: Path | None) -> CheckpointTimelin
             step = int(metadata.get("step", entry.name.split("_", 1)[1]))
         except (ValueError, IndexError):
             continue
-        missing = [name for name in REQUIRED_FILES if not (entry / name).is_file()]
+        validation = validate_checkpoint_dir(entry)
         timeline.checkpoints.append(
             CheckpointRecord(
                 step=step,
                 path=str(entry),
-                complete=bool(metadata.get("complete")) and not missing,
+                complete=validation.valid,
                 reason=metadata.get("reason"),
                 created_at=metadata.get("created_at") or metadata.get("timestamp"),
-                missing_files=missing,
+                missing_files=validation.missing_files,
+                invalid_reason=validation.invalid_reason,
             )
         )
 
@@ -790,8 +802,8 @@ def build_checkpoint_timeline(checkpoints_dir: Path | None) -> CheckpointTimelin
     broken = [c for c in timeline.checkpoints if not c.complete]
     if broken:
         timeline.findings.append(
-            f"{len(broken)} checkpoint(s) are not complete: "
-            + ", ".join(f"step {c.step}" for c in broken[:5])
+            f"{len(broken)} checkpoint(s) cannot be resumed from: "
+            + "; ".join(f"step {c.step} ({c.invalid_reason})" for c in broken[:5])
         )
     if (
         timeline.latest_pointer_step is not None

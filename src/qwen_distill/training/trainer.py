@@ -926,17 +926,42 @@ def _persist_checkpoint(
     try:
         from .persist import persist_checkpoint, persist_run_metadata
 
-        target = persist_checkpoint(checkpoint, destination, checkpoint_root=root)
-        persist_run_metadata(run_directory, destination)
-        persisted["ok"].append(checkpoint.name)
-        print(f"    persisted -> {target}")
+        result = persist_checkpoint(checkpoint, destination, checkpoint_root=root)
     except Exception as exc:  # noqa: BLE001 - a backup failure must not end the run
         persisted["failed"].append(checkpoint.name)
         print(f"\n  ! PERSISTENT COPY FAILED for {checkpoint.name}: "
               f"{type(exc).__name__}: {exc}", file=sys.stderr)
-        print("    This checkpoint exists LOCALLY ONLY and will not survive the runtime.",
-              file=sys.stderr)
-        print("    The persistent pointer still names the last checkpoint that did copy.",
-              file=sys.stderr)
-        print("    Training continues; fix the destination and re-run the backup script.\n",
-              file=sys.stderr)
+        _report_persist_failure(destination)
+        return
+
+    # `persisted ->` is printed by `PersistResult.render()` and only on the verified
+    # path. It used to be printed by this function immediately after the copy call
+    # returned, which said nothing about whether the bytes reached the far end.
+    if result.verified:
+        persist_run_metadata(run_directory, destination)
+        persisted["ok"].append(checkpoint.name)
+        print(result.render())
+        return
+
+    persisted["failed"].append(checkpoint.name)
+    print(f"\n  ! PERSISTENT COPY FAILED for {checkpoint.name}", file=sys.stderr)
+    print(result.render(), file=sys.stderr)
+    _report_persist_failure(destination)
+
+
+def _report_persist_failure(destination: str) -> None:
+    """What the operator has to know when a copy did not verify.
+
+    The local checkpoint is intact and losing a copy is recoverable, so training
+    continues — but it continues with one fewer place to recover from, and that has to
+    be stated rather than implied by a missing line of output.
+    """
+    print("    This checkpoint exists LOCALLY ONLY and will not survive the runtime.",
+          file=sys.stderr)
+    print("    The persistent pointer still names the last checkpoint that DID verify.",
+          file=sys.stderr)
+    print(f"    Check what is actually there:\n"
+          f"      python scripts/validate_checkpoint.py {destination} --persistent",
+          file=sys.stderr)
+    print("    Training continues; fix the destination and re-run the backup script.\n",
+          file=sys.stderr)

@@ -21,12 +21,12 @@ from __future__ import annotations
 import json
 
 import pytest
-from conftest import HAS_STACK
+from conftest import HAS_STACK, make_checkpoint_dir
 
 from qwen_distill.training.checkpoints import (
     COMPLETE_MARKER,
-    REQUIRED_FILES,
     is_complete,
+    list_checkpoints,
     read_latest_pointer,
     step_dirname,
 )
@@ -42,20 +42,8 @@ from qwen_distill.training.persist import (
 
 
 def make_checkpoint(root, step: int, *, complete: bool = True):
-    directory = root / step_dirname(step)
-    directory.mkdir(parents=True, exist_ok=True)
-    for name in REQUIRED_FILES:
-        if name == "metadata.json":
-            (directory / name).write_text(
-                json.dumps({"step": step, "complete": complete,
-                            "created_at": "2026-01-01T00:00:00+00:00"}),
-                encoding="utf-8",
-            )
-        else:
-            (directory / name).write_bytes(b"x" * 32)
-    if complete:
-        (directory / COMPLETE_MARKER).write_text(f"step {step}\n", encoding="utf-8")
-    return directory
+    """One shared builder — see ``conftest.make_checkpoint_dir``."""
+    return make_checkpoint_dir(root, step, complete=complete)
 
 
 # --- layout ----------------------------------------------------------------
@@ -111,7 +99,7 @@ def test_preflight_reports_what_is_already_there(tmp_path):
 
     assert result.usable
     assert result.existing_checkpoints == [step_dirname(200), step_dirname(400)]
-    assert "already there" in result.render()
+    assert "verified resumable" in result.render()
 
 
 def test_preflight_leaves_no_probe_file_behind(tmp_path):
@@ -128,8 +116,10 @@ def test_an_incomplete_checkpoint_is_never_persisted(tmp_path):
     destination = tmp_path / "drive" / "run"
     partial = make_checkpoint(local, 400, complete=False)
 
-    with pytest.raises(ValueError, match="not a complete checkpoint"):
-        persist_checkpoint(partial, destination)
+    result = persist_checkpoint(partial, destination)
+    assert not result.verified
+    assert "refusing to persist" in result.failure
+    assert "persisted ->" not in result.render()
 
     assert not (destination / "checkpoints" / step_dirname(400)).exists()
     assert read_latest_pointer(destination / "checkpoints") is None
@@ -141,8 +131,9 @@ def test_a_checkpoint_missing_its_marker_is_never_persisted(tmp_path):
     checkpoint = make_checkpoint(local, 400)
     (checkpoint / COMPLETE_MARKER).unlink()
 
-    with pytest.raises(ValueError, match="not a complete checkpoint"):
-        persist_checkpoint(checkpoint, destination)
+    result = persist_checkpoint(checkpoint, destination)
+    assert not result.verified
+    assert "COMPLETE" in str(result.failure)
     assert not (destination / "checkpoints" / step_dirname(400)).exists()
 
 
@@ -156,28 +147,39 @@ def test_a_failed_copy_leaves_the_previous_persisted_pointer_intact(tmp_path, mo
     destination = tmp_path / "drive" / "run"
 
     good = make_checkpoint(local, 400)
-    persist_checkpoint(good, destination)
+    assert persist_checkpoint(good, destination).verified
     assert read_latest_pointer(destination / "checkpoints")["step"] == 400
 
     later = make_checkpoint(local, 600)
-    real_copytree = shutil.copytree
 
     def die(*args, **kwargs):
         raise OSError("simulated Drive failure")
 
-    monkeypatch.setattr(shutil, "copytree", die)
-    with pytest.raises(OSError, match="simulated Drive failure"):
-        persist_checkpoint(later, destination)
-    monkeypatch.setattr(shutil, "copytree", real_copytree)
+    monkeypatch.setattr(shutil, "copyfileobj", die)
+    result = persist_checkpoint(later, destination)
+    monkeypatch.undo()
+
+    assert not result.verified
+    assert "simulated Drive failure" in result.failure
+    assert not result.pointer_updated
 
     pointer = read_latest_pointer(destination / "checkpoints")
     assert pointer["step"] == 400, "the pointer must not advance past a failed copy"
     assert pointer["path"] == step_dirname(400)
     assert is_complete(destination / "checkpoints" / step_dirname(400))
     assert not (destination / "checkpoints" / step_dirname(600)).exists()
+
+    # The staging directory is deliberately LEFT behind, named `.incomplete`. It is
+    # skipped by every discovery path, so it cannot be resumed from, and it is the only
+    # forensic evidence of what a failed copy actually managed to write. The next attempt
+    # at this step clears it.
     staging = [p.name for p in (destination / "checkpoints").iterdir()
                if p.name.endswith(".incomplete")]
-    assert staging == [], "no staging directory may be left behind"
+    assert staging == [f".{step_dirname(600)}.incomplete"]
+    assert result.staging_left_behind
+    assert list_checkpoints(destination / "checkpoints") == [
+        destination / "checkpoints" / step_dirname(400)
+    ]
 
 
 def test_a_copy_that_arrives_corrupt_does_not_advance_the_pointer(tmp_path, monkeypatch):
@@ -190,20 +192,34 @@ def test_a_copy_that_arrives_corrupt_does_not_advance_the_pointer(tmp_path, monk
     persist_checkpoint(make_checkpoint(local, 400), destination)
 
     later = make_checkpoint(local, 600)
-    real_copytree = shutil.copytree
+    real_copyfileobj = shutil.copyfileobj
 
-    def copy_then_corrupt(src, dst, **kwargs):
-        result = real_copytree(src, dst, **kwargs)
-        # The marker survives but a required file does not: the shape a partial or
-        # space-exhausted write actually takes.
-        (dst / "optimizer.pt").unlink()
-        return result
+    def truncate_the_weights(reader, writer, length=0):
+        """Write the model file short, the way a full or flaky Drive does.
 
-    monkeypatch.setattr(shutil, "copytree", copy_then_corrupt)
-    with pytest.raises(OSError, match="does not verify"):
-        persist_checkpoint(later, destination)
+        This is the failure the old code could not see: every filename arrives, the
+        marker arrives, and `is_file()` is True for all of them. Only comparing the
+        destination's bytes against the source's catches it.
+        """
+        if writer.name.endswith("model.safetensors"):
+            writer.write(reader.read(64))
+            return None
+        return real_copyfileobj(reader, writer, length)
+
+    monkeypatch.setattr(shutil, "copyfileobj", truncate_the_weights)
+    result = persist_checkpoint(later, destination)
+    monkeypatch.undo()
+
+    assert not result.verified
+    assert not result.pointer_updated
+    truncated = next(f for f in result.files if f.name == "model.safetensors")
+    assert not truncated.ok
+    assert truncated.size_bytes == 64
+    assert "persisted ->" not in result.render()
+    assert "latest pointer NOT updated" in result.render()
 
     assert read_latest_pointer(destination / "checkpoints")["step"] == 400
+    assert not (destination / "checkpoints" / step_dirname(600)).exists()
 
 
 def test_the_persistent_pointer_names_a_checkpoint_that_is_really_there(tmp_path):
