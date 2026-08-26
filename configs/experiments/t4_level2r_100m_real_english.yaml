@@ -1,0 +1,142 @@
+# Level 2R — the SAME 94.48M model, on real public-domain English.
+#
+# Level 2 trained this exact architecture on 8 MB of procedural byte text. It completed
+# 2000/2000 steps at 2,090 tok/s and reached validation BPB 1.270 — and generated
+# "and and and and". Both are correct and they are the same fact: the corpus had word
+# frequencies and no syntax, so the optimal model for it predicts common words forever.
+# Validation BPB hit 1.279 by step 400 and moved 0.009 over the remaining 1600 steps.
+# The corpus was exhausted; the architecture was never tested.
+#
+# Level 2R asks the question Level 2 could not:
+#
+#     Can this hybrid DeltaNet/attention architecture at 94.48M parameters learn
+#     meaningful natural-language structure from real English?
+#
+# ONE VARIABLE CHANGES: THE CORPUS.
+#
+# Everything that could confound the comparison is held at its Level 2 value —
+# architecture, parameter count, layer layout, sequence length, batch sizes, optimizer,
+# precision, gradient checkpointing, objective, scheduler, checkpoint and persistence
+# systems. Level 2 is the control, and it stops being one the moment anything else moves.
+#
+# Prepare the corpus first (it is never committed to git):
+#
+#   python scripts/prepare_level2r_dataset.py --output data/level2r
+#
+# Then point data.text_path / data.validation_path at what it wrote.
+#
+# ON max_steps: 2000 is a STARTING POINT, not the scientific endpoint. Level 2's 2000 was
+# an arbitrary round number and 80% of it bought nothing. Here the run continues across
+# sessions until validation BPB clearly plateaus, and where that happens is itself the
+# result. See docs/experiments/level2r_plan.md for the stopping procedure.
+
+name: t4_level2r_100m_real_english
+level: "Level 2 — T4 small student (~100M)"
+description: >-
+  The Level-2 94.48M hybrid, trained on real public-domain English instead of procedural
+  text. Identical architecture and training setup; the corpus is the only change. Tests
+  whether the architecture learns natural-language structure, which Level 2 could not
+  measure.
+
+model:
+  architecture:
+    hidden_size: 640
+    num_hidden_layers: 16
+    intermediate_size: 2176
+    vocab_size: 256              # byte-level
+    num_attention_heads: 10
+    num_key_value_heads: 2
+    head_dim: 64
+    linear_num_key_heads: 4
+    linear_num_value_heads: 12
+    linear_key_head_dim: 64
+    linear_value_head_dim: 64
+    linear_conv_kernel_dim: 4
+    full_attention_interval: 4   # -> 12 linear_attention + 4 full_attention
+    max_position_embeddings: 4096
+    tie_word_embeddings: true
+
+data:
+  text_corpus: true
+  # Leave text_path unset to use the deterministic procedural corpus, which needs no
+  # download and works offline. To train on real prose instead, point this at any UTF-8
+  # file — a public-domain book, documentation, source code. The corpus SHA-256 is
+  # recorded in summary.json either way, so a result is tied to the exact bytes.
+  # Produced by scripts/prepare_level2r_dataset.py. Two files, because the split is at
+  # DOCUMENT level: whole works go to train or validation and never both. Level 2 held
+  # out a contiguous tail of one text, which measures continuation of a passage already
+  # being read; holding out whole books measures generalisation to unseen prose.
+  #
+  # The split is fixed in the files. No seed, fraction or ordering is recomputed at train
+  # time, so the validation set cannot drift between Colab sessions.
+  text_path: data/level2r/train.txt
+  validation_path: data/level2r/validation.txt
+  procedural_bytes: 8000000      # unused when text_path is set; kept for schema parity
+  validation_fraction: 0.05
+  max_sequence_length: 1024
+  shuffle_seed: 0
+
+training:
+  strategy: full                 # architecture compression needs real student parameters
+  optimizer: adamw
+  precision: fp16                # T4 is Turing (CC 7.5): NO bf16
+  objective: sft                 # plain next-token causal LM; no KD at this level
+  learning_rate: 0.0006
+  weight_decay: 0.01
+  max_steps: 2000
+  warmup_steps: 100
+  batch_size: 4
+  gradient_accumulation_steps: 4 # effective batch 16 — identical to the failed run
+  gradient_checkpointing: true   # THE FIX: 67x less retained activation. See the header.
+  seed: 0
+  eval_every: 200
+
+  # --- interruption safety (Phase 2B) --------------------------------------
+  # The first attempt at this config trained correctly on a T4 and reached ~step 500
+  # before the Colab runtime disconnected and took the ephemeral filesystem with it.
+  # These two intervals decide how much work a disconnect can cost.
+  #
+  # At ~2100 tokens/s and 16,384 bytes per step, 200 steps is about 26 minutes. That is
+  # the maximum work at risk. 500 steps would be ~65 minutes, which is too much to lose
+  # to something as routine as a Colab timeout.
+  #
+  # Storage: one checkpoint is ~1.1 GB (360 MB weights + 720 MB AdamW state), so a
+  # 2000-step run leaves 10 checkpoints, ~11 GB. Prune older ones, or raise the interval
+  # if Drive is tight — the trade is disk against work-at-risk.
+  save_every: 200
+  log_every: 25
+  # Progress records are ~400 bytes and carry no weights, so they can be frequent. They
+  # are what survives between checkpoints.
+  progress_every: 25
+  # Copy each completed checkpoint to persistent storage, right after it is written and
+  # verified. This is the RUN directory, not its checkpoints/ subdirectory: the
+  # persistent copy mirrors the local layout exactly, so recovery is a plain restore.
+  #
+  #   <persistent_backup>/checkpoints/step_000200/ ... latest.json
+  #   <persistent_backup>/progress/latest.json
+  #   <persistent_backup>/metrics.jsonl, summary.json
+  #
+  # A previous Level-2 run reached step 1925 of 2000 on a T4 — no OOM, ~2050 tokens/s —
+  # and lost all of it, because it ran with this set to null and Colab reclaimed
+  # /content. The checkpoints were written correctly, atomically, to a filesystem that
+  # then ceased to exist.
+  #
+  # Uncomment to enable. The path must be under a MOUNTED Drive: the trainer checks at
+  # startup and refuses to run if it is not, because writing to an unmounted
+  # /content/drive/MyDrive/... silently creates an ordinary local directory that
+  # disappears with the runtime while every checkpoint reports "persisted".
+  #
+  # persistent_backup: /content/drive/MyDrive/qwen-distill/t4_level2r_100m_real_english
+  #
+  # Left null here so the config works anywhere, including CI and CPU boxes with no
+  # Drive. Set it on the command line instead if you prefer:
+  #   --persistent-dir "$DRIVE"
+  persistent_backup: null
+
+runtime:
+  output_dir: experiments/runs/t4_level2r_100m_real_english
+  device: auto
+  reserved_vram_gib: 1.0
+  # "latest" resolves to the newest VERIFIED checkpoint under checkpoints/. Usually set
+  # on the command line instead: --resume latest
+  resume_from: null

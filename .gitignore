@@ -49,3 +49,8 @@ wandb/
 # The directory and its instructions are tracked; its contents are not.
 vendor/qwen38-metadata/*
 !vendor/qwen38-metadata/.gitkeep
+
+# Level 2R corpus: reconstructed by scripts/prepare_level2r_dataset.py, never committed.
+data/level2r/
+data/*/train.txt
+data/*/validation.txt

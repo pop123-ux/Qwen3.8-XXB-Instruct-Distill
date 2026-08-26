@@ -181,6 +181,63 @@ def prepare_corpus(
     return train, validation, stats
 
 
+def prepare_corpus_from_files(
+    *,
+    train_path: str | Path,
+    validation_path: str | Path,
+    sequence_length: int = 1024,
+    max_bytes: int | None = None,
+) -> tuple[list[list[int]], list[list[int]], CorpusStats]:
+    """Load train and validation from **separate pre-split files**.
+
+    Level 2 held out a contiguous tail of one concatenated text, which measures how well
+    a model continues a passage it has been reading. Level 2R holds out whole documents,
+    which measures generalisation to prose it has never seen — a harder and far more
+    meaningful target.
+
+    The split is done once, offline, by the preparation script, and lives in the files.
+    Nothing is recomputed here, so no seed, fraction or ordering can shift the validation
+    set between Colab sessions: it is fixed by construction rather than by convention.
+
+    :func:`prepare_corpus` is unchanged and still serves the single-file path, so
+    Level 2's behaviour is exactly what it was.
+    """
+    train_text = load_text_file(train_path, max_bytes=max_bytes)
+    validation_text = load_text_file(validation_path)
+
+    train = build_sequences(train_text, sequence_length)
+    validation = build_sequences(validation_text, sequence_length)
+    if not train:
+        raise ValueError(
+            f"training corpus at {train_path} is {len(train_text)} bytes, too small for "
+            f"sequence_length={sequence_length}"
+        )
+    if not validation:
+        raise ValueError(
+            f"validation corpus at {validation_path} is {len(validation_text)} bytes, too "
+            f"small for sequence_length={sequence_length}. Without a held-out set there "
+            "is nothing measuring generalisation."
+        )
+
+    # Hash both halves together so the recorded digest identifies the whole corpus,
+    # including which documents were held out.
+    combined = hashlib.sha256()
+    combined.update(train_text.encode("utf-8"))
+    combined.update(b"\x00--validation--\x00")
+    combined.update(validation_text.encode("utf-8"))
+
+    stats = CorpusStats(
+        source=f"{train_path} + {validation_path} (document-level split)",
+        n_bytes=len(train_text.encode("utf-8")) + len(validation_text.encode("utf-8")),
+        n_sequences=len(train) + len(validation),
+        sequence_length=sequence_length,
+        sha256=combined.hexdigest(),
+        n_train=len(train),
+        n_validation=len(validation),
+    )
+    return train, validation, stats
+
+
 def iterate_batches(
     sequences: list[list[int]], batch_size: int, *, seed: int = 0, shuffle: bool = True
 ) -> Iterator[list[list[int]]]:

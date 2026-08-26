@@ -60,6 +60,7 @@ from .text_data import (
     ResumableBatchSampler,
     bits_per_byte,
     prepare_corpus,
+    prepare_corpus_from_files,
 )
 from .throughput import ThroughputTracker
 
@@ -214,14 +215,24 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
     corpus_stats = None
     text_mode = config.data.mode == "text"
     if text_mode:
-        train_sequences, validation_sequences, corpus_stats = prepare_corpus(
-            text_path=config.data.text_path,
-            sequence_length=config.data.max_sequence_length,
-            procedural_bytes=config.data.procedural_bytes,
-            validation_fraction=config.data.validation_fraction,
-            seed=config.data.shuffle_seed,
-            max_bytes=config.data.max_corpus_bytes,
-        )
+        if config.data.text_path and config.data.validation_path:
+            # Level 2R: train and validation are separate, document-level-split files.
+            # The split lives in the files, so it cannot drift between sessions.
+            train_sequences, validation_sequences, corpus_stats = prepare_corpus_from_files(
+                train_path=config.data.text_path,
+                validation_path=config.data.validation_path,
+                sequence_length=config.data.max_sequence_length,
+                max_bytes=config.data.max_corpus_bytes,
+            )
+        else:
+            train_sequences, validation_sequences, corpus_stats = prepare_corpus(
+                text_path=config.data.text_path,
+                sequence_length=config.data.max_sequence_length,
+                procedural_bytes=config.data.procedural_bytes,
+                validation_fraction=config.data.validation_fraction,
+                seed=config.data.shuffle_seed,
+                max_bytes=config.data.max_corpus_bytes,
+            )
         print(f"  corpus: {corpus_stats.source}")
         print(f"          {corpus_stats.n_bytes:,} bytes, {corpus_stats.n_sequences} sequences "
               f"of {corpus_stats.sequence_length} "

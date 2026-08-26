@@ -123,6 +123,28 @@ establishes nothing about language capability, and must not be cited as if it di
 result: [`experiments/runs/t4_level2_100m_ckpt_complete/`](experiments/runs/t4_level2_100m_ckpt_complete/);
 what to run next: [`docs/experiments/level2_report.md`](docs/experiments/level2_report.md).
 
+### Level 2R — prepared, not run
+
+The next experiment changes **one variable: the corpus.** Same 94.48M model, same 12+4
+hybrid layout, same sequence length, batch, optimizer, precision and gradient
+checkpointing — trained on real public-domain English instead of procedural text. The
+config diff against Level 2 is three lines, all corpus and naming.
+
+The split is at **document level**: whole works go to train or validation and never both,
+so validation BPB measures generalisation to prose the model has never seen rather than
+continuation of a passage it is already reading. The corpus is never committed;
+`scripts/prepare_level2r_dataset.py` reconstructs it from catalogue ids and records every
+hash.
+
+```bash
+python scripts/prepare_level2r_dataset.py --output data/level2r
+python scripts/train_student.py --config configs/experiments/t4_level2r_100m_real_english.yaml \
+    --persistent-dir "$DRIVE" --dry-run
+```
+
+Plan, stopping procedure and caveats:
+[`docs/experiments/level2r_plan.md`](docs/experiments/level2r_plan.md).
+
 ### Earlier attempts
 
 **Second attempt: it trains.** No OOM, ~2100 tokens/s, validation bits-per-byte down
