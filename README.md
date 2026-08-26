@@ -108,6 +108,23 @@ Byte-level tokenization is the deliberate choice here: no tokenizer to download 
 version, any text file works unchanged, and the loss is directly comparable across runs
 because it does not depend on a tokenizer's compression rate.
 
+**Level 2 is complete: 2000/2000 steps, no OOM, ~2,090 tok/s, final checkpoint validated
+bit-for-bit.** Validation BPB 1.270 against an 8.0 uniform-byte baseline — and greedy
+generation from that same checkpoint is `"and and and and…"`.
+
+Both are correct, and they are the same fact. The corpus was procedural text with a
+Zipfian word distribution and **no syntax, no semantics, no long-range dependency**; the
+optimal model for it predicts common words forever. Validation BPB reached 1.279 by step
+400 and only 1.270 by step 2000 — 80% of the run bought under 1% of the improvement,
+because the corpus was exhausted.
+
+**Level 2 establishes that the architecture trains, checkpoints, resumes and persists. It
+establishes nothing about language capability, and must not be cited as if it did.** Full
+result: [`experiments/runs/t4_level2_100m_ckpt_complete/`](experiments/runs/t4_level2_100m_ckpt_complete/);
+what to run next: [`docs/experiments/level2_report.md`](docs/experiments/level2_report.md).
+
+### Earlier attempts
+
 **Second attempt: it trains.** No OOM, ~2100 tokens/s, validation bits-per-byte down
 from 1.317 at step 200 to 1.279 at step 400 (8.0 = learned nothing). Then the Colab
 runtime disconnected at ~step 500 and took the ephemeral filesystem with it — see

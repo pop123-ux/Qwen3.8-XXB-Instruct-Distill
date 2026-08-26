@@ -93,7 +93,8 @@ Where the project actually is. Nothing below is claimed complete unless it is ma
 |---|---|---|
 | **L0** | analysis, verification and training infrastructure | done |
 | **L1** | 4.03M hybrid trains on a real T4 | done — mechanism validated, says nothing about language |
-| **L2** | ~94.5M byte-level LM: does the architecture scale past toy? | **running** — reached step 1925/2000 once before a Colab disconnect; ~2050 tok/s, validation BPB 1.279 at step 400 |
+| **L2** | ~94.5M byte-level LM: does the architecture scale past toy? | **complete** — 2000/2000 steps, 2,090 tok/s, validation BPB 1.270, checkpoint validated. Trains and persists correctly; **establishes no language capability** (procedural corpus) |
+| **L2R** | the same model on real text: can it learn language structure? | **recommended next** — one variable changes, the corpus |
 | **L3** | larger scaling experiment | later |
 | **L4** | teacher-data generation | **infrastructure ready, never run** — the real backend raises rather than loading 27B |
 | **L5** | first distillation (SFT from teacher data) | later — the objective is implemented, the trainer connection is not |

@@ -1,0 +1,99 @@
+{
+  "experiment": "t4_level2_100m_ckpt",
+  "outcome": "COMPLETE \u2014 2000/2000 steps",
+  "completed": true,
+  "hardware": {
+    "device": "Tesla T4",
+    "total_vram_gib": 14.56,
+    "cuda_oom": false
+  },
+  "configuration": {
+    "parameters": 94480000,
+    "layers": 16,
+    "layout": "12 linear_attention (Gated DeltaNet) + 4 full_attention",
+    "sequence_length": 1024,
+    "micro_batch_size": 4,
+    "gradient_accumulation_steps": 4,
+    "effective_batch": 16,
+    "precision": "fp16 autocast",
+    "optimizer": "adamw",
+    "gradient_checkpointing": true,
+    "max_steps": 2000,
+    "corpus": "procedural byte-level (generate_procedural_text)"
+  },
+  "training_measurements": {
+    "steps_completed": 2000,
+    "tokens_seen": 32768000,
+    "total_training_seconds": 15684.6,
+    "run_wide_tokens_per_second": 2089.2,
+    "final_train_loss": 0.8717,
+    "final_train_bpb": 1.258,
+    "final_validation_loss": 0.8806,
+    "final_validation_bpb": 1.27,
+    "validation_bpb_by_step": {
+      "200": 1.317,
+      "400": 1.279,
+      "1800": 1.271,
+      "2000": 1.27
+    },
+    "uniform_byte_baseline_bpb": 8.0,
+    "note": "80% of the run produced under 1% of the BPB improvement: 1.279 at step 400 to 1.270 at step 2000. The corpus was exhausted early."
+  },
+  "checkpoint_validation": {
+    "state_dict_loads": "PASS",
+    "missing": 0,
+    "unexpected": 0,
+    "parameters_bit_identical": "PASS",
+    "identical_logits_two_reloads": "PASS",
+    "greedy_generation_reproducible": "PASS",
+    "resume_step_2000": "PASS",
+    "history_preserved": "PASS"
+  },
+  "resume": {
+    "resumed_from_step": 1600,
+    "to_step": 2000,
+    "result": "succeeded",
+    "sessions": "multiple Colab sessions",
+    "persistence": "Google Drive"
+  },
+  "throughput_reporting_bug": {
+    "symptom": "post-resume logs reported 139256 -> 70945 -> 48117 -> 36623 -> 10605 tok/s",
+    "true_run_wide": 2089.5,
+    "root_cause": "cumulative tokens across all sessions divided by THIS session's elapsed time. The 1/n decay is the signature: a numerator that barely moves over a denominator growing linearly.",
+    "reproduced": {
+      "step_1625": {
+        "predicted": 135797,
+        "reported": 139256
+      },
+      "step_2000": {
+        "predicted": 10446,
+        "reported": 10605
+      }
+    },
+    "fix": "training/throughput.py \u2014 interval, session and run-wide reported separately",
+    "logs_repairable": true,
+    "repair_command": "python scripts/recompute_throughput.py <metrics.jsonl>"
+  },
+  "model_quality": {
+    "establishes_general_language_capability": false,
+    "greedy_generations": {
+      "The ": "and and and and ...",
+      "In the beginning ": "and and and ...",
+      "It was ": "and and and ...",
+      "and the ": "and and and ..."
+    },
+    "interpretation": "The corpus was procedural: words drawn independently from a fixed Zipfian distribution. It contains word boundaries, a frequency profile and sentence shape, but no syntax, no semantics and no long-range dependency. The optimal model for it predicts common words forever, which is what this one does. The low BPB and the degenerate generation are the same fact seen twice."
+  },
+  "establishes": [
+    "the hybrid architecture trains stably at ~100M on a 16 GB GPU",
+    "the training/checkpoint/resume/persistence stack is correct end to end",
+    "byte-level BPB works as a comparable optimisation target",
+    "~2090 tok/s on a T4 at seq 1024, batch 4, gradient checkpointing ON"
+  ],
+  "does_not_establish": [
+    "that the architecture can learn real-language structure",
+    "that 94.48M is a useful size for anything",
+    "anything about distillation, knowledge transfer or the teacher",
+    "any general-purpose language capability whatsoever"
+  ]
+}
