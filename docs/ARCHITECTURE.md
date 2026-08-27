@@ -84,7 +84,10 @@ problem.**
 
 `python scripts/estimate_vram.py --preset teacher --matrix`
 
-Peak VRAM (GiB), 16 GiB card with 1 GiB reserved → 15.0 GiB usable:
+Peak VRAM (GiB), 16 GiB card with 1 GiB reserved → 15.0 GiB usable.
+**Optimistic**: it assumes the card exposes a nominal 16 GiB. The measured usable
+figure is 13.56 GiB (see [PROJECT_PLAN.md](PROJECT_PLAN.md)), so rows that clear
+15.0 GiB by under 1.5 GiB should not be read as fitting.
 
 | quant | 8k | 32k | 64k | 128k | 256k |
 |---|---:|---:|---:|---:|---:|
@@ -134,7 +137,8 @@ These are ceilings, not predictions, and they assume the model fits — which it
 `python scripts/search_architectures.py --context <ctx>`
 
 Ranked by non-embedding parameters (a **capacity proxy**, not measured capability),
-subject to fitting 15.0 GiB usable at Q4_K_M:
+subject to fitting 15.0 GiB usable at Q4_K_M — an optimistic budget; the measured
+usable figure is 13.56 GiB, so these are upper bounds:
 
 | Required context | Largest feasible | Example architecture |
 |---|---|---|

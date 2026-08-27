@@ -2,14 +2,21 @@
 
 ## Objective
 
-> Develop a Qwen3.8-derived instruct model that preserves as much of the teacher's
-> benchmark capability as possible while operating within a 16 GB consumer-GPU
-> deployment envelope, supporting a large context window, and reducing unnecessary
-> reasoning-token expenditure and inference latency.
+**[COMPETITIVE_OBJECTIVE.md](COMPETITIVE_OBJECTIVE.md) is authoritative.** In short:
 
-The parameter count is a **result**, not an input. Current analysis puts the feasible
-ceiling at 13–21B depending on the required context (see
-[`ARCHITECTURE.md`](ARCHITECTURE.md)); the final number comes from experiments.
+> Build the strongest model a person can actually run on a 16 GB GPU. Separately, the
+> strongest one that runs on a 12 GB GPU.
+
+Note what that is *not*. It is not "preserve as much of Qwen3.8-27B's capability as
+possible in 16 GB" — that framing makes the teacher the ceiling and fitting the goal.
+Several strong open-weight models already fit a 16 GB card; fitting is table stakes, and
+the bar is beating them. Distillation from Qwen3.8-27B is a strategy on trial, not the
+definition of success.
+
+The parameter count is an **optimisation variable**, not an input and not a target.
+Current analysis puts the feasible ceiling at 13–21B depending on the required context (see
+[`ARCHITECTURE.md`](ARCHITECTURE.md)); the size that wins is the one with the best measured
+capability inside the envelope, and that is an experiment.
 
 ### Competing objectives
 
@@ -23,9 +30,16 @@ calls, context consumed by reasoning, training cost, evaluation cost.
 
 One consumer GPU with **16 GB VRAM**, where "fits" means the *complete* envelope —
 weights + KV cache + recurrent state + activations + workspace + runtime overhead —
-with real context and real generation, not a bare weight load. We budget **1 GiB
-reserved** for driver and desktop, leaving 15.0 GiB usable. See
-[`DEPLOYMENT_PLAN.md`](DEPLOYMENT_PLAN.md).
+with real context and real generation, not a bare weight load.
+
+A "16 GB" card does not expose 16 GiB. Against the capacity actually observed on the
+Level-2 T4 run, minus **1 GiB reserved** for driver and desktop, the usable figure is
+**13.56 GiB**, and that is what the feasibility tooling uses. An earlier revision of this
+document said 15.0 GiB, which assumed a nominal 16 GiB and would have let models through
+that do not fit. See [`DEPLOYMENT_PLAN.md`](DEPLOYMENT_PLAN.md).
+
+The 12 GB target is **10.76 GiB** usable, from vendor capacity — not measured on a real
+12 GB card, and flagged as such wherever it is used.
 
 ## Where the project stands
 
@@ -83,7 +97,9 @@ Established in Phase 0, analytically:
   makes long context cheap (constant recurrent state; KV cache on only 16 of 64 layers).
 - **63.6% of the teacher is FFN.** That is where the parameters must come from.
 - The feasible ceiling under 15.0 GiB usable is ~21B at 32k context, ~16.5B at 128k,
-  ~13.5B at 262k.
+  ~13.5B at 262k. **These are upper bounds computed against an optimistic budget** —
+  15.0 GiB assumes a card exposes a nominal 16 GiB. Against the measured 13.56 GiB the
+  ceilings are lower; recompute before treating any of them as a decision.
 
 ## The research ladder
 
@@ -110,10 +126,23 @@ later claim should be measured against. It is also the first run to expose that 
 capacity — so "the curve flattened" is never on its own evidence of convergence here.
 
 The teacher has never been loaded. No teacher data has been generated, no benchmark run,
-no student distilled. Knowledge distillation is **not implemented**: `logit_kd` and
-`mixed_kd` raise rather than silently running SFT, and a vocabulary mismatch (teacher
-248,320 BPE vs student 256 bytes) blocks logit KD by design, not merely by storage — see
-[experiments/DISTILLATION_DATA_REQUIREMENTS.md](experiments/DISTILLATION_DATA_REQUIREMENTS.md). L4's infrastructure exists so that when a GPU is rented, the
+no student distilled.
+
+Knowledge distillation itself **is now implemented** — the loss, the teacher-to-student
+weight transfer that initialises the student, and the trainer wiring. What remains
+unimplemented is narrower and named: reading *stored* teacher logits back from disk. A
+resident teacher over a plain text corpus is the runnable path today, and needs no
+teacher-generated answers at all. See [DISTILLATION.md](DISTILLATION.md).
+
+The old blocker is dissolved rather than worked around: a distilled student keeps the
+**teacher's 248,320-entry vocabulary**, which is what makes logit KD exact and embedding
+transfer meaningful. The byte-level vocabulary remains correct for the completed
+from-scratch runs (L2/L2R/L3) and does not constrain the release architecture — see
+[experiments/DISTILLATION_DATA_REQUIREMENTS.md](experiments/DISTILLATION_DATA_REQUIREMENTS.md).
+
+The guard against the failure that matters is unchanged, only relocated: a KD run with no
+teacher raises rather than falling through to cross-entropy, because nothing in the
+artifacts would reveal it. L4's infrastructure exists so that when a GPU is rented, the
 expensive part produces a durable artifact instead of a session that has to be repeated.
 
 ## Phases
