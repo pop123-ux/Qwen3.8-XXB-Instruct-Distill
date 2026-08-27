@@ -122,15 +122,15 @@
     },
     "monotonic_validation_decrease": true,
     "learning_rate_at_final_block": {
-      "start": 1.61e-05,
+      "start": 1.792e-05,
       "end": 2.4e-09,
-      "mean_fraction_of_peak": 0.009,
-      "note": "OneCycleLR(max_lr=6e-4, total_steps=2000) reaches ~0 by step 2000. The final block ran at 0.9% of peak LR."
+      "mean_fraction_of_peak": 0.010,
+      "note": "OneCycleLR(max_lr=6e-4, total_steps=2000, pct_start=0.1) peaks at position 199 and reaches ~0 by step 2000. The final block ran at 1.0% of peak LR. Recomputed from the schedule the run actually used; an earlier revision of this file reported 0.9% / 1.61e-05, computed with pct_start=0.05, which make_schedule does not use."
     },
     "saturation_verdict": "UNDERTRAINED \u2014 not saturated",
     "saturation_reasoning": [
       "the run saw 0.826 epochs; 17.4% of the training corpus was never read",
-      "the final blocks' flattening is confounded with the LR schedule reaching ~0 by construction \u2014 at 0.9% of peak LR the model was barely being updated",
+      "the final blocks' flattening is confounded with the LR schedule reaching ~0 by construction \u2014 at 1.0% of peak LR the model was barely being updated",
       "validation decreased monotonically through the last block; nothing plateaued or turned",
       "the train/validation gap is stable, so the limit is not overfitting",
       "these are three independent reasons the 2000-step horizon was a budget, not an endpoint"

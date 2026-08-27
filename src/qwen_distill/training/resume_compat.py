@@ -39,6 +39,15 @@ FATAL_KEYS: tuple[tuple[str, ...], ...] = (
 #: Differences that change what is being optimised. Allowed, because a resumed run may
 #: legitimately want them, but never applied silently.
 NOTABLE_KEYS: tuple[tuple[str, ...], ...] = (
+    # The objective is the sharpest of these: a checkpoint trained with cross-entropy and
+    # resumed under KD is a different experiment, and nothing in the tensors would say so.
+    # Not fatal, because switching deliberately (an SFT warmup, then KD) is a legitimate
+    # curriculum — but never silent.
+    ("training", "objective"),
+    ("training", "kd_weight"),
+    ("training", "kd_temperature"),
+    ("training", "kd_tail"),
+    ("training", "kd_top_k"),
     ("training", "learning_rate"),
     ("training", "weight_decay"),
     ("training", "optimizer"),

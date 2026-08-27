@@ -6,11 +6,25 @@ from .flops import (
     decode_flops_per_token,
     prefill_flops,
 )
+from .materialize import (
+    SafetensorsSource,
+    StateDictSource,
+    TransferReport,
+    UnsupportedReduction,
+    apply_transfer_plan,
+    initialise_student,
+)
 from .memory import DeploymentConfig, MemoryEstimate, estimate_memory, max_context_within
 from .params import ParamBreakdown, count_parameters, format_params, mtp_params
 from .search import Candidate, SearchConstraints, evaluate_candidate, generate_grid, search
 from .spec import FULL_ATTENTION, LINEAR_ATTENTION, HybridArchSpec, build_layer_types
-from .transfer import TransferPlan, build_transfer_plan, compare_strategies, select_layers
+from .transfer import (
+    TransferPlan,
+    build_transfer_plan,
+    compare_strategies,
+    select_layers,
+    student_from_teacher,
+)
 
 __all__ = [
     "HybridArchSpec",
@@ -35,7 +49,14 @@ __all__ = [
     "generate_grid",
     "search",
     "TransferPlan",
+    "TransferReport",
+    "UnsupportedReduction",
+    "SafetensorsSource",
+    "StateDictSource",
+    "apply_transfer_plan",
+    "initialise_student",
     "build_transfer_plan",
     "compare_strategies",
     "select_layers",
+    "student_from_teacher",
 ]

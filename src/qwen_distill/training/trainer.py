@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from ..architecture.spec import HybridArchSpec
+from ..distillation.kd_loss import distillation_loss
 from .checkpoints import (
     CheckpointMetadata,
     capture_rng_state,
@@ -145,14 +146,28 @@ def build_model(config: ExperimentConfig, spec: HybridArchSpec | None):
     return AutoModelForCausalLM.from_config(hf_config)
 
 
-def _require_supported(config: ExperimentConfig) -> None:
+def _require_supported(config: ExperimentConfig, teacher: Any = None) -> None:
     """Fail clearly on paths this trainer does not yet implement."""
-    if config.training.objective != "sft":
+    if config.training.objective not in ("sft", "logit_kd", "mixed_kd"):
         raise NotImplementedError(
             f"objective {config.training.objective!r} is defined in the config schema but "
-            "not yet implemented in the trainer. The SFT path is implemented and is the "
-            "control this project needs measured first; see "
-            "docs/TRAINING_ON_LIMITED_HARDWARE.md (Experiment T4-B)."
+            "not yet implemented in the trainer."
+        )
+    if config.training.objective == "sft" and teacher is not None:
+        # The same mislabelling as a KD run with no teacher, reversed: the loop would
+        # branch on the teacher's presence and distil while the summary said sft.
+        raise ValueError(
+            "a teacher signal provider was given but the objective is 'sft'. Set the "
+            "objective to 'logit_kd' or 'mixed_kd', or drop the teacher."
+        )
+    if config.training.objective != "sft" and teacher is None:
+        # The failure this refusal exists to prevent: a KD run with no teacher would fall
+        # through to cross-entropy, train perfectly happily, and be reported as KD.
+        raise ValueError(
+            f"objective {config.training.objective!r} needs a teacher signal provider and "
+            "none was given. Pass `teacher=` to train() — see "
+            "qwen_distill.distillation.teacher_signal.build_provider. Without one this "
+            "would silently be SFT."
         )
     if config.training.strategy != "full":
         raise NotImplementedError(
@@ -193,11 +208,19 @@ def resolve_precision(precision: str, device: str) -> tuple[str, str | None]:
     return precision, None
 
 
-def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
-    """Run the training loop. Returns a process exit code."""
+def train(
+    config: ExperimentConfig, spec: HybridArchSpec | None, *, teacher: Any = None
+) -> int:
+    """Run the training loop. Returns a process exit code.
+
+    ``teacher`` is a signal provider (see
+    :mod:`qwen_distill.distillation.teacher_signal`) and is required by every
+    objective except ``sft``. It is a parameter rather than a config field because a
+    resident 27B teacher is a live object, not something a YAML file can name.
+    """
     import torch
 
-    _require_supported(config)
+    _require_supported(config, teacher)
 
     output = Path(config.runtime.output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -206,6 +229,27 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"\n  device: {device}")
+
+    # --- distillation objective ---------------------------------------
+    kd_temperature = config.training.kd_temperature
+    kd_tail = config.training.kd_tail
+    kd_alpha = 1.0 if config.training.objective == "logit_kd" else config.training.kd_weight
+    if teacher is not None:
+        provider_temperature = getattr(teacher, "temperature", kd_temperature)
+        if abs(provider_temperature - kd_temperature) > 1e-9:
+            # Caught here rather than at step 1: the teacher's logsumexp is captured at its
+            # own temperature and is not convertible to another, so this would either
+            # raise a thousand tokens in or, with tail='renormalize', quietly train
+            # against a differently-tempered teacher.
+            raise ValueError(
+                f"the teacher captures signals at temperature {provider_temperature} but "
+                f"training.kd_temperature is {kd_temperature}. Set them to the same value."
+            )
+        describe = getattr(teacher, "describe", None)
+        print(f"  objective: {config.training.objective}  alpha {kd_alpha}  "
+              f"T {kd_temperature}  tail {kd_tail}")
+        if describe is not None:
+            print(f"  teacher  : {describe()}")
 
     profile = new_profile()
     reset_peak()
@@ -485,6 +529,7 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
         while state.step < config.training.max_steps and not stopping["requested"]:
             optimizer.zero_grad(set_to_none=True)
             accumulated = 0.0
+            kd_records: list[dict[str, float]] = []
             for _ in range(config.training.gradient_accumulation_steps):
                 if text_mode:
                     batch = torch.tensor(next(batches), dtype=torch.long, device=device)
@@ -498,12 +543,33 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
                     take(profile, "after_input_allocation")
                 phase[0] = "forward pass"
                 with autocast():
-                    outputs = model(input_ids=batch, labels=batch)
-                    if first_step:
-                        # Activations are live between forward and backward; snapshot
-                        # here or the backward pass will have already freed them.
-                        take(profile, "after_forward")
-                    loss = outputs.loss / config.training.gradient_accumulation_steps
+                    if teacher is None:
+                        outputs = model(input_ids=batch, labels=batch)
+                        if first_step:
+                            # Activations are live between forward and backward; snapshot
+                            # here or the backward pass will have already freed them.
+                            take(profile, "after_forward")
+                        loss = outputs.loss / config.training.gradient_accumulation_steps
+                    else:
+                        # The teacher runs first and under no_grad, so its activations are
+                        # freed before the student allocates its own. Doing it the other
+                        # way round holds both at once, which is what makes a KD run OOM
+                        # on hardware that fits each model separately.
+                        phase[0] = "teacher forward pass"
+                        # Not `signal`: that name is the stdlib module this function uses
+                        # for its SIGTERM handler, and shadowing it makes every path fail.
+                        teacher_signal = teacher.signal_for(batch)
+                        phase[0] = "forward pass"
+                        outputs = model(input_ids=batch)
+                        if first_step:
+                            take(profile, "after_forward")
+                        phase[0] = "distillation loss"
+                        kd_output = distillation_loss(
+                            outputs.logits, batch, teacher_signal,
+                            alpha=kd_alpha, temperature=kd_temperature, tail=kd_tail,
+                        )
+                        kd_records.append(kd_output.to_log())
+                        loss = kd_output.total / config.training.gradient_accumulation_steps
                 if first_step:
                     # The loss path holds the logits three times over, so it gets its
                     # own stage rather than being folded into the forward pass.
@@ -545,8 +611,21 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
                 }
                 if text_mode:
                     record["bits_per_byte"] = round(bits_per_byte(accumulated), 4)
+                if kd_records:
+                    # Reported per step, not per run: teacher entropy near zero, or a top-1
+                    # agreement already at 1.0, both mean the KD term has stopped carrying
+                    # more than the argmax and the objective has quietly become SFT.
+                    record.update({
+                        key: round(sum(r[key] for r in kd_records) / len(kd_records), 4)
+                        for key in ("kd_loss", "ce_loss", "teacher_entropy",
+                                    "top1_agreement", "teacher_tail_mass")
+                    })
                 state.history.append(record)
                 extra = f"  bpb {record['bits_per_byte']:.3f}" if text_mode else ""
+                if kd_records:
+                    extra += (f"  kd {record['kd_loss']:.3f}  ce {record['ce_loss']:.3f}"
+                              f"  agree {record['top1_agreement']:.2f}"
+                              f"  tail {record['teacher_tail_mass']:.3f}")
                 print(f"  step {state.step:>6}  loss {accumulated:8.4f}{extra}  "
                       f"{record['interval_tokens_per_second']:>8.0f} tok/s"
                       f"  (run {record['tokens_per_second']:.0f})  {elapsed:6.1f}s")
@@ -638,6 +717,7 @@ def train(config: ExperimentConfig, spec: HybridArchSpec | None) -> int:
         text_mode=text_mode, throughput=throughput_summary,
         effective_precision=precision, precision_note=precision_note, oom=oom,
         persisted=persisted, persistent_destination=config.training.persistent_backup,
+        distillation=_distillation_summary(config, state, teacher, kd_alpha, kd_tail),
     )
     if oom is not None:
         print(f"  wrote {output / 'summary.json'} recording the OOM.")
@@ -716,6 +796,46 @@ def _parameter_count(spec: HybridArchSpec | None) -> int | None:
     return count_parameters(spec).total
 
 
+def _distillation_summary(
+    config: ExperimentConfig, state: TrainingState, teacher: Any, alpha: float, tail: str
+) -> dict[str, Any] | None:
+    """What the teacher contributed, or ``None`` when there was no teacher.
+
+    The endpoints matter more than the averages. ``top1_agreement`` rising is the signature
+    of distillation working; ``teacher_entropy`` near zero means the teacher's distribution
+    carried little more than its argmax, so the KD term was close to SFT whatever the
+    config said; and ``teacher_tail_mass`` is what decides whether an offline corpus at
+    this ``k`` would lose anything.
+    """
+    if teacher is None:
+        return None
+    records = [h for h in state.history if "kd_loss" in h]
+
+    def endpoints(key: str) -> dict[str, float | None]:
+        values = [r[key] for r in records if key in r]
+        return {
+            "first": values[0] if values else None,
+            "final": values[-1] if values else None,
+            "mean": round(sum(values) / len(values), 6) if values else None,
+        }
+
+    describe = getattr(teacher, "describe", None)
+    return {
+        "objective": config.training.objective,
+        "kd_alpha": alpha,
+        "kd_temperature": config.training.kd_temperature,
+        "kd_tail": tail,
+        "kd_top_k": config.training.kd_top_k,
+        "teacher": describe() if describe else {"source": "unknown"},
+        "n_logged_steps": len(records),
+        "kd_loss": endpoints("kd_loss"),
+        "ce_loss": endpoints("ce_loss"),
+        "top1_agreement": endpoints("top1_agreement"),
+        "teacher_entropy": endpoints("teacher_entropy"),
+        "teacher_tail_mass": endpoints("teacher_tail_mass"),
+    }
+
+
 def _write_summary(
     output: Path,
     config: ExperimentConfig,
@@ -734,6 +854,7 @@ def _write_summary(
     oom: OOMRecord | None = None,
     persisted: dict[str, list[str]] | None = None,
     persistent_destination: str | None = None,
+    distillation: dict[str, Any] | None = None,
 ) -> None:
     """Write the full artifact set: summary, hardware, git commit, resolved config.
 
@@ -794,7 +915,15 @@ def _write_summary(
         "requested_precision": config.training.precision,
         "effective_precision": effective_precision,
         "precision_note": precision_note,
-        "objective": "byte-level causal LM" if text_mode else config.training.objective,
+        # A KD run over a text corpus was previously labelled "byte-level causal LM" here,
+        # which describes the *data* and hides the objective. The objective wins: an
+        # artifact that cannot distinguish distillation from SFT is the exact failure the
+        # objectives module exists to prevent.
+        "objective": (
+            config.training.objective
+            if config.training.objective != "sft"
+            else ("byte-level causal LM" if text_mode else "sft")
+        ),
         "parameters": count_parameters(spec).as_dict() if spec else None,
         "steps": state.step,
         "runtime_s": round(elapsed, 2),
@@ -810,6 +939,10 @@ def _write_summary(
         "first_validation_loss": validations[0] if validations else None,
         "final_validation_loss": validations[-1] if validations else None,
         "corpus": corpus_stats.to_dict() if corpus_stats else None,
+        # What the teacher actually contributed. Without this a KD summary carries only a
+        # config echo, and "the objective said logit_kd" is not evidence that a teacher
+        # distribution was ever reached.
+        "distillation": distillation,
         # A run either completed or ran out of memory. Both are results; only one of
         # them is a success, and the artifact must say which without being read closely.
         "outcome": "OOM" if oom else "completed",

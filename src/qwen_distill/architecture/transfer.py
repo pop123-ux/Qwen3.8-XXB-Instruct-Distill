@@ -21,7 +21,7 @@ from typing import Any, Literal
 
 from .spec import FULL_ATTENTION, HybridArchSpec
 
-LayerSelection = Literal["first", "last", "uniform", "interleave"]
+LayerSelection = Literal["first", "last", "uniform", "interleave", "group"]
 WidthReduction = Literal["slice", "mean_pool", "importance"]
 
 
@@ -74,13 +74,29 @@ class TransferPlan:
 
 
 def select_layers(
-    teacher_layers: int, student_layers: int, strategy: LayerSelection = "uniform"
+    teacher_layers: int,
+    student_layers: int,
+    strategy: LayerSelection = "uniform",
+    *,
+    group_size: int = 1,
 ) -> dict[int, int]:
     """Map each student layer index to a teacher layer index.
 
     ``uniform`` spreads the selection evenly, which preserves the depth-wise progression
     of representations; ``first``/``last`` keep one end. All are guesses until measured —
     that is the point of making the strategy a parameter.
+
+    ``group`` is ``uniform`` applied to whole *hybrid groups* rather than to individual
+    layers, and it exists because the others cannot both span the depth and respect the
+    layout. In a period-``g`` hybrid (here ``g = full_attention_interval``) a layer's
+    position within its group determines its block type, so a selection that spans the
+    teacher's depth at a non-integer stride lands student layers on teacher layers of the
+    wrong type — measured at 64 -> 48: ``uniform`` puts 8 of 28 layers on the wrong block
+    type, while ``interleave`` degenerates to ``first`` because ``64 // 48 == 1``. Moving
+    the selection up to the group and copying position-for-position within it keeps every
+    student layer on a teacher layer of its own type *and* keeps the depth-wise spread.
+    Whether that initialises a better student is still an empirical question; what it
+    stops being is structurally broken.
     """
     if student_layers > teacher_layers:
         raise ValueError(
@@ -100,7 +116,45 @@ def select_layers(
     if strategy == "interleave":
         stride = teacher_layers // student_layers
         return {i: i * stride for i in range(student_layers)}
+    if strategy == "group":
+        if group_size < 1:
+            raise ValueError(f"group_size must be positive, got {group_size}")
+        if teacher_layers % group_size or student_layers % group_size:
+            raise ValueError(
+                f"group selection needs whole groups: {teacher_layers} teacher and "
+                f"{student_layers} student layers must both be divisible by "
+                f"group_size={group_size}. A partial group would put its layers at the "
+                "wrong position in the hybrid cycle, which is the failure this strategy "
+                "exists to avoid."
+            )
+        group_map = select_layers(
+            teacher_layers // group_size, student_layers // group_size, "uniform"
+        )
+        return {
+            s * group_size + offset: group_map[s] * group_size + offset
+            for s in range(student_layers // group_size)
+            for offset in range(group_size)
+        }
     raise ValueError(f"unknown layer selection {strategy!r}")
+
+
+def _group_size(teacher: HybridArchSpec, student: HybridArchSpec) -> int:
+    """The hybrid period both models must share for group-aligned selection.
+
+    A layer's block type is decided by its position in the period, so aligning groups is
+    only meaningful when the two models have the same period. Different periods are a
+    different layout, not a scaled one, and the error says so rather than producing a
+    map that ``_layout_compatible`` would then reject tensor by tensor.
+    """
+    if teacher.full_attention_interval != student.full_attention_interval:
+        raise ValueError(
+            f"group selection needs a shared hybrid period, but the teacher's "
+            f"full_attention_interval is {teacher.full_attention_interval} and the "
+            f"student's is {student.full_attention_interval}. Group alignment cannot "
+            "reconcile different layouts; choose a student with the teacher's interval, "
+            "or a selection strategy that does not claim layout preservation."
+        )
+    return teacher.full_attention_interval
 
 
 def _layout_compatible(teacher: HybridArchSpec, student: HybridArchSpec, layer_map: dict[int, int]) -> list[str]:
@@ -147,7 +201,10 @@ def build_transfer_plan(
         )
 
     plan.layer_map = select_layers(
-        teacher.num_hidden_layers, student.num_hidden_layers, layer_selection
+        teacher.num_hidden_layers,
+        student.num_hidden_layers,
+        layer_selection,
+        group_size=_group_size(teacher, student) if layer_selection == "group" else 1,
     )
     for mismatch in _layout_compatible(teacher, student, plan.layer_map):
         plan.warnings.append(mismatch)
@@ -273,7 +330,7 @@ def build_transfer_plan(
 def compare_strategies(
     teacher: HybridArchSpec,
     student: HybridArchSpec,
-    selections: tuple[LayerSelection, ...] = ("first", "last", "uniform", "interleave"),
+    selections: tuple[LayerSelection, ...] = ("first", "last", "uniform", "interleave", "group"),
 ) -> dict[str, TransferPlan]:
     """Build a plan per layer-selection strategy, for side-by-side comparison.
 
@@ -289,3 +346,65 @@ def compare_strategies(
             plan.warnings.append(str(exc))
             plans[selection] = plan
     return plans
+
+def student_from_teacher(
+    teacher: HybridArchSpec,
+    *,
+    name: str = "student",
+    hidden_size: int | None = None,
+    num_hidden_layers: int | None = None,
+    intermediate_size: int | None = None,
+    num_key_value_heads: int | None = None,
+    linear_num_key_heads: int | None = None,
+    tie_word_embeddings: bool | None = None,
+    max_position_embeddings: int | None = None,
+) -> HybridArchSpec:
+    """A student the teacher can actually be transferred into.
+
+    Every field a transfer cannot reduce is inherited rather than offered as a knob:
+    ``head_dim``, the DeltaNet head dimensions, the conv kernel, the hybrid period and —
+    the important one — the vocabulary. Choosing a student's vocabulary independently is
+    what makes logit distillation need a token mapping and makes embedding transfer
+    meaningless, so this signature does not let it happen by accident.
+
+    Head *counts* are knobs, but only through the group-defining ones: give
+    ``num_key_value_heads`` and the query heads follow at the teacher's GQA ratio; give
+    ``linear_num_key_heads`` and the value heads follow at the teacher's ratio. That keeps
+    both ratios fixed by construction instead of by a later check.
+    """
+    gqa = teacher.num_attention_heads // teacher.num_key_value_heads
+    dn_ratio = teacher.linear_num_value_heads // teacher.linear_num_key_heads
+    kv_heads = num_key_value_heads or teacher.num_key_value_heads
+    key_heads = linear_num_key_heads or teacher.linear_num_key_heads
+
+    layers = num_hidden_layers or teacher.num_hidden_layers
+    if layers % teacher.full_attention_interval:
+        raise ValueError(
+            f"num_hidden_layers={layers} is not a whole number of "
+            f"{teacher.full_attention_interval}-layer hybrid groups. A partial group puts "
+            "its layers at the wrong position in the cycle and cannot be transferred into."
+        )
+    return HybridArchSpec(
+        name=name,
+        hidden_size=hidden_size or teacher.hidden_size,
+        num_hidden_layers=layers,
+        intermediate_size=intermediate_size or teacher.intermediate_size,
+        vocab_size=teacher.vocab_size,
+        tie_word_embeddings=(
+            teacher.tie_word_embeddings if tie_word_embeddings is None else tie_word_embeddings
+        ),
+        num_attention_heads=kv_heads * gqa,
+        num_key_value_heads=kv_heads,
+        head_dim=teacher.head_dim,
+        attention_bias=teacher.attention_bias,
+        partial_rotary_factor=teacher.partial_rotary_factor,
+        attn_output_gate=teacher.attn_output_gate,
+        linear_num_value_heads=key_heads * dn_ratio,
+        linear_num_key_heads=key_heads,
+        linear_key_head_dim=teacher.linear_key_head_dim,
+        linear_value_head_dim=teacher.linear_value_head_dim,
+        linear_conv_kernel_dim=teacher.linear_conv_kernel_dim,
+        full_attention_interval=teacher.full_attention_interval,
+        max_position_embeddings=max_position_embeddings or teacher.max_position_embeddings,
+        provenance=f"derived from {teacher.name!r} by qwen_distill.architecture.transfer",
+    )

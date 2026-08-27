@@ -90,10 +90,11 @@ cause is the opposite, and three independent facts say so:
 
 1. **0.826 epochs.** 32,768,000 tokens against a 39,677,723-byte train split. **17.4% of
    the corpus was never read.** Level 2 had consumed its 8 MB corpus 4.1 times.
-2. **The learning rate ran out.** `OneCycleLR(max_lr=6e-4, total_steps=2000)` decays to
-   ~0 by construction: the final 200 steps averaged **0.9% of peak LR**, ending at
-   2.4e-09. A model that is barely being updated cannot improve, whatever its capacity or
-   data. The flattening is confounded with the schedule and this run cannot separate them.
+2. **The learning rate ran out.** `OneCycleLR(max_lr=6e-4, total_steps=2000,
+   pct_start=0.1)` peaks at position 199 and decays to ~0 by construction: the final 200
+   steps ran from 1.792e-05 down to 2.4e-09, averaging **1.0% of peak LR**. A model that is
+   barely being updated cannot improve, whatever its capacity or data. The flattening is
+   confounded with the schedule and this run cannot separate them.
 3. **No overfitting.** The train/validation gap sat between 0.272 and 0.398 with no trend.
 
 Validation decreased monotonically through the final block. Nothing plateaued and nothing
