@@ -114,18 +114,28 @@ Consequence: **shrinking the model is the wrong first move at 12 GB.** In order 
 ## 4. Time, not memory, is the real 12 GB constraint
 
 A 3060 is roughly T4-class in throughput (both are memory-bandwidth-bound here; a 3060 is
-somewhat faster, and this project has measured neither). Using Level 2's measured 2,089.2
-tok/s as the anchor, with the **UNVALIDATED** FLOP-ratio extrapolation:
+somewhat faster, and this project has measured neither).
+
+**The anchor has changed since this table was first written.** Level 2 ran at 2,089.2
+tok/s run-wide; Level 2R ran the *same architecture on the same hardware* at **1,727.9
+tok/s** — 20.9% more wall-clock for an identical 32,768,000 tokens. Nothing about the model
+differed. The gap is real-corpus I/O, validation on a 4.4 MB held-out set, and ten verified
+Drive persists. A real training run looks like Level 2R, not Level 2, so the rows below are
+anchored on **1,727.9 tok/s** with the **UNVALIDATED** FLOP-ratio extrapolation:
 
 | model | est. tok/s | 32.8M tokens | 100M tokens |
 |---|---|---|---|
-| 94.5M | 2,089 (measured) | 4.4 h | 13.3 h |
-| 236M | ~850 | 10.7 h | 32.6 h |
-| 354M | ~570 | 16.0 h | 46.7 h |
-| 472M | ~430 | 21.2 h | 64.7 h |
+| 94.5M | 1,728 (measured, Level 2R) | 5.3 h | 16.1 h |
+| 236M | ~704 | 12.9 h | 39.4 h |
+| 354M | ~470 | 19.4 h | 59.1 h |
+| 472M | ~355 | 25.6 h | 78.2 h |
 
-**A 12 GB card fits a 472M model and needs ~65 hours to give it 100M tokens.** That is the
+**A 12 GB card fits a 472M model and needs ~78 hours to give it 100M tokens.** That is the
 extension's actual limit. Memory says yes; a weekend says no.
+
+The 236M row is the size Level 3 will actually run at on a 16 GB T4
+([level3_plan.md](level3_plan.md)), so it is the first of these estimates that will be
+checked against a measurement.
 
 Unlike Colab, a local 12 GB card has no session limit — but it is also the machine you are
 using. Plan for interruption either way; the checkpoint/resume/persistence stack already
@@ -195,6 +205,13 @@ generation happens elsewhere (a rented GPU, an API, a bigger machine) and its ou
 transported as data. That is already how `distillation/generation.py` and the manifest
 system are built.
 
+The conceptual ladder is `teacher 27B -> best student for 16 GB -> a further
+distilled/compressed model for 12 GB`. The middle rung is not settled: Level 2R
+established that 94.48M learns real English structure while remaining repetitive, and
+Level 3 ([level3_plan.md](level3_plan.md)) tests whether 236M materially improves on it.
+**Until that returns, the 12 GB architecture cannot be chosen** — it would be a
+compression target for a model this project has not yet selected. Nothing here claims one.
+
 So the 12 GB extension is entirely about the student side, and the constraint that matters
 there is **storage of teacher outputs**, not VRAM. See
 [DISTILLATION_DATA_REQUIREMENTS.md](DISTILLATION_DATA_REQUIREMENTS.md) — including the
@@ -211,7 +228,8 @@ objective changes, the memory does not.
 | claim | status |
 |---|---|
 | T4 reports 14.56 GiB | **VERIFIED** — measured, Level 2 |
-| Level 2 = 2,089.2 tok/s on T4 | **VERIFIED** — 32,768,000 tokens / 15,684.6 s |
+| Level 2 = 2,089.2 tok/s on T4 | **VERIFIED** — 32,768,000 tokens / 15,684.6 s (procedural corpus) |
+| Level 2R = 1,727.9 tok/s on T4 | **VERIFIED** — 32,768,000 tokens / 18,963.8 s (real corpus, validation, verified persistence). This is the anchor used above. |
 | Level 2 = 94,476,448 params | **VERIFIED** — `count_parameters` |
 | teacher = 26,895,998,464 params | **VERIFIED** — meta-device build |
 | 12 GB card reports ~11.76 GiB | **UNKNOWN** — vendor spec converted; not measured here |

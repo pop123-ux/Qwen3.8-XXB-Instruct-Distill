@@ -1,3 +1,14 @@
+> **STATUS: SUPERSEDED — Level 2R has run.**
+>
+> This report closed out Level 2 (procedural corpus) and proposed Level 2R. Level 2R is
+> now complete; its result is at
+> [`experiments/runs/t4_level2r_100m_real_english/`](../../experiments/runs/t4_level2r_100m_real_english/)
+> and the next experiment is [level3_plan.md](level3_plan.md).
+>
+> Level 2's conclusions about the *procedural* run below remain accurate and are kept.
+
+---
+
 # Level 2 complete — what it proved, and what to run next
 
 Full result: [`experiments/runs/t4_level2_100m_ckpt_complete/`](../../experiments/runs/t4_level2_100m_ckpt_complete/).

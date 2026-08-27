@@ -16,6 +16,7 @@ from qwen_distill.analysis.scaling import (
     LEVEL2_CONFIG,
     LEVEL2_SPEC,
     LEVEL2_TOKENS_PER_SECOND,
+    LEVEL2R_TOKENS_PER_SECOND,
     SCALE_CLASSES,
     TIGHT_VERDICT,
     TrainingConfig,
@@ -250,8 +251,13 @@ def test_throughput_extrapolation_is_labelled_unvalidated():
     estimate = extrapolated_tokens_per_second(build_candidates()[0])
     assert estimate["status"] == "UNVALIDATED EXTRAPOLATION"
     assert "ONE measured point" in estimate["caveat"]
-    assert estimate["anchor"]["measured_tokens_per_second"] == LEVEL2_TOKENS_PER_SECOND
     assert estimate["anchor"]["hardware"] == "Tesla T4"
+    # The default anchor is Level 2R's measured rate: same architecture, same hardware,
+    # but a real corpus with validation and verified persistence. Level 2's procedural
+    # figure would understate a real run by ~21%.
+    assert estimate["anchor"]["measured_tokens_per_second"] == LEVEL2R_TOKENS_PER_SECOND
+    assert estimate["anchor"]["run"] == "t4_level2r_100m_real_english"
+    assert "real corpus" in estimate["anchor"]["regime"]
 
 
 def test_bigger_models_extrapolate_slower():
@@ -260,13 +266,27 @@ def test_bigger_models_extrapolate_slower():
         for spec in build_candidates()
     ]
     assert rates == sorted(rates, reverse=True)
-    assert all(rate < LEVEL2_TOKENS_PER_SECOND for rate in rates)
+    assert all(rate < LEVEL2R_TOKENS_PER_SECOND for rate in rates)
 
 
-def test_level2_extrapolates_to_its_own_measurement():
-    """The anchor must reproduce itself: ratio 1.0, rate 2,089.2."""
-    estimate = extrapolated_tokens_per_second(LEVEL2_SPEC)
+@pytest.mark.parametrize(
+    "anchor", [LEVEL2R_TOKENS_PER_SECOND, LEVEL2_TOKENS_PER_SECOND]
+)
+def test_the_anchor_reproduces_itself(anchor):
+    """Whichever measured rate is used, the rung it was measured on must come back."""
+    estimate = extrapolated_tokens_per_second(LEVEL2_SPEC, anchor=anchor)
     assert estimate["flops_ratio_vs_level2"] == pytest.approx(1.0)
-    assert estimate["extrapolated_tokens_per_second"] == pytest.approx(
-        LEVEL2_TOKENS_PER_SECOND, rel=1e-3
-    )
+    assert estimate["extrapolated_tokens_per_second"] == pytest.approx(anchor, rel=1e-3)
+
+
+def test_the_two_anchors_measure_the_same_rung_not_a_scaling_interval():
+    """Level 2 and Level 2R are the same architecture on the same hardware. The 20.9%
+    difference between them is I/O and verification, not capacity — and treating it as a
+    scaling observation would be a fabricated data point."""
+    assert LEVEL2R_TOKENS_PER_SECOND < LEVEL2_TOKENS_PER_SECOND
+    ratio = LEVEL2_TOKENS_PER_SECOND / LEVEL2R_TOKENS_PER_SECOND
+    assert 1.15 < ratio < 1.30
+    for anchor in (LEVEL2R_TOKENS_PER_SECOND, LEVEL2_TOKENS_PER_SECOND):
+        assert extrapolated_tokens_per_second(
+            LEVEL2_SPEC, anchor=anchor
+        )["flops_ratio_vs_level2"] == pytest.approx(1.0)

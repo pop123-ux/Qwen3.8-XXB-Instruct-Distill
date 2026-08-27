@@ -1,0 +1,72 @@
+{
+  "experiment": "t4_level2_100m_ckpt",
+  "outcome": "INTERRUPTED \u2014 Colab runtime disconnected, ephemeral /content lost",
+  "date": "2026-08-24",
+  "completed": false,
+  "note": "This is NOT a completed 2000-step experiment and must not be reported as one. It establishes T4 feasibility to ~step 500 and an early learning trend. It says nothing about final model quality.",
+  "hardware": {
+    "device": "Tesla T4",
+    "total_vram_gib": 14.56,
+    "compute_capability": "7.5",
+    "fp16": true,
+    "bf16": false
+  },
+  "configuration": {
+    "parameters": 94480000,
+    "layers": 16,
+    "layout": "12 linear_attention (Gated DeltaNet) + 4 full_attention",
+    "sequence_length": 1024,
+    "micro_batch_size": 4,
+    "gradient_accumulation_steps": 4,
+    "effective_batch": 16,
+    "precision": "fp16 autocast",
+    "optimizer": "adamw",
+    "gradient_checkpointing": true,
+    "max_steps_configured": 2000
+  },
+  "memory": {
+    "result": "no CUDA OOM",
+    "note": "The corrected estimator predicted 3.57 GiB for this configuration and the run fit comfortably. Peak VRAM was not captured before the disconnect, so the estimate remains unvalidated against a measured peak."
+  },
+  "throughput": {
+    "tokens_per_second": 2100,
+    "note": "approximate, as reported in the session"
+  },
+  "measurements": [
+    {
+      "step": 200,
+      "validation_loss": 0.913,
+      "validation_bits_per_byte": 1.317
+    },
+    {
+      "step": 400,
+      "validation_loss": 0.8868,
+      "validation_bits_per_byte": 1.279
+    }
+  ],
+  "reached_approximately_step": 500,
+  "termination": {
+    "cause": "Colab runtime disconnected",
+    "consequence": "the ephemeral /content filesystem was reclaimed, taking every checkpoint and the metrics log with it. Nothing was recoverable.",
+    "steps_lost": "approximately 500"
+  },
+  "what_this_proves": [
+    "the revised 94.48M configuration trains on a Tesla T4 without OOM",
+    "throughput is ~2100 tokens/s with gradient checkpointing on",
+    "the model is learning: validation BPB fell from 1.317 to 1.279 between steps 200 and 400",
+    "1.279 BPB at step 400 is already far below the 8.0 uniform-byte baseline"
+  ],
+  "what_this_does_not_prove": [
+    "final model quality \u2014 the run covered ~25% of the configured 2000 steps",
+    "that the loss curve continues to fall",
+    "measured peak VRAM against the 3.57 GiB estimate",
+    "anything about distillation or teacher capability retention"
+  ],
+  "why_it_could_not_be_resumed": [
+    "checkpoints were written non-atomically, so any in-flight write was corrupt",
+    "checkpoints held weights and a step counter but no scheduler, GradScaler, RNG or data position, so a resume would have restarted the one-cycle schedule and rewound the data to epoch 0",
+    "nothing was copied off the ephemeral filesystem",
+    "there was no pointer identifying the newest valid checkpoint"
+  ],
+  "resolution": "Phase 2B: atomic checkpoints with a COMPLETE marker and a verified latest.json pointer, full state capture (scheduler, scaler, RNG, data position, tokens seen), lightweight progress records independent of checkpoints, `--resume latest`, and Drive persistence that refuses to copy an incomplete checkpoint."
+}

@@ -1,6 +1,15 @@
 # Scaling study protocol — 4M → 500M on one consumer GPU
 
-**Status: not started. This is the protocol, written before any of it runs.**
+**Status: not started as a study. One rung now exists.**
+
+Level 2R is complete and is the **first rung measured on real English**: 94,476,448
+parameters, byte-level vocabulary 256, the `data/level2r` corpus, validation **1.797
+bits/byte** at 32,768,000 tokens. Level 3 ([level3_plan.md](level3_plan.md)) is designed to
+be the **second rung on that same corpus, tokenizer and validation split** — 236,237,488
+parameters, everything else held. Two rungs is still not a scaling law (§2), but it is the
+first time this project has had even one point that could belong to one.
+
+The protocol below is unchanged.
 
 The point of writing it now is that a scaling study is easy to ruin after the fact. Once
 the numbers exist, "we also changed the corpus at the 236M rung" becomes a footnote
@@ -8,31 +17,46 @@ instead of a disqualification. Fixing the rules first is the only defence.
 
 ---
 
-## 1. What this project currently has — and why it is not a scaling law
+## 1. What this project currently has — and why it is still not a scaling law
 
-Three training runs exist. **No two of them differ only in model size**, so the number of
-usable points on a loss-vs-size curve is **zero**.
+Three training runs are complete. **No two of them differ only in model size**, so the
+number of usable points on a loss-vs-size curve is still **zero**.
 
-| run | params (measured) | vocabulary | corpus | result |
-|---|---|---|---|---|
-| `t4_prototype` | 4,029,700 | **4096** | **synthetic token sequences**, seq 256 | validation loss 2.091 |
-| Level 2 | 94,476,448 | 256 (bytes) | procedural byte text, 8 MB | validation BPB 1.270 |
-| Level 2R | 94,476,448 | 256 (bytes) | real public-domain English | **RUNNING** |
+| run | params (measured) | vocabulary | corpus | result | status |
+|---|---|---|---|---|---|
+| `t4_prototype` | 4,029,700 | **4096** | **synthetic token sequences**, seq 256 | validation loss 2.091 | complete |
+| Level 2 | 94,476,448 | 256 (bytes) | procedural byte text, 8 MB | validation BPB 1.270 | complete |
+| Level 2R | 94,476,448 | 256 (bytes) | real English, 44.1 MB | validation BPB **1.797** | complete |
+| Level 3 | 236,237,488 | 256 (bytes) | **the same** `data/level2r` corpus | — | **not run** |
 
-Why each pairing fails:
+Why each existing pairing fails:
 
 - **4M vs 94.5M** — different vocabulary (4096 vs 256) and different data (synthetic vs
   procedural). Cross-entropy over 4096 symbols and bits-per-byte over 256 are not the
   same axis. The 4M run validated the *mechanism* — forward, backward, optimizer,
   checkpoint, resume — and was never a language-modelling measurement.
-- **Level 2 vs Level 2R** — identical size, different corpus. A corpus comparison. See
-  [level2_vs_level2r.md](level2_vs_level2r.md).
+- **Level 2 vs Level 2R** — identical size, different corpus. A corpus comparison, and the
+  tooling refuses the delta. See [level2_vs_level2r.md](level2_vs_level2r.md).
 - **4M vs Level 2R** — both of the above at once.
 
-> **Two points do not make a scaling law, and this project does not even have two.**
-> A line through two points is exact by construction and predicts nothing. It cannot
-> distinguish a power law from a straight line from noise, and it has no residuals to
-> inspect.
+**Level 2R vs Level 3 would be the first pairing that does not fail**: same corpus bytes,
+same tokenizer, same validation split, same sequence length, same optimizer, same schedule,
+same token budget — differing in width alone. That is one legitimate interval, not a law.
+
+> **Two points do not make a scaling law.** A line through two points is exact by
+> construction and predicts nothing. It cannot distinguish a power law from a straight
+> line from noise, and it has no residuals to inspect. Level 3 is designed to answer
+> "does capacity help here?", which is a different and much weaker question than "what is
+> the exponent?" — and it is the question worth asking first.
+
+One correction the completed runs force on §4 below. Both Level 2 and Level 2R flattened
+near step 2000, and for **opposite reasons**: Level 2 had consumed its 8 MB corpus 4.1
+times, while Level 2R had read only 82.6% of its corpus once and ended with its learning
+rate at 0.9% of peak. A fixed-data budget does not merely leave large rungs undertrained —
+with a `OneCycleLR` fitted to the step count, it also **guarantees the tail of every rung
+flattens**, whatever its capacity. Any rung of this ladder must therefore report
+`epochs_seen` and the LR at the final block next to its final BPB, or its curve cannot be
+read.
 
 ---
 

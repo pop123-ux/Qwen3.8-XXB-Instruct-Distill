@@ -1,3 +1,20 @@
+> **STATUS: BOTH RUNS ARE NOW COMPLETE.** This document was written before Level 2R
+> finished, to fix the analysis in advance. Its central refusal held:
+>
+> Level 2 scored **1.270** on procedural text; Level 2R scored **1.797** on real English.
+> `scripts/compare_runs.py` still reports **no delta** between them, and it is right to.
+> The 0.527 difference is dominated by the corpora, not the models.
+>
+> The comparison that *did* resolve is the qualitative one this document named as the
+> real question — and it resolved in Level 2R's favour: Level 2 generated `"and and and"`
+> (83% 3-gram repetition); Level 2R generates English at 12.4% mean 3-gram repetition with
+> nothing memorised. The tooling reports exactly that finding from the committed records.
+>
+> A comparison where validation BPB *is* legitimate — same corpus, same held-out bytes —
+> is Level 2R vs Level 3: [level3_plan.md](level3_plan.md) §5.
+
+---
+
 # Level 2 vs Level 2R — how to compare them, decided before the data arrives
 
 **Status:** Level 2 is COMPLETE and published. Level 2R is **RUNNING**. This document is

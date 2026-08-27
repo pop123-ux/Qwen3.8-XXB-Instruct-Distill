@@ -292,10 +292,24 @@ def default_sweep(*, precision: str = "fp16", include_no_checkpointing: bool = T
 # ----------------------------------------------------------------------------------
 
 #: Level 2's measured run-wide throughput, on a T4 at seq 1024 / batch 4 / checkpointing
-#: on. VERIFIED — 32,768,000 tokens in 15,684.6 s. It is the *only* throughput
-#: measurement this project has, which is exactly why extrapolating from it is arithmetic
-#: rather than prediction.
+#: on. VERIFIED — 32,768,000 tokens in 15,684.6 s.
 LEVEL2_TOKENS_PER_SECOND = 2089.2
+
+#: Level 2R's measured run-wide throughput: the **same architecture on the same hardware**
+#: at 32,768,000 tokens in 18,963.8 s. VERIFIED.
+#:
+#: It is 20.9% slower than Level 2 for an identical token count, and nothing about the
+#: model differed. The gap is real-corpus I/O, validation on a 4.4 MB held-out set, and
+#: ten verified Drive persists — everything a real training run does and the procedural
+#: control did not. This is therefore the honest anchor for planning another real run;
+#: Level 2's figure would understate one by a fifth.
+#:
+#: Two measurements of the same rung are not a scaling data point. Both are here so a
+#: caller can choose the regime it is actually planning for.
+LEVEL2R_TOKENS_PER_SECOND = 1727.9
+
+#: What :func:`extrapolated_tokens_per_second` scales by default.
+DEFAULT_THROUGHPUT_ANCHOR = LEVEL2R_TOKENS_PER_SECOND
 
 #: The verdict ``estimate_training_memory`` returns when a configuration fits with room
 #: to spare. Named, because ``fit.py`` carries **two** verdict vocabularies — inference
@@ -440,31 +454,45 @@ def evaluate_candidate(
     return result
 
 
-def extrapolated_tokens_per_second(spec: HybridArchSpec, *, sequence_length: int = 1024) -> dict[str, Any]:
-    """Scale Level 2's measured rate by the FLOP ratio. **Not a prediction.**
+def extrapolated_tokens_per_second(
+    spec: HybridArchSpec,
+    *,
+    sequence_length: int = 1024,
+    anchor: float = DEFAULT_THROUGHPUT_ANCHOR,
+) -> dict[str, Any]:
+    """Scale a measured rate by the FLOP ratio. **Not a prediction.**
 
-    One measured point cannot establish how throughput scales. This divides Level 2's
-    2,089.2 tok/s by the ratio of forward FLOPs per token and reports the result as
-    arithmetic, with its single anchor named. Memory bandwidth, kernel efficiency and
-    occupancy all change with shape and none of them appear in a FLOP count, so treat the
-    number as an order of magnitude and nothing more.
+    One measured point cannot establish how throughput scales. This divides the anchor by
+    the ratio of forward FLOPs per token and reports the result as arithmetic, with the
+    anchor named. Memory bandwidth, kernel efficiency and occupancy all change with shape
+    and none of them appear in a FLOP count, so treat the number as an order of magnitude
+    and nothing more.
+
+    The default anchor is **Level 2R's** 1,727.9 tok/s, not Level 2's 2,089.2. Both
+    measured the same architecture on the same hardware; Level 2R additionally read a real
+    corpus, validated on held-out text and verified ten Drive persists, which is what a
+    real run does. Planning against the procedural figure understates a real run by ~21%.
     """
     from ..architecture.flops import prefill_flops
 
     baseline = prefill_flops(LEVEL2_SPEC, sequence_length) / sequence_length
     candidate = prefill_flops(spec, sequence_length) / sequence_length
     ratio = candidate / baseline if baseline else None
+    is_level2r = anchor == LEVEL2R_TOKENS_PER_SECOND
     return {
         "flops_per_token": candidate,
         "flops_ratio_vs_level2": round(ratio, 3) if ratio else None,
-        "extrapolated_tokens_per_second": (
-            round(LEVEL2_TOKENS_PER_SECOND / ratio, 1) if ratio else None
-        ),
+        "extrapolated_tokens_per_second": (round(anchor / ratio, 1) if ratio else None),
         "anchor": {
             "spec": LEVEL2_SPEC.name,
-            "measured_tokens_per_second": LEVEL2_TOKENS_PER_SECOND,
+            "run": "t4_level2r_100m_real_english" if is_level2r else "t4_level2_100m_ckpt",
+            "measured_tokens_per_second": anchor,
             "hardware": "Tesla T4",
             "config": "seq 1024, batch 4, gradient checkpointing on, fp16 autocast",
+            "regime": (
+                "real corpus, held-out validation, verified Drive persistence"
+                if is_level2r else "procedural corpus, no real-corpus I/O"
+            ),
         },
         "status": "UNVALIDATED EXTRAPOLATION",
         "caveat": (

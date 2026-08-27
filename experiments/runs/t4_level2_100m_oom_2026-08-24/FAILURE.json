@@ -1,0 +1,110 @@
+{
+  "experiment": "t4_level2_100m",
+  "outcome": "FAILED \u2014 CUDA out of memory during the first forward pass",
+  "date": "2026-08-24",
+  "git_commit_at_time_of_run": "55427c268d3304b5b9db6f300df7f1ef3c748c1d",
+  "hardware": {
+    "device": "Tesla T4",
+    "total_vram_gib": 14.56,
+    "compute_capability": "7.5",
+    "fp16": true,
+    "bf16": false
+  },
+  "configuration": {
+    "parameters": 94480000,
+    "layers": 16,
+    "layout": "12 linear_attention (Gated DeltaNet) + 4 full_attention",
+    "sequence_length": 1024,
+    "micro_batch_size": 8,
+    "gradient_accumulation_steps": 2,
+    "effective_batch": 16,
+    "precision": "fp16 autocast",
+    "optimizer": "adamw",
+    "gradient_checkpointing": false
+  },
+  "failure": {
+    "phase": "forward pass, before the first optimizer step",
+    "raised_in": "torch.nn.functional.scaled_dot_product_attention",
+    "gpu_total_gib": 14.56,
+    "free_at_failure_mib": 9.81,
+    "torch_allocated_gib": 14.16,
+    "reserved_unallocated_mib": 268.75,
+    "steps_completed": 0,
+    "note": "SDPA is where the exception surfaced, NOT what caused it. SDPA receives attn_mask=None and is_causal=True, so no b*h*s*s matrix is materialised; it was simply the next sizeable allocation after the DeltaNet layers had already consumed the card."
+  },
+  "estimate_at_time_of_run_gib": {
+    "base_weights": 0.35,
+    "gradients": 0.35,
+    "optimizer_state": 0.7,
+    "activations": 1.91,
+    "logits": 0.02,
+    "live_tensors": 3.33,
+    "runtime_overhead": 1.2,
+    "total": 4.53,
+    "verdict": "PLAUSIBLE"
+  },
+  "corrected_estimate_gib": {
+    "base_weights": 0.352,
+    "gradients": 0.352,
+    "optimizer_state": 0.704,
+    "deltanet_activations": 19.206,
+    "attention_activations": 0.133,
+    "non_attention_activations": 1.906,
+    "logits": 0.02,
+    "live_tensors": 22.672,
+    "runtime_overhead": 1.2,
+    "total": 23.872
+  },
+  "measured_demand_gib": {
+    "method": "torch.autograd.graph.saved_tensors_hooks on CPU, attributing every retained tensor to the module that created it. Device-independent: shapes and dtypes do not depend on CUDA.",
+    "retained_activations_batch1_seq1024_mib": 3273.6,
+    "retained_activations_batch2_seq1024_mib": 6186.8,
+    "linear_model_mib": "360 + 2913 * batch",
+    "extrapolated_batch8_gib": 23.11,
+    "plus_weights_grads_optimizer_gib": 1.41,
+    "total_demand_gib": 24.8,
+    "available_gib": 14.56
+  },
+  "root_cause": "The Gated DeltaNet activation term was not modelled at all. The estimator treated all 16 layers as generic transformer blocks scaling with hidden_size and intermediate_size. In reality the 12 DeltaNet layers retained 66% of all activations across 5,244 saved tensors (vs 86 for all four attention layers combined), because transformers' pure-torch torch_chunk_gated_delta_rule (a) force-upcasts to fp32, defeating fp16 autocast in 12 of 16 layers, and (b) runs a 63-iteration Python loop that clones and retains O(chunk_size^2) tensors per chunk. The loop term alone is v_heads*85344*4/chunk_size = 64 KB per token per layer, larger than the estimator's entire previous activation budget.",
+  "deltanet_measurement": {
+    "what": "retained activation bytes per token per DeltaNet layer, forward pass",
+    "how": "torch.autograd.graph.saved_tensors_hooks, attributing every tensor the autograd graph retains to the module that created it. Device-independent: tensor shapes and dtypes do not depend on CUDA.",
+    "implementation": "transformers.models.qwen3_5.torch_chunk_gated_delta_rule (pure-torch fallback)",
+    "transformers_version": "5.15.1",
+    "measurements": [
+      {
+        "v_heads": 12,
+        "head_dim": 64,
+        "bytes_per_token_per_layer": 190681
+      },
+      {
+        "v_heads": 6,
+        "head_dim": 64,
+        "bytes_per_token_per_layer": 96625
+      },
+      {
+        "v_heads": 24,
+        "head_dim": 64,
+        "bytes_per_token_per_layer": 378794
+      },
+      {
+        "v_heads": 12,
+        "head_dim": 32,
+        "bytes_per_token_per_layer": 138949
+      },
+      {
+        "v_heads": 12,
+        "head_dim": 128,
+        "bytes_per_token_per_layer": 303362
+      },
+      {
+        "v_heads": 6,
+        "head_dim": 128,
+        "bytes_per_token_per_layer": 152965
+      }
+    ],
+    "caveat": "this describes the pure-torch REFERENCE path. Installing `fla` (flash-linear-attention) replaces it with a fused kernel whose retained footprint is far smaller, and these numbers no longer apply."
+  },
+  "resolution": "configs/experiments/t4_level2_100m_ckpt.yaml \u2014 same 94.48M architecture, same 3:1 hybrid layout, same sequence length, same effective batch. Gradient checkpointing ON (measured 67x reduction in retained activations) and micro batch 8->4 with accumulation 2->4 for margin.",
+  "preserved_as": "This configuration is deliberately kept unchanged as the failed baseline. It is a real experimental result: it is what a 94.48M hybrid model costs on a T4 without gradient checkpointing under the reference DeltaNet kernel."
+}
