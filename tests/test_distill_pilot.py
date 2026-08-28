@@ -165,3 +165,100 @@ def test_a_training_checkpoint_is_not_a_from_pretrained_directory(completed):
     assert (checkpoint / "model.safetensors").exists()
     with pytest.raises(ValueError, match="model_type"):
         AutoModelForCausalLM.from_pretrained(checkpoint)
+
+
+# --- the real-teacher path -------------------------------------------------
+@pytest.fixture(scope="module")
+def tiny_teacher(tmp_path_factory):
+    """A small real qwen3_5 checkpoint at the byte vocabulary the corpus emits.
+
+    Vocab 256 so the pilot's tokenizer check passes and the whole chain runs; the
+    tokenizer itself is smaller, which is the normal padded-embedding case.
+    """
+    import torch
+    from test_real_teacher import TINY, build_tokenizer
+    from transformers import AutoConfig, AutoModelForCausalLM
+
+    from qwen_distill.architecture.spec import HybridArchSpec
+
+    directory = tmp_path_factory.mktemp("real_teacher")
+    build_tokenizer(directory)
+    spec = HybridArchSpec(name="tiny-teacher", vocab_size=256, **TINY)
+    fields = {k: v for k, v in spec.to_hf_text_config().items() if k != "model_type"}
+    torch.manual_seed(0)
+    AutoModelForCausalLM.from_config(
+        AutoConfig.for_model("qwen3_5_text", **fields)
+    ).save_pretrained(directory)
+    return directory
+
+
+def real_teacher_args(teacher, output, **overrides) -> list[str]:
+    args = {
+        "--teacher": str(teacher), "--layers": "4", "--kv-heads": "1",
+        "--dn-key-heads": "1", "--steps": "1", "--batch-size": "2", "--seq-len": "32",
+        "--top-k": "8", "--device": "cpu", "--teacher-dtype": "float32",
+        "--precision": "fp32", "--output": str(output), "--revision": "abc123",
+    }
+    args.update(overrides)
+    flat: list[str] = []
+    for key, value in args.items():
+        if value is None:      # an override of None drops the flag entirely
+            continue
+        flat.extend([key, value])
+    return flat
+
+
+def test_a_teacher_that_did_not_load_never_reaches_the_kd_loss(pilot, tiny_teacher, tmp_path):
+    """The gate must hold on the pilot path, not only in the smoke test.
+
+    This is the path that would otherwise distil against random weights: transformers
+    returns a freshly-initialised model rather than raising, and the resulting KD loss is
+    finite, falls, and means nothing.
+    """
+    from safetensors.torch import load_file, save_file
+
+    broken = tmp_path / "broken"
+    broken.mkdir()
+    for item in tiny_teacher.iterdir():
+        if item.is_file():
+            (broken / item.name).write_bytes(item.read_bytes())
+    weights = broken / "model.safetensors"
+    save_file({f"garbage.{k}": v for k, v in load_file(weights).items()}, weights)
+
+    assert pilot.main(real_teacher_args(broken, tmp_path / "run")) == 2
+    assert not (tmp_path / "run" / "checkpoints").exists()
+
+
+def test_the_real_teacher_chain_runs_and_records_provenance(pilot, tiny_teacher, tmp_path):
+    """teacher -> transfer -> TeacherSignal -> KD loss -> one optimizer step -> checkpoint."""
+    output = tmp_path / "run"
+    assert pilot.main(real_teacher_args(tiny_teacher, output)) == 0
+
+    record = json.loads((output / "pilot_record.json").read_text(encoding="utf-8"))
+    provenance = record["teacher_provenance"]
+    assert provenance["is_synthetic"] is False
+    assert provenance["load_report"]["weights_complete"] is True
+    assert provenance["identity"]["revision"] == "abc123"
+    assert provenance["identity"]["is_pinned"] is True
+    assert provenance["identity"]["config_sha256"]
+
+    summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
+    assert summary["objective"] == "logit_kd"
+    block = summary["distillation"]
+    assert block["teacher"]["source"] == "online"
+    assert block["teacher"]["teacher_revision"] == "abc123"
+    assert block["kd_loss"]["final"] is not None
+    assert block["n_logged_steps"] >= 1
+
+    from qwen_distill.training.checkpoints import is_complete, resolve_checkpoint
+
+    checkpoint = resolve_checkpoint(output / "checkpoints", "latest")
+    assert checkpoint is not None and is_complete(checkpoint)
+
+
+def test_an_unpinned_real_teacher_run_says_so(pilot, tiny_teacher, tmp_path, capsys):
+    output = tmp_path / "run"
+    assert pilot.main(real_teacher_args(tiny_teacher, output, **{"--revision": None})) == 0
+    assert "revision unpinned" in capsys.readouterr().err
+    record = json.loads((output / "pilot_record.json").read_text(encoding="utf-8"))
+    assert record["teacher_provenance"]["identity"]["is_pinned"] is False

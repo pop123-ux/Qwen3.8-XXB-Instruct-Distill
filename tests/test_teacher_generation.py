@@ -59,10 +59,19 @@ def generate(prompts, directory, **kwargs):
 
 # --- the mock must be chosen, never fallen back to ------------------------
 def test_the_real_backend_raises_rather_than_falling_back_to_synthetic():
-    """A synthetic dataset that looks real is the most expensive failure here."""
+    """A synthetic dataset that looks real is the most expensive failure here.
+
+    The real backend is now implemented, so the guarantee has moved rather than gone: an
+    unloaded teacher refuses instead of producing anything. It also refuses to load ~50 GB
+    of weights as a side effect of a generate() call, which is why this is not simply a
+    lazy load.
+    """
+    from qwen_distill.distillation.real_teacher import TeacherNotLoaded
+
     backend = make_backend("transformers", model="Qwen/Qwen3.8-27B")
     assert isinstance(backend, TransformersTeacher)
-    with pytest.raises(NotImplementedError, match="not wired up yet"):
+    assert backend.loaded is None
+    with pytest.raises(TeacherNotLoaded, match="not loaded"):
         backend.generate("hello", mode=resolve_mode("xhigh"))
 
 

@@ -108,6 +108,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--teacher", type=Path, help="directory holding the teacher's config.json and weights")
+    parser.add_argument("--revision", default=None,
+                        help="teacher commit SHA. Unpinned runs are marked unreproducible.")
+    parser.add_argument("--teacher-quantization", choices=("4bit", "8bit"), default=None,
+                        help="load the teacher quantised; 4bit is what fits a 24 GB card")
+    parser.add_argument("--teacher-device", default=None,
+                        help="device_map for the teacher; defaults to the run device")
+    parser.add_argument("--teacher-dtype", default="auto")
     source.add_argument("--stand-in", action="store_true", help="Stage 0: a small random teacher, proving the chain only")
 
     student = parser.add_argument_group("student geometry (defaults inherit the teacher)")
@@ -317,11 +324,33 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # --- distil ----------------------------------------------------------
+    # The real teacher goes through the verified loader, never a bare from_pretrained.
+    # transformers returns a freshly-initialised model rather than raising when a
+    # checkpoint's keys do not match, so loading the 27B teacher without the
+    # missing-weight gate can hand this pilot random weights that generate fluent
+    # nonsense and produce a perfectly plausible KD loss.
+    teacher_backend = None
     if teacher_model is None:
-        from transformers import AutoModelForCausalLM
+        from qwen_distill.distillation.backends import TransformersTeacher
+        from qwen_distill.distillation.real_teacher import TeacherLoadError
 
-        print("\n  loading the teacher for online distillation ...")
-        teacher_model = AutoModelForCausalLM.from_pretrained(args.teacher, dtype="auto").to(device)
+        print("\n  loading the teacher for online distillation (gate armed) ...")
+        teacher_backend = TransformersTeacher(
+            model=teacher_spec.name, local_path=str(args.teacher), revision=args.revision,
+            dtype=args.teacher_dtype, device=args.teacher_device or device,
+            quantization=args.teacher_quantization, temperature=args.temperature,
+            strict_architecture=False,
+        )
+        try:
+            loaded = teacher_backend.load()
+        except TeacherLoadError as exc:
+            print(f"\n  TEACHER LOAD FAILED\n{exc}", file=sys.stderr)
+            return 2
+        teacher_model = loaded.model
+        record["teacher_provenance"] = loaded.describe()
+        if not loaded.identity.is_pinned:
+            print("  ! teacher revision unpinned: this pilot is not reproducible from the "
+                  "model id alone. Pass --revision.", file=sys.stderr)
 
     from qwen_distill.distillation.teacher_signal import OnlineTeacher
     from qwen_distill.training.config import ExperimentConfig, ModelConfig
@@ -362,9 +391,13 @@ def main(argv: list[str] | None = None) -> int:
 
     teacher = (
         None if args.objective == "sft"
+        else teacher_backend.signal_provider(
+            top_k=args.top_k or None, temperature=args.temperature
+        )
+        if teacher_backend is not None
         else OnlineTeacher(
             model=teacher_model, top_k=args.top_k or None, temperature=args.temperature,
-            teacher_model=teacher_spec.name,
+            teacher_model=teacher_spec.name, teacher_revision=args.revision,
         )
     )
     print(f"\n  DISTILLING {args.steps} steps ...")
