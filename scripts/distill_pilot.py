@@ -133,6 +133,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     run = parser.add_argument_group("run")
     run.add_argument("--corpus", type=Path, help="a UTF-8 text file; procedural text if omitted")
+    run.add_argument("--corpus-bytes", type=int, default=0,
+                     help="procedural corpus size; 0 sizes it to the run (default)")
     run.add_argument("--steps", type=int, default=200)
     run.add_argument("--batch-size", type=int, default=2)
     run.add_argument("--seq-len", type=int, default=256)
@@ -226,15 +228,29 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    # Sized to the run rather than fixed: a 2-step smoke test does not need 400 KB of
+    # procedural text, and generating it twice (here and again inside the trainer) is most
+    # of the wall clock on a short pilot.
+    needed = args.steps * args.batch_size * args.seq_len
+    corpus_bytes = args.corpus_bytes or max(20_000, min(400_000, needed * 8))
     train_sequences, validation_sequences, corpus_stats = prepare_corpus(
         text_path=str(args.corpus) if args.corpus else None,
         sequence_length=args.seq_len,
-        procedural_bytes=400_000,
+        procedural_bytes=corpus_bytes,
         validation_fraction=0.1,
         seed=args.seed,
     )
     print(f"\n  CORPUS  {corpus_stats.source}: {corpus_stats.n_bytes:,} bytes, "
           f"{corpus_stats.n_train} train / {corpus_stats.n_validation} validation sequences")
+    epochs = needed / max(corpus_stats.n_bytes, 1)
+    if not args.corpus and epochs > 2:
+        # Procedural text is a smoke-test corpus, not a training corpus. Reading it many
+        # times over would still produce a falling loss, and that fall would be
+        # memorisation of a generated pattern rather than anything about the teacher.
+        print(f"    ! this run reads the procedural corpus {epochs:.1f} times over. "
+              "A falling loss\n      would then be memorisation of generated text, not "
+              "distillation. Pass --corpus\n      (or raise --corpus-bytes) for any run "
+              "whose result is meant to mean something.", file=sys.stderr)
     record["corpus"] = {"source": corpus_stats.source, "bytes": corpus_stats.n_bytes,
                         "sha256": corpus_stats.sha256}
 
@@ -316,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
     config.model = ModelConfig(pretrained=str(transferred))
     config.data.text_corpus = True
     config.data.text_path = str(args.corpus) if args.corpus else None
-    config.data.procedural_bytes = 400_000
+    config.data.procedural_bytes = corpus_bytes
     config.data.max_sequence_length = args.seq_len
     config.data.validation_fraction = 0.1
     config.data.shuffle_seed = args.seed
@@ -355,9 +371,7 @@ def main(argv: list[str] | None = None) -> int:
     exit_code = train(config, student_spec, teacher=teacher)
     record["training_exit_code"] = exit_code
 
-    from transformers import AutoModelForCausalLM as _AutoCausalLM
-
-    from qwen_distill.training.checkpoints import resolve_checkpoint
+    from qwen_distill.training.checkpoints import load_checkpoint, resolve_checkpoint
 
     del student_model   # the trainer holds its own copy, loaded from the checkpoint above
     trained_path = resolve_checkpoint(args.output / "checkpoints", "latest")
@@ -366,7 +380,12 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         _write_record(args, record)
         return exit_code
-    trained = _AutoCausalLM.from_pretrained(trained_path).to(device)
+    # NOT `from_pretrained`: a training checkpoint's config.json is the *experiment*
+    # config, not a model config, so the auto-loader cannot read it. The checkpoint module
+    # restores weights into a model built from the spec, and validates the directory on the
+    # way in rather than loading a partial one.
+    trained = build_model(student_spec).to(device)
+    load_checkpoint(trained_path, model=trained, map_location=device)
     warm = evaluate(trained, validation_sequences, batch_size=args.batch_size, device=device)
     print("\n  AFTER DISTILLATION")
     print(f"    student             : {warm:.4f} nats/token  ({warm - cold:+.4f} vs cold)")

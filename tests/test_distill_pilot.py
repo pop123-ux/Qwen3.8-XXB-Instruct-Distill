@@ -84,12 +84,14 @@ def test_the_transferred_weights_are_what_gets_trained(completed):
     assert summary["config"]["model"]["pretrained"] == str(output / "transferred")
     assert summary["config"]["model"]["architecture"] in (None, {}, )
 
-    from qwen_distill.training.checkpoints import resolve_checkpoint
+    from qwen_distill.training.checkpoints import load_checkpoint, resolve_checkpoint
 
+    # `from_pretrained` works on the transferred student (it was written with
+    # `save_pretrained`) but NOT on a training checkpoint, whose config.json is the
+    # experiment config. Loading each the way it was written is the point.
     transferred = AutoModelForCausalLM.from_pretrained(output / "transferred")
-    trained = AutoModelForCausalLM.from_pretrained(
-        resolve_checkpoint(output / "checkpoints", "latest")
-    )
+    trained = AutoModelForCausalLM.from_config(transferred.config)
+    load_checkpoint(resolve_checkpoint(output / "checkpoints", "latest"), model=trained)
     fresh = AutoModelForCausalLM.from_config(transferred.config)
 
     start = transferred.state_dict()
@@ -145,3 +147,21 @@ def test_a_missing_teacher_directory_is_reported(pilot, tmp_path, capsys):
     code = pilot.main(["--teacher", str(tmp_path / "nowhere"), "--output", str(tmp_path / "run")])
     assert code == 2
     assert "config.json" in capsys.readouterr().err
+
+
+def test_a_training_checkpoint_is_not_a_from_pretrained_directory(completed):
+    """A training checkpoint's config.json is the *experiment* config.
+
+    It looks like a model directory — it has a config.json and a model.safetensors — and
+    `from_pretrained` fails on it with a message about `model_type` that says nothing about
+    why. Pinned so nothing reaches for the auto-loader here again.
+    """
+    from transformers import AutoModelForCausalLM
+
+    from qwen_distill.training.checkpoints import resolve_checkpoint
+
+    checkpoint = resolve_checkpoint(completed / "checkpoints", "latest")
+    assert (checkpoint / "config.json").exists()
+    assert (checkpoint / "model.safetensors").exists()
+    with pytest.raises(ValueError, match="model_type"):
+        AutoModelForCausalLM.from_pretrained(checkpoint)
