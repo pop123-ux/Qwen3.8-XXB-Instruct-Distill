@@ -182,6 +182,32 @@ def main(argv: list[str] | None = None) -> int:
         print("\n  Nothing to do — every prompt already has a record.")
         return 0
 
+    # The real backend does not load weights as a side effect of generate(), so the load
+    # happens here — after the dry-run and resume checks, so a mistyped path or an
+    # already-complete run costs nothing, and before the loop, so a bad plan fails on
+    # step zero rather than at prompt 4,000.
+    loader = getattr(backend, "load", None)
+    if loader is not None and not backend.describe().get("is_synthetic"):
+        from qwen_distill.distillation.real_teacher import (
+            TeacherLoadError,
+            teacher_memory_estimate,
+        )
+
+        estimate = teacher_memory_estimate(context=args.max_new_tokens)
+        print(f"\n  loading the teacher (~{estimate['weights_gib']:.0f} GiB of weights "
+              f"at {estimate['quantization']}) ...")
+        try:
+            loaded = loader()
+        except TeacherLoadError as exc:
+            print(f"\n  TEACHER LOAD FAILED\n{exc}", file=sys.stderr)
+            print("\n  To exercise the pipeline without the real teacher, pass "
+                  "--backend mock — its\n  output is marked synthetic in every record "
+                  "and manifest, and is never usable as\n  training data.",
+                  file=sys.stderr)
+            return 2
+        print(f"  loaded {loaded.report.model_class} in {loaded.report.load_seconds:.1f}s; "
+              f"{len(loaded.report.ignored_unexpected)} non-text tensor(s) discarded")
+
     def progress(position: int, total: int, prompt_id: str) -> None:
         if position % 50 == 0 or position == total:
             print(f"  {position:>6}/{total}  {prompt_id}")

@@ -86,12 +86,29 @@ class StateDictSource:
         return self._state_dict[name]
 
 
+#: Prefixes a multimodal checkpoint may store the text tower under, mapped to the names a
+#: causal-LM plan uses. Qwen3.8-27B declares ``Qwen3_5ForConditionalGeneration`` and stores
+#: its text weights as ``model.language_model.*``; ``Qwen3_5ForCausalLM`` — the class this
+#: project distils from — expects ``model.*``. ``from_pretrained`` remaps between them, but
+#: reading the shards directly does not, so without this a transfer plan against the real
+#: teacher would find every tensor missing and report 0% coverage.
+TEXT_TOWER_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("model.language_model.", "model."),
+    ("language_model.model.", "model."),
+    ("language_model.", ""),
+)
+
+
 class SafetensorsSource:
     """A sharded checkpoint on disk, read one tensor at a time.
 
     The teacher is ~54 GB; the student is a few. Materialisation therefore never holds
     more than one teacher tensor at a time, which is what makes it runnable on a machine
     that could not load the teacher at all.
+
+    Names are resolved through :data:`TEXT_TOWER_PREFIXES` so a plan written against
+    ``model.layers.*`` can read a checkpoint that stores ``model.language_model.layers.*``.
+    The aliasing is reported by :meth:`prefix_in_use` rather than applied silently.
     """
 
     def __init__(self, directory: str | Path, *, device: str = "cpu") -> None:
@@ -115,10 +132,33 @@ class SafetensorsSource:
         self._open_path: Path | None = None
         self._open_handle: Any = None
 
+        self._alias = self._build_alias()
+
+    def _build_alias(self) -> dict[str, str]:
+        """Plan-facing name -> the name actually stored, when a text-tower prefix is used."""
+        stored = set(self._shard_of)
+        alias: dict[str, str] = {}
+        for stored_prefix, plan_prefix in TEXT_TOWER_PREFIXES:
+            matching = [k for k in stored if k.startswith(stored_prefix)]
+            if not matching:
+                continue
+            for key in matching:
+                alias[plan_prefix + key[len(stored_prefix):]] = key
+            break
+        return alias
+
+    def prefix_in_use(self) -> str | None:
+        """Which text-tower prefix this checkpoint stores, or ``None`` for plain names."""
+        for stored_prefix, _ in TEXT_TOWER_PREFIXES:
+            if any(k.startswith(stored_prefix) for k in self._shard_of):
+                return stored_prefix
+        return None
+
     def names(self) -> set[str]:
-        return set(self._shard_of)
+        return set(self._shard_of) | set(self._alias)
 
     def get(self, name: str) -> torch.Tensor:
+        name = self._alias.get(name, name)
         shard = self._shard_of[name]
         if shard != self._open_path:
             self.close()

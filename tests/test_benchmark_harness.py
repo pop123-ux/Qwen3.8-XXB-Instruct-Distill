@@ -185,7 +185,10 @@ def test_generation_dry_run_loads_no_teacher(tmp_path):
     assert not (tmp_path / "out").exists()
 
 
-def test_generation_refuses_the_unimplemented_backend_without_a_traceback(tmp_path):
+def test_generation_refuses_an_unreachable_teacher_without_a_traceback(tmp_path):
+    """The real backend is implemented now, so this pins the failure that replaced the
+    stub: the teacher cannot be reached from here, and that must be said plainly rather
+    than as a traceback — and without ever substituting the mock."""
     prompts = tmp_path / "prompts.jsonl"
     prompts.write_text(json.dumps({"id": "a", "prompt": "q"}) + "\n", encoding="utf-8")
 
@@ -194,8 +197,9 @@ def test_generation_refuses_the_unimplemented_backend_without_a_traceback(tmp_pa
 
     assert result.returncode == 2
     assert "Traceback" not in result.stderr
-    assert "not wired up yet" in result.stderr
+    assert "TEACHER LOAD FAILED" in result.stdout + result.stderr
     assert "--backend mock" in result.stderr, "it must say how to test the pipeline"
+    assert "synthetic" in result.stderr, "and must say the mock is not training data"
 
 
 def test_generation_rejects_an_unsupported_reasoning_mode(tmp_path):

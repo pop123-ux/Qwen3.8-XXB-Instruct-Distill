@@ -376,3 +376,47 @@ def test_safetensors_source_reads_a_sharded_checkpoint(tmp_path, source):
     assert report.parameter_coverage == 1.0
     assert set(from_disk) == set(in_memory)
     assert all(torch.equal(from_disk[k], in_memory[k]) for k in from_disk)
+
+
+# --- multimodal checkpoints -----------------------------------------------
+def test_a_text_tower_stored_under_language_model_is_still_readable(tmp_path, source):
+    """The real Qwen3.8-27B layout, which would otherwise report 0% coverage.
+
+    The checkpoint declares ``Qwen3_5ForConditionalGeneration`` and stores its text weights
+    as ``model.language_model.*``; every transfer plan here is written against
+    ``model.layers.*``. ``from_pretrained`` remaps between them, but reading the shards
+    directly does not — so without the alias a transfer against the real teacher would find
+    every tensor missing and say so honestly while producing nothing.
+    """
+    safetensors = pytest.importorskip("safetensors.torch")
+
+    state = dict(source._state_dict)
+    relocated = {
+        ("model.language_model." + k[len("model."):] if k.startswith("model.") else k): v.contiguous().clone()
+        for k, v in state.items()
+    }
+    # A vision tower alongside it, as the real checkpoint has.
+    relocated["model.visual.blocks.0.norm1.weight"] = torch.ones(8)
+    safetensors.save_file(relocated, tmp_path / "model.safetensors")
+
+    student_spec = spec("multimodal", num_hidden_layers=8)
+    plan = build_transfer_plan(TEACHER_SPEC, student_spec, layer_selection="group")
+    with SafetensorsSource(tmp_path) as on_disk:
+        assert on_disk.prefix_in_use() == "model.language_model."
+        assert "model.layers.0.mlp.up_proj.weight" in on_disk.names()
+        from_disk, report = apply_transfer_plan(plan, TEACHER_SPEC, student_spec, on_disk)
+
+    in_memory, _ = apply_transfer_plan(plan, TEACHER_SPEC, student_spec, source)
+    assert report.parameter_coverage == 1.0
+    assert all(torch.equal(from_disk[k], in_memory[k]) for k in from_disk)
+
+
+def test_a_plain_checkpoint_reports_no_prefix(tmp_path, source):
+    safetensors = pytest.importorskip("safetensors.torch")
+
+    safetensors.save_file(
+        {k: v.contiguous().clone() for k, v in source._state_dict.items()},
+        tmp_path / "model.safetensors",
+    )
+    with SafetensorsSource(tmp_path) as on_disk:
+        assert on_disk.prefix_in_use() is None
