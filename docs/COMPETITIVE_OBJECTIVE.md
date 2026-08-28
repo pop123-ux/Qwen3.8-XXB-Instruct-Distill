@@ -53,20 +53,43 @@ At **q4_k_m weights, 32K context, batch 1, 13.56 GiB usable on a 16 GB card**:
 | model | params | weights | KV + state | total | verdict |
 |---|---:|---:|---:|---:|---|
 | **Qwen3.5-9B** | 8.95B | 5.51 | 1.05 | **7.56** | FITS |
-| Qwen3-14B | 14.80B | 8.44 | 5.00 | 14.44 | UNKNOWN |
-| Gemma-3-27B | 27.00B | 15.40 | 15.50 | 31.90 | UNKNOWN |
+| Qwen3-14B | 14.77B | 8.43 | 5.00 | 14.43 | **DOES NOT FIT** |
+| Gemma-3-27B | 27.01B | 15.41 | 2.91 | 19.31 | **DOES NOT FIT** |
 | *ours*, h3072 L28 | 4.36B | 2.64 | 0.44 | 4.18 | FITS |
 | *ours*, h4096 L32 | 8.63B | 5.12 | 0.75 | 7.06 | FITS |
 
-The Qwen3.5-9B row is computed with **our own hybrid-aware estimator**, not a
-parameter-count approximation — see §2.1. The two `UNKNOWN` rows are the tooling refusing
-to conclude on unverified geometry, not a formatting artefact; both are almost certainly
-overstated, because neither model's actual attention layout has been read.
+Across quantisation and context, against 13.56 GiB usable (`*` = fits):
 
-**The headline number: the model we have to beat uses 7.56 of 13.56 GiB at 32K context.
-Roughly 6 GiB of the envelope is unspent.** Even at 128K it reaches only 10.56 GiB. Sizing
-has been happening below the envelope rather than against it, and the obvious competitive
-move — a larger model of the same family in the same envelope — has not been tried.
+| model | quant | 8K | 32K | 128K | 256K |
+|---|---|---:|---:|---:|---:|
+| Qwen3.5-9B | q4_k_m | 6.8\* | 7.6\* | 10.6\* | 14.6 |
+| Qwen3.5-9B | q3_k_m | 6.0\* | 6.8\* | 9.8\* | 13.8 |
+| Qwen3-14B | q4_k_m | 10.7\* | 14.4 | — | — |
+| Qwen3-14B | q3_k_m | 9.0\* | 12.7\* | — | — |
+| Gemma-3-27B | q4_k_m | 17.4 | 19.3 | 26.8 | — |
+| Gemma-3-27B | q3_k_m | 14.3 | 16.2 | 23.7 | — |
+
+(— is beyond the model's native context.)
+
+**Of the three named competitors, only Qwen3.5-9B is genuinely practical on a 16 GB card.**
+Qwen3-14B fits only at 8K, or to 32K if quantised to q3_k_m — and 32K is its native limit,
+so it cannot do long context on this hardware at all. Gemma-3-27B does not fit at any
+quantisation tried; its weights alone are 14.3–15.4 GiB. The field for this constraint is
+narrower than it looks from a list of strong models.
+
+### 2.0 Why the 9B wins the constraint: the KV cache
+
+At 32K context, fp16:
+
+| model | KV cache | why |
+|---|---:|---|
+| Qwen3.5-9B | **1.05 GiB** | hybrid: a full cache on 8 of 32 layers |
+| Gemma-3-27B | 2.91 GiB | 5:1 sliding-window to global, window 1024 |
+| Qwen3-14B | **5.00 GiB** | dense: a full cache on all 40 layers |
+
+A 9B model pays a fifth of what a 14B model pays for the same context. That is the
+architecture this project is already building in, and it is the reason the incumbent has
+room to spare while a larger dense model does not.
 
 ### 2.1 Qwen3.5-9B is a close relative, not a stranger
 
@@ -158,13 +181,19 @@ its cache several-fold and hand us a flattering, false comparison — the error 
 in our favour, which is exactly when to be most careful.
 
 `python scripts/competitive_report.py --strict` exits non-zero while anything is
-unverified. It currently reports **16 items**.
+unverified. It reported 16 items before the competitors' architectures were corroborated
+and now reports **10** — seven unimplemented benchmarks, the unrecorded evaluation
+protocols, LongBench v2's single source, and the missing multilingual benchmark.
 
 ---
 
 ## 5. What this changes about the plan
 
 Three consequences, in order of how much they should affect what happens next.
+
+**0. The competitive field is one model, not three.** Qwen3-14B and Gemma-3-27B do not
+fit a 16 GB card at usable context. The bar is Qwen3.5-9B, and beating it means beating a
+model in our own architecture family that leaves 6 GiB unspent.
 
 **1. The benchmark harness is now the critical path, not an adjacent task.** The objective
 is defined entirely in numbers we cannot produce. Every architecture decision after the

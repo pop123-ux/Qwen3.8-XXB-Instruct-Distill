@@ -538,46 +538,59 @@ def _qwen35_9b() -> Competitor:
 
 
 def _qwen3_14b() -> Competitor:
+    """Dense, and therefore expensive to give context to.
+
+    40 layers, 40 query / 8 KV heads, head_dim 128, 32K native context. Corroborated by
+    independent sources and cross-checked arithmetically: those dimensions with a 151,936
+    vocabulary, intermediate 17408 and untied embeddings compute to 14.77B against a stated
+    14.8B, 0.2% off.
+
+    Every one of its 40 layers keeps a full KV cache, which is exactly the cost the hybrid
+    layout avoids.
+    """
     return Competitor(
         name="Qwen3-14B",
-        parameters=14_800_000_000,
-        active_parameters=14_800_000_000,
+        parameters=14_770_000_000,
+        active_parameters=14_770_000_000,
         kv=KVGeometry(
             layers=40, num_key_value_heads=8, head_dim=128,
-            provenance=UNVERIFIED, source=FROM_RECALL,
+            provenance=CORROBORATED, source=FROM_SEARCH,
         ),
         max_context=32768,
-        parameters_provenance=UNVERIFIED,
-        source=FROM_RECALL,
-        notes=(
-            "Dense. 32K native context, longer via YaRN. Every figure needs checking "
-            "against the model card before use."
-        ),
+        parameters_provenance=CORROBORATED,
+        source=FROM_SEARCH,
+        notes="Dense. 32K native context, longer via YaRN.",
     )
 
 
 def _gemma3_27b() -> Competitor:
+    """Interleaved local/global attention, which is what makes a 27B model discussable here.
+
+    62 layers in repeating blocks of 5 sliding-window layers (window 1024) to 1 global
+    layer, so 10 layers keep an unbounded cache and 52 are bounded. 32 query / 16 KV heads,
+    head_dim 128, hidden 5376. Cross-checked arithmetically: those dimensions with a
+    262,144 vocabulary, intermediate 21504 and tied embeddings compute to 27.01B against a
+    stated 27B.
+
+    Getting the interleave right matters in *our* favour's opposite direction: assuming
+    uniform global attention would have overstated its cache roughly fourfold at long
+    context and made a competitor look infeasible when it was not.
+    """
     return Competitor(
         name="Gemma-3-27B",
-        parameters=27_000_000_000,
-        active_parameters=27_000_000_000,
+        parameters=27_010_000_000,
+        active_parameters=27_010_000_000,
         kv=KVGeometry(
             layers=62, num_key_value_heads=16, head_dim=128,
-            # Interleaved local/global attention: only a minority of layers keep an
-            # unbounded cache, which is precisely what makes a 27B model plausible on a
-            # 16 GB card at long context. The ratio must be checked, not assumed.
-            full_attention_layers=None,
-            provenance=UNVERIFIED, source=FROM_RECALL,
+            full_attention_layers=10, sliding_window_layers=52, sliding_window=1024,
+            provenance=CORROBORATED, source=FROM_SEARCH,
         ),
         max_context=131072,
-        parameters_provenance=UNVERIFIED,
-        source=FROM_RECALL,
+        parameters_provenance=CORROBORATED,
+        source=FROM_SEARCH,
         notes=(
-            "Interleaves sliding-window and global attention, so a uniform-global KV "
-            "estimate overstates its cache substantially. The local:global ratio and window "
-            "size are NOT filled in here because guessing them would flatter us: an "
-            "overstated competitor cache is a competitor that looks like it does not fit. "
-            "Read them off the config before comparing."
+            "5:1 sliding-window to global attention, window 1024. Its weights alone exceed "
+            "a 16 GB card at q4_k_m, so it competes here only under harsher quantisation."
         ),
     )
 
@@ -604,9 +617,11 @@ def verification_backlog(field: dict[str, Competitor] | None = None) -> list[str
             backlog.append(f"{competitor.name}: parameter count unknown")
         elif competitor.parameters_provenance == UNVERIFIED:
             backlog.append(f"{competitor.name}: parameter count unverified ({competitor.source})")
-        if competitor.kv is None:
+        # A full spec settles the geometry, which is why `envelope` accepts either. This
+        # check has to agree with it or the backlog reports gaps the estimate does not have.
+        if competitor.spec is None and competitor.kv is None:
             backlog.append(f"{competitor.name}: KV geometry unknown — cache cannot be estimated")
-        elif competitor.kv.provenance == UNVERIFIED:
+        elif competitor.kv is not None and competitor.kv.provenance == UNVERIFIED:
             backlog.append(f"{competitor.name}: KV geometry unverified ({competitor.kv.source})")
         unverified = [s.benchmark for s in competitor.scores.values() if s.provenance == UNVERIFIED]
         if unverified:

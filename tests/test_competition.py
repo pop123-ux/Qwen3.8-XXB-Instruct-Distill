@@ -188,6 +188,7 @@ def test_no_registry_figure_claims_to_be_ours_or_read_from_a_model_card():
     for competitor in reference_field().values():
         assert competitor.parameters_provenance in (UNVERIFIED, CORROBORATED), competitor.name
         assert competitor.source, competitor.name
+        assert "NOT" in competitor.source or "not checked" in competitor.source, competitor.name
         for score in competitor.scores.values():
             assert score.provenance in (UNVERIFIED, CORROBORATED), (
                 f"{competitor.name}/{score.benchmark}"
@@ -249,11 +250,46 @@ def test_the_primary_target_carries_the_seven_named_benchmarks():
     assert target.scores["tau2_bench"].value == 79.1
 
 
-def test_the_competitor_with_interleaved_attention_refuses_to_guess_its_ratio():
+def test_the_interleaved_competitor_carries_its_real_layer_split():
+    """Gemma 3 is 5 sliding-window layers (window 1024) to 1 global, over 62 layers.
+
+    Assuming uniform global attention would have overstated its cache roughly fourfold at
+    long context — an error in our favour, which is when to be most careful. This asserts
+    both the split and that it actually reduces the cache.
+    """
     gemma = reference_field()["Gemma-3-27B"]
     assert gemma.kv is not None
-    assert gemma.kv.sliding_window_layers == 0   # not filled in, and the note says why
-    assert "guessing them would flatter us" in gemma.notes
+    assert gemma.kv.full_attention_layers == 10
+    assert gemma.kv.sliding_window_layers == 52
+    assert gemma.kv.sliding_window == 1024
+
+    uniform = KVGeometry(layers=62, num_key_value_heads=16, head_dim=128, provenance=MEASURED)
+    assert gemma.kv.bytes_at(131072) < uniform.bytes_at(131072) / 3
+
+
+def test_the_hybrid_competitor_pays_far_less_for_context_than_the_dense_one():
+    """The measured reason a 9B hybrid beats a 14B dense model on this constraint.
+
+    Qwen3-14B keeps a full KV cache on all 40 layers; Qwen3.5-9B keeps one on 8 of 32.
+    At 32K that is the difference between fitting a 16 GB card and not.
+    """
+    field = reference_field()
+    hybrid = envelope(field["Qwen3.5-9B"], budget_gib=13.56, context=32768)
+    dense = envelope(field["Qwen3-14B"], budget_gib=13.56, context=32768)
+    assert dense.kv_gib > hybrid.kv_gib * 4
+    assert hybrid.verdict == "FITS"
+    assert dense.verdict == "DOES NOT FIT"
+
+
+def test_the_largest_competitor_does_not_fit_at_all():
+    """Gemma-3-27B's weights alone exceed the budget at q4_k_m, so it is out of this
+    field regardless of context. Recorded because 'fits under appropriate quantisation'
+    is an assumption worth checking rather than repeating."""
+    gemma = reference_field()["Gemma-3-27B"]
+    for quant in ("q4_k_m", "q3_k_m"):
+        assert envelope(gemma, budget_gib=13.56, quant=quant, context=8192).verdict == (
+            "DOES NOT FIT"
+        )
 
 
 def test_no_target_benchmark_is_implemented_yet():
@@ -267,14 +303,27 @@ def test_the_multilingual_gap_is_recorded_rather_than_dropped():
     assert "unmeasured, not passing" in MISSING_CAPABILITIES["multilingual"]
 
 
-def test_the_verification_backlog_is_not_empty_and_names_each_gap():
+def test_the_verification_backlog_names_what_is_still_open_and_nothing_else():
+    """It must shrink as things are verified, and it must not report gaps the estimates
+    do not actually have — a backlog that cries wolf gets ignored."""
     backlog = verification_backlog()
-    assert backlog
     joined = "\n".join(backlog)
-    for name in ("Qwen3.5-9B", "Qwen3-14B", "Gemma-3-27B"):
-        assert name in joined
+
+    # Every unimplemented benchmark, and the one score still resting on a single source.
     for benchmark in TARGET_BENCHMARKS:
         assert benchmark in joined
+    assert "longbench_v2" in joined
+
+    # Fully corroborated competitors have dropped off.
+    assert "Qwen3-14B" not in joined
+    assert "Gemma-3-27B" not in joined
+    # And a competitor modelled from a full spec is not reported as having unknown KV.
+    assert "KV geometry unknown" not in joined
+
+
+def test_the_backlog_still_blocks_a_strict_report():
+    """No benchmark is implemented, so there is always something outstanding."""
+    assert verification_backlog()
 
 
 def test_everything_is_json_serialisable():
