@@ -522,3 +522,26 @@ def test_the_kv_cache_estimate_grows_with_context():
     long = teacher_memory_estimate(65536, "4bit")
     assert long["kv_cache_gib"] > short["kv_cache_gib"] * 8
     assert long["weights_gib"] == short["weights_gib"]
+
+
+def test_a_hub_load_without_a_revision_is_refused(capsys):
+    """An unpinned hub load cannot be reproduced, and its tail-mass numbers could not be
+    attributed to a specific checkpoint later. A local fixture needs no SHA."""
+    from scripts_shim import load
+
+    smoke = load("teacher_smoke_test")
+    assert smoke.main(["--quantization", "4bit"]) == 2
+    assert "--revision is required" in capsys.readouterr().err
+
+
+def test_the_documented_smoke_test_flags_all_exist():
+    """Guards the exact command in docs/REAL_TEACHER_RUN.md against CLI drift."""
+    from scripts_shim import load
+
+    parser_args = load("teacher_smoke_test").parse_args(
+        ["--quantization", "4bit", "--revision", "abc123", "--json", "runs/teacher_smoke.json"]
+    )
+    assert parser_args.quantization == "4bit"
+    assert parser_args.revision == "abc123"
+    assert str(parser_args.json) == "runs/teacher_smoke.json"
+    assert parser_args.model == DEFAULT_TEACHER_MODEL

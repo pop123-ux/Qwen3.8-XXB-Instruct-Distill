@@ -100,6 +100,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  --max-memory is not valid JSON: {exc}", file=sys.stderr)
         return 2
 
+    if args.revision is None and args.local_path is None:
+        print(
+            "  --revision is required for a hub load. The same repo id serves different "
+            "weights over time,\n  so an unpinned run cannot be reproduced and its tail-mass "
+            "numbers could not be\n  attributed to a specific checkpoint later. Pass the "
+            "commit SHA from the model's\n  Hugging Face page. (--local-path runs without "
+            "one, for fixtures.)",
+            file=sys.stderr,
+        )
+        return 2
+
     plan = TeacherLoadPlan(
         model=args.model, revision=args.revision, local_path=args.local_path,
         dtype=args.dtype, device_map=None if args.device == "cpu" else args.device,
@@ -130,10 +141,20 @@ def main(argv: list[str] | None = None) -> int:
     report["plan"] = plan.to_dict()
     report["memory_estimate"] = estimate
 
+    from qwen_distill.utils.hardware import collect_hardware, measure_memory, reset_peak_memory
+
+    hardware = collect_hardware()
+    print(f"  runtime        : {hardware.gpu_name or 'no CUDA device'}"
+          + (f" x{hardware.gpu_count}, {hardware.total_vram_gib:.1f} GiB total"
+             if hardware.total_vram_gib else "")
+          + f" | torch {hardware.versions.get('torch', '?')}")
+    report["hardware"] = hardware.to_dict()
+
     loaded = None
     try:
         # 1-2 -------------------------------------------------------------
         print("\n  [1/10] loading the teacher (the missing-weight gate is armed) ...")
+        reset_peak_memory()
         loaded = load_verified_teacher(plan, strict_architecture=not args.lenient_architecture)
         print(f"         {loaded.report.model_class} in {loaded.report.load_seconds:.1f}s, "
               f"{len(loaded.report.ignored_unexpected)} non-text tensor(s) discarded")
@@ -316,6 +337,19 @@ def main(argv: list[str] | None = None) -> int:
         if loaded is not None:
             loaded.unload()
             print("\n  teacher unloaded")
+
+    # The only real memory number this run produces. Reported beside the estimate so the
+    # analytical model can be checked rather than trusted.
+    if hardware.cuda_available:
+        peak = measure_memory("smoke_test").torch_peak_reserved_gib
+        print(f"\n  MEASURED peak GPU memory: {peak:.2f} GiB"
+              + (f"  (estimate for this quantisation was {estimate['total_gib']:.2f} GiB "
+                 f"at 4k context)" if is_project_teacher else ""))
+        report["measured_peak_gpu_gib"] = peak
+    else:
+        print("\n  no CUDA device: peak GPU memory is unavailable, not zero. Every memory "
+              "figure above\n  is an analytical estimate.")
+        report["measured_peak_gpu_gib"] = None
 
     print(f"\n{RULE}\n  ALL TEN CHECKS PASSED\n{RULE}")
     print("  The teacher is operational: real weights, real tokenizer, real template,")
