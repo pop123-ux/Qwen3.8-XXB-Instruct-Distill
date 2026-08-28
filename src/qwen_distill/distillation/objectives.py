@@ -8,13 +8,21 @@ and the error would be invisible in every artifact.
 So each objective declares its own availability. Selecting an unavailable one raises,
 with what is missing and why. Nothing degrades quietly.
 
-Status in this phase:
+Status:
 
 * ``sft`` — **implemented**. Trains on the teacher's response text.
-* ``logit_kd`` — **NOT IMPLEMENTED**. Needs stored teacher logits, which no dataset has
-  yet: full distributions over a ~248k vocabulary are prohibitive to store, so top-k is
-  the intended first step and the storage format is not settled.
-* ``mixed_kd`` — **NOT IMPLEMENTED**. Requires ``logit_kd``.
+* ``logit_kd`` — **implemented** (:mod:`qwen_distill.distillation.kd_loss`). Matches the
+  teacher's distribution. The distribution has to come from somewhere, and that is a
+  separate axis: ``signal_source="online"`` runs a resident teacher, ``"dataset"`` reads
+  stored top-k logits. Only the online source is wired today; requesting the other says
+  so rather than falling back.
+* ``mixed_kd`` — **implemented**. ``kd_weight`` of the KD term, the rest cross-entropy.
+  ``kd_weight=0`` reduces exactly to SFT through the same code path, which is what makes
+  it usable as the control.
+
+The rule at the top still holds, and now has teeth in a second place: an objective is only
+available when the *signal source* it needs is, so "KD" cannot silently become SFT because
+no teacher was configured.
 """
 
 from __future__ import annotations
@@ -71,26 +79,31 @@ OBJECTIVES: dict[str, ObjectiveSpec] = {
     ),
     LOGIT_KD: ObjectiveSpec(
         name=LOGIT_KD,
-        status=NOT_IMPLEMENTED,
+        status=IMPLEMENTED,
         description=(
-            "token-level knowledge distillation against stored teacher logits: the "
-            "student matches the teacher's output distribution rather than its samples"
+            "token-level knowledge distillation: the student matches the teacher's output "
+            "distribution rather than its samples"
         ),
-        required_fields=("teacher_top_logits", "teacher_logits_path"),
-        blocking_reason=(
-            "no teacher logits exist yet, and the storage format is unsettled. Full "
-            "distributions over a ~248k vocabulary are prohibitive to store per token, "
-            "so top-k is the intended first step — that decision has not been made or "
-            "measured. This raises rather than falling back to SFT: a KD run that is "
-            "secretly SFT would invalidate the comparison the project exists to make."
-        ),
+        required_fields=(),
     ),
     MIXED_KD: ObjectiveSpec(
         name=MIXED_KD,
-        status=NOT_IMPLEMENTED,
-        description="weighted combination of SFT and logit KD",
-        required_fields=("teacher_top_logits",),
-        blocking_reason=f"requires {LOGIT_KD!r}, which is not implemented",
+        status=IMPLEMENTED,
+        description="weighted combination of cross-entropy and logit KD",
+        required_fields=(),
+    ),
+}
+
+#: Where the teacher distribution comes from, and whether that path exists yet.
+ONLINE = "online"
+DATASET = "dataset"
+SIGNAL_SOURCES: dict[str, str | None] = {
+    ONLINE: None,
+    DATASET: (
+        "stored teacher logits are not readable yet: the loss and the capture format are "
+        "ready (top-k logits plus the full-vocabulary logsumexp), but the on-disk corpus "
+        "layout is deliberately unchosen until a real run reports its tail mass at a "
+        "candidate k. Use signal_source='online' with a resident teacher."
     ),
 }
 
@@ -106,6 +119,18 @@ class ObjectiveConfig:
     type: str = SFT
     kd_temperature: float | None = None
     kd_alpha: float | None = None
+    #: Where the teacher distribution comes from. Ignored when the objective is SFT.
+    #: Defaults to the *unimplemented* source deliberately: this axis is the one that can
+    #: turn KD into SFT without anything looking wrong, so a config that does not say
+    #: where its teacher comes from is refused rather than guessed at.
+    signal_source: str = DATASET
+    #: How the mass outside the stored top-k is treated. ``bucket`` is exact and needs the
+    #: teacher's full-vocabulary logsumexp; ``renormalize`` discards that mass, which is a
+    #: different objective rather than a cheaper version of the same one.
+    kd_tail: str = "bucket"
+    #: Teacher truncation. ``None`` keeps the full distribution, which is exact but holds
+    #: a (batch, positions, vocab) tensor.
+    kd_top_k: int | None = 64
     #: Whether SFT trains on the teacher's reasoning trace as well as its answer. A real
     #: experimental variable: it changes what the student learns to spend tokens on.
     include_reasoning_in_target: bool = False
@@ -137,6 +162,25 @@ class ObjectiveConfig:
                 problems.append("kd_temperature must be positive")
             if self.kd_alpha is not None and not 0.0 <= self.kd_alpha <= 1.0:
                 problems.append("kd_alpha must be between 0 and 1")
+            if self.signal_source not in SIGNAL_SOURCES:
+                problems.append(
+                    f"unknown signal_source {self.signal_source!r}; known: "
+                    f"{', '.join(sorted(SIGNAL_SOURCES))}"
+                )
+            elif SIGNAL_SOURCES[self.signal_source]:
+                # Names the objective as well as the source: a reader seeing only
+                # "dataset: ..." cannot tell which objective was refused, and the whole
+                # point of the refusal is that the requested objective did not run.
+                problems.append(
+                    f"{self.type} with signal_source={self.signal_source!r}: "
+                    f"{SIGNAL_SOURCES[self.signal_source]}"
+                )
+            if self.kd_tail not in ("bucket", "renormalize"):
+                problems.append(
+                    f"unknown kd_tail {self.kd_tail!r}; known: 'bucket', 'renormalize'"
+                )
+            if self.kd_top_k is not None and self.kd_top_k < 1:
+                problems.append("kd_top_k must be at least 1, or None for the full distribution")
         return problems
 
     def require_available(self) -> ObjectiveSpec:
@@ -153,6 +197,9 @@ class ObjectiveConfig:
             "type": self.type,
             "kd_temperature": self.kd_temperature,
             "kd_alpha": self.kd_alpha,
+            "signal_source": self.signal_source,
+            "kd_tail": self.kd_tail,
+            "kd_top_k": self.kd_top_k,
             "include_reasoning_in_target": self.include_reasoning_in_target,
             "status": self.spec().status if self.type in OBJECTIVES else "UNKNOWN",
             "metadata": self.metadata,
@@ -166,7 +213,7 @@ def check_dataset_supports(config: ObjectiveConfig, dataset: Any) -> list[str]:
     asking for KD against a dataset with no logits, for instance.
     """
     problems = config.validate()
-    if config.type in (LOGIT_KD, MIXED_KD):
+    if config.type in (LOGIT_KD, MIXED_KD) and config.signal_source == DATASET:
         with_targets = getattr(dataset.stats, "n_with_kd_targets", 0)
         if not with_targets:
             problems.append(
@@ -186,4 +233,8 @@ def describe_objectives() -> str:
         lines.append(f"  {name:<12}{spec.status:<18}{spec.description}")
         if spec.blocking_reason:
             lines.append(f"  {'':<30}BLOCKED: {spec.blocking_reason}")
+    lines.append(f"\n  {'source':<12}{'status':<18}where the teacher distribution comes from")
+    for source, blocked in SIGNAL_SOURCES.items():
+        lines.append(f"  {source:<12}{(NOT_IMPLEMENTED if blocked else IMPLEMENTED):<18}"
+                     f"{blocked or 'a resident teacher answers every batch'}")
     return "\n".join(lines)

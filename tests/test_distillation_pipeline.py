@@ -25,10 +25,13 @@ from qwen_distill.distillation.dataset import (
 from qwen_distill.distillation.generation import Prompt, generate_dataset
 from qwen_distill.distillation.manifest import DatasetManifest, ShardRecord, shard_name
 from qwen_distill.distillation.objectives import (
+    DATASET,
     LOGIT_KD,
     MIXED_KD,
     NOT_IMPLEMENTED,
+    ONLINE,
     SFT,
+    SIGNAL_SOURCES,
     ObjectiveConfig,
     ObjectiveUnavailable,
     check_dataset_supports,
@@ -257,23 +260,29 @@ def test_loading_a_missing_dataset_fails_clearly(tmp_path):
 
 
 # --- objectives -----------------------------------------------------------
-def test_sft_is_implemented_and_kd_is_not():
-    assert ObjectiveConfig(type=SFT).spec().available
-    assert not ObjectiveConfig(type=LOGIT_KD).spec().available
-    assert not ObjectiveConfig(type=MIXED_KD).spec().available
-    assert ObjectiveConfig(type=LOGIT_KD).spec().status == NOT_IMPLEMENTED
+def test_every_objective_is_implemented():
+    for objective in (SFT, LOGIT_KD, MIXED_KD):
+        assert ObjectiveConfig(type=objective).spec().available, objective
+        assert ObjectiveConfig(type=objective).spec().status != NOT_IMPLEMENTED
 
 
-def test_requesting_kd_raises_rather_than_running_sft():
-    """The failure this guard exists for would make the KD-vs-SFT comparison meaningless."""
-    with pytest.raises(ObjectiveUnavailable, match="NOT_IMPLEMENTED"):
-        ObjectiveConfig(type=LOGIT_KD).require_available()
+def test_the_unimplemented_axis_moved_from_the_objective_to_its_signal_source():
+    """KD is implemented; *reading stored teacher logits* is not.
+
+    The guard did not go away when the loss landed — it moved to where the gap actually
+    is, so a KD run still cannot quietly become SFT for want of a teacher.
+    """
+    assert ObjectiveConfig(type=LOGIT_KD).signal_source == DATASET
+    problems = ObjectiveConfig(type=LOGIT_KD).validate()
+    assert any("not readable yet" in p for p in problems)
+    assert ObjectiveConfig(type=LOGIT_KD, signal_source=ONLINE).validate() == []
 
 
-def test_the_kd_blocking_reason_explains_what_is_missing():
-    reason = ObjectiveConfig(type=LOGIT_KD).spec().blocking_reason
-    assert "logits" in reason
-    assert "secretly SFT" in reason
+def test_the_blocked_signal_source_explains_what_is_missing():
+    reason = SIGNAL_SOURCES[DATASET]
+    assert "logsumexp" in reason
+    assert "tail mass" in reason
+    assert "online" in reason
 
 
 def test_kd_parameters_set_on_an_sft_objective_are_flagged():
@@ -291,9 +300,21 @@ def test_kd_against_a_dataset_with_no_logits_says_so(tmp_path):
     build_dataset(tmp_path, n=4)
     dataset = load_teacher_dataset(tmp_path)
 
-    problems = check_dataset_supports(ObjectiveConfig(type=LOGIT_KD), dataset)
+    problems = check_dataset_supports(
+        ObjectiveConfig(type=LOGIT_KD, signal_source=DATASET), dataset
+    )
 
     assert any("no record in this dataset carries teacher logits" in p for p in problems)
+
+
+def test_an_online_teacher_needs_nothing_from_the_dataset(tmp_path):
+    """The cheapest real KD: the teacher supplies the distribution, the data is just text."""
+    build_dataset(tmp_path, n=4)
+    dataset = load_teacher_dataset(tmp_path)
+    problems = check_dataset_supports(
+        ObjectiveConfig(type=LOGIT_KD, signal_source=ONLINE), dataset
+    )
+    assert not any("teacher logits" in p for p in problems)
 
 
 def test_sft_against_a_real_dataset_validates(tmp_path):

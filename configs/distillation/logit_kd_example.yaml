@@ -1,20 +1,36 @@
-# What a logit-KD configuration will look like. IT WILL NOT RUN.
+# What a dataset-driven logit-KD configuration will look like. IT STILL WILL NOT RUN,
+# but the reason has moved.
 #
 #   python scripts/train_distilled_student.py --config configs/distillation/logit_kd_example.yaml
-#   -> objective 'logit_kd' is NOT_IMPLEMENTED: no teacher logits exist yet [...]
+#   -> dataset: stored teacher logits are not readable yet [...]
 #
-# That refusal is the point. Silently running SFT under a KD config would make the
+# The *loss* is implemented (qwen_distill.distillation.kd_loss) and so is the capture
+# format: top-k logits plus the full-vocabulary logsumexp, which is what makes the mass
+# outside the top-k exact rather than discarded. What is still missing is the on-disk
+# corpus layout for reading those signals back, and that is deliberately unchosen until a
+# real run reports its tail mass at a candidate k. Guessing k before measuring it is how
+# you end up storing 3.9 GB per 10M tokens of a distribution that was already truncated
+# too hard.
+#
+# The refusal remains the point. Silently running SFT under a KD config would make the
 # project's central question — does KD beat SFT? — unanswerable, and nothing in the
-# artifacts would reveal it.
+# artifacts would reveal it. That guard now lives on `objective.signal_source`, which
+# defaults to the unimplemented `dataset` so a config that does not say where its teacher
+# comes from is refused rather than guessed at.
 #
-# What is missing is not the loss function. It is the data: full teacher distributions
-# over a ~248k vocabulary are prohibitive to store per token, so top-k is the intended
-# first step and that decision has not been made or measured.
+# THE RUNNABLE PATH TODAY is a resident teacher over a plain text corpus:
+#
+#   python scripts/distill_pilot.py --stand-in --output runs/stage0        # proves the chain
+#   python scripts/distill_pilot.py --teacher ./qwen3.8-27b --hidden 3072 \
+#       --layers 28 --kv-heads 2 --dn-key-heads 8 --steps 2000
+#
+# It needs no teacher-generated answers at all — see docs/DISTILLATION.md.
 
 name: distill_logit_kd_example
-level: "schema example — NOT RUNNABLE"
+level: "schema example — NOT RUNNABLE (the stored-logit reader is missing)"
 description: >-
-  Placeholder showing the KD interface. The objective is NOT_IMPLEMENTED and raises.
+  Placeholder showing the dataset-driven KD interface. The objective is implemented; the
+  stored-logit reader it asks for is not, so this refuses.
 
 teacher:
   model: Qwen/Qwen3.8-27B
@@ -25,6 +41,14 @@ objective:
   type: logit_kd
   kd_temperature: 2.0
   kd_alpha: 0.5
+  # Where the teacher distribution comes from. 'dataset' is not readable yet; 'online'
+  # is, and needs a resident teacher rather than a stored corpus.
+  signal_source: dataset
+  # How the mass outside the stored top-k is treated. 'bucket' is exact and needs the
+  # teacher's full-vocabulary logsumexp; 'renormalize' discards it, which stops
+  # penalising the student for mass the teacher rejected.
+  kd_tail: bucket
+  kd_top_k: 64
   include_reasoning_in_target: false
 
 data:

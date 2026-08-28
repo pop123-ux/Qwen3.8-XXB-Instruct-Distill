@@ -9,7 +9,7 @@ evidence rather than on vibes.
 |---|---|
 | `teacher_generation.yaml` | generating a teacher dataset, on a rented GPU |
 | `sft_smoke.yaml` | the smallest end-to-end SFT config, for CPU validation |
-| `logit_kd_example.yaml` | what a KD config will look like — **the objective is NOT_IMPLEMENTED and will refuse to run** |
+| `logit_kd_example.yaml` | what a *dataset-driven* KD config will look like — **the stored-logit reader is not implemented, so it refuses to run**. The KD loss itself is implemented; the runnable path is a resident teacher via `scripts/distill_pilot.py` |
 
 The split that makes this affordable:
 

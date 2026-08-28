@@ -16,6 +16,7 @@ from qwen_distill.architecture.transfer import (
     build_transfer_plan,
     compare_strategies,
     select_layers,
+    student_from_teacher,
 )
 
 TEACHER = HybridArchSpec(name="teacher")  # 64 layers, 3:1 hybrid
@@ -126,7 +127,7 @@ def test_gated_student_q_proj_is_doubled_in_the_plan():
 
 def test_compare_strategies_returns_one_plan_each():
     plans = compare_strategies(TEACHER, student(48))
-    assert set(plans) == {"first", "last", "uniform", "interleave"}
+    assert set(plans) == {"first", "last", "uniform", "interleave", "group"}
     assert all(p.mappings or p.warnings for p in plans.values())
 
 
@@ -137,3 +138,103 @@ def test_compare_strategies_records_failures_rather_than_raising():
 
 def test_plan_is_json_serialisable():
     json.dumps(build_transfer_plan(TEACHER, student(48)).to_dict())
+
+
+# --- group-aligned selection ---------------------------------------------
+def test_group_selection_copies_position_within_the_group():
+    """Group alignment is uniform over groups, identity inside them.
+
+    The within-group offset *is* the block type, so preserving it is the whole
+    mechanism. 64 -> 28 with period 4 selects 7 of 16 teacher groups whole.
+    """
+    mapping = select_layers(64, 28, "group", group_size=4)
+    assert len(mapping) == 28
+    for student_layer, teacher_layer in mapping.items():
+        assert student_layer % 4 == teacher_layer % 4
+    assert mapping[0] == 0 and mapping[27] == 63          # spans the full depth
+    assert len({t // 4 for t in mapping.values()}) == 7   # whole groups, none repeated
+
+
+def test_group_selection_is_the_only_strategy_that_spans_depth_without_breaking_layout():
+    """The measured finding this strategy exists for, pinned across four depths.
+
+    ``first``/``last`` keep the layout but see one end of the teacher. ``uniform`` and
+    ``interleave`` span the depth but land layers on the wrong block type. Only ``group``
+    does both, so this asserts both halves — a future change that quietly reverts to a
+    per-layer stride would keep coverage but lose the span, and vice versa.
+    """
+    for layers in (16, 24, 28, 32):
+        plan = build_transfer_plan(TEACHER, student(layers), layer_selection="group")
+        assert plan.coverage == 1.0, layers
+        assert not any(" which is " in w for w in plan.warnings), layers
+        assert min(plan.layer_map.values()) == 0, layers
+        assert max(plan.layer_map.values()) == 63, layers
+
+        spread = build_transfer_plan(TEACHER, student(layers), layer_selection="uniform")
+        assert spread.coverage < 1.0, layers   # the failure `group` avoids
+
+        kept = build_transfer_plan(TEACHER, student(layers), layer_selection="first")
+        assert max(kept.layer_map.values()) < 63, layers   # the span `group` keeps
+
+
+def test_group_selection_refuses_partial_groups():
+    with pytest.raises(ValueError, match="whole groups"):
+        select_layers(64, 30, "group", group_size=4)
+
+
+def test_group_selection_refuses_a_different_hybrid_period():
+    """Aligning groups across different periods would be meaningless, not merely lossy."""
+    plans = compare_strategies(
+        TEACHER, student(32, full_attention_interval=8), selections=("group",)
+    )
+    assert any("shared hybrid period" in w for w in plans["group"].warnings)
+
+
+def test_group_and_first_agree_when_the_student_is_a_prefix_of_the_teacher():
+    """A sanity anchor: with every group selected there is nothing to choose between."""
+    assert select_layers(64, 64, "group", group_size=4) == select_layers(64, 64, "first")
+
+
+# --- deriving a transferable student --------------------------------------
+def test_the_student_inherits_every_field_a_transfer_cannot_reduce():
+    """Chief among them the vocabulary.
+
+    Choosing a student's vocabulary independently is what makes logit distillation need a
+    token mapping and makes embedding transfer meaningless, so it is not a parameter at
+    all rather than a parameter with a good default.
+    """
+    derived = student_from_teacher(TEACHER, hidden_size=2560, num_hidden_layers=16)
+    assert derived.vocab_size == TEACHER.vocab_size
+    assert derived.head_dim == TEACHER.head_dim
+    assert derived.linear_key_head_dim == TEACHER.linear_key_head_dim
+    assert derived.linear_value_head_dim == TEACHER.linear_value_head_dim
+    assert derived.linear_conv_kernel_dim == TEACHER.linear_conv_kernel_dim
+    assert derived.full_attention_interval == TEACHER.full_attention_interval
+    assert derived.partial_rotary_factor == TEACHER.partial_rotary_factor
+    assert "student_from_teacher" not in derived.provenance  # names the module, not itself
+    assert "transfer" in derived.provenance
+
+
+def test_head_counts_move_only_through_the_group_defining_ones():
+    """Both ratios stay fixed by construction rather than by a later check."""
+    derived = student_from_teacher(TEACHER, num_key_value_heads=2, linear_num_key_heads=8)
+    assert derived.num_attention_heads == 2 * (
+        TEACHER.num_attention_heads // TEACHER.num_key_value_heads
+    )
+    assert derived.linear_num_value_heads == 8 * (
+        TEACHER.linear_num_value_heads // TEACHER.linear_num_key_heads
+    )
+
+
+def test_a_depth_that_is_not_whole_groups_is_refused():
+    with pytest.raises(ValueError, match="whole number of"):
+        student_from_teacher(TEACHER, num_hidden_layers=30)
+
+
+def test_a_derived_student_transfers_with_no_warnings_about_structure():
+    derived = student_from_teacher(TEACHER, num_hidden_layers=28, num_key_value_heads=2,
+                                   linear_num_key_heads=8)
+    plan = build_transfer_plan(TEACHER, derived, layer_selection="group")
+    assert plan.coverage == 1.0
+    assert not any("vocabulary differs" in w for w in plan.warnings)
+    assert not any(" which is " in w for w in plan.warnings)

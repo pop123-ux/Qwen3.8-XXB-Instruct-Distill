@@ -84,10 +84,48 @@ def test_invalid_training_fields_are_rejected(field, value, message):
         config.validate()
 
 
-def test_kd_objective_requires_real_teacher_data():
-    """Synthetic data has no teacher distributions; a KD run on it would be a lie."""
+def test_kd_on_the_synthetic_corpus_is_refused():
+    """Synthetic data has no teacher distributions; a KD run on it would be a lie.
+
+    Its tokens come from a deterministic induction rule, so "what the teacher believes
+    the next token is" is not a question about anything the teacher models.
+    """
     config = base_config(objective="mixed_kd")
-    with pytest.raises(ValueError, match="teacher outputs"):
+    with pytest.raises(ValueError, match="synthetic induction corpus is meaningless"):
+        config.validate()
+
+
+def test_kd_over_a_text_corpus_is_allowed_with_a_resident_teacher():
+    """The cheapest real distillation there is: plain text, teacher supplies the target.
+
+    It needs no teacher-generated answers at all, so refusing it — as this validation
+    once did — would have ruled out the first pilot the project can actually afford.
+    """
+    config = base_config(objective="logit_kd")
+    config.data.synthetic = False
+    config.data.text_corpus = True
+    config.data.text_path = "corpus.txt"
+    config.objective = {"signal_source": "online"}
+    config.validate()
+
+    config.objective = {"signal_source": "dataset"}
+    with pytest.raises(ValueError, match="no stored teacher logits"):
+        config.validate()
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("kd_tail", "ignore", "kd_tail must be"),
+        ("kd_top_k", 0, "kd_top_k must be"),
+    ],
+)
+def test_kd_settings_are_validated(field, value, message):
+    config = base_config(objective="logit_kd", **{field: value})
+    config.data.synthetic = False
+    config.data.text_corpus = True
+    config.data.text_path = "corpus.txt"
+    with pytest.raises(ValueError, match=message):
         config.validate()
 
 

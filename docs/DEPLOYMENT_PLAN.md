@@ -26,14 +26,24 @@ measured at a **realistic context with realistic generation**, leaving the card 
 
 ### Budget
 
-| Item | Allowance |
-|---|---|
-| Card | 16 GiB |
-| Reserved (driver, desktop compositor, other applications) | 1.0 GiB |
-| **Usable** | **15.0 GiB** |
+| Item | Nominal | Measured |
+|---|---|---|
+| Card | 16 GiB | 14.56 GiB actually exposed |
+| Reserved (driver, desktop compositor, other applications) | 1.0 GiB | 1.0 GiB |
+| **Usable** | 15.0 GiB | **13.56 GiB** |
 
 The 1 GiB reserve is deliberate. A model that fits only on a headless card with
 nothing else running is not what a consumer-hardware project should ship.
+
+**Use the measured column.** A "16 GB" card does not expose 16 GiB — driver reservations
+and ECC/display allocations take a slice before anything is loaded, and 14.56 GiB is what
+the Level-2 T4 run actually reported. The 1.44 GiB difference is larger than the entire KV
+cache of several candidate architectures, so the nominal figure would pass models that
+OOM on the hardware they were sized for. Tables further down this document computed
+against 15.0 GiB are upper bounds and are marked where they appear.
+
+The 12 GB target is **10.76 GiB** usable, derived from vendor capacity rather than
+measured on a real 12 GB card — treat it as provisional until one is available.
 
 ## Target hardware
 
@@ -67,7 +77,8 @@ Halving bytes-per-weight roughly doubles the throughput ceiling.
 
 `python scripts/estimate_vram.py --preset teacher --matrix`
 
-Peak VRAM (GiB), batch 1, fp16 KV cache, against a 15.0 GiB budget:
+Peak VRAM (GiB), batch 1, fp16 KV cache, against the optimistic 15.0 GiB budget
+(measured usable is 13.56 GiB, so rows clearing 15.0 by under 1.5 GiB do not fit):
 
 | quant | 8k | 32k | 64k | 128k | 256k |
 |---|---:|---:|---:|---:|---:|
