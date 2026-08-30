@@ -19,6 +19,28 @@ from .compare import (
     corpus_from_manifest,
     load_run_facts,
 )
+from .deployment import (
+    CONTEXT_LADDER,
+    PRECISIONS,
+    PRIMARY_TARGET,
+    SECONDARY_TARGET,
+    TARGETS,
+    DeploymentAssessment,
+    DeploymentTarget,
+    Sweep,
+    TargetFeasibility,
+    assess,
+    sweep,
+)
+from .returns import (
+    LOWER_IS_BETTER,
+    MATERIAL_RELATIVE_IMPROVEMENT,
+    MetricStep,
+    ResearchSummary,
+    ScalingStep,
+    build_step,
+    research_summary,
+)
 from .run_analysis import (
     COMPLETION_CAVEAT,
     CheckpointTimeline,
@@ -60,6 +82,24 @@ from .scaling import (
 
 __all__ = [
     "ACCEPTABLE_VERDICT",
+    "CONTEXT_LADDER",
+    "LOWER_IS_BETTER",
+    "MATERIAL_RELATIVE_IMPROVEMENT",
+    "PRECISIONS",
+    "PRIMARY_TARGET",
+    "SECONDARY_TARGET",
+    "TARGETS",
+    "DeploymentAssessment",
+    "DeploymentTarget",
+    "MetricStep",
+    "ResearchSummary",
+    "ScalingStep",
+    "Sweep",
+    "TargetFeasibility",
+    "assess",
+    "build_step",
+    "research_summary",
+    "sweep",
     "COMPARABLE",
     "COMPARABLE_IF",
     "COMPLETION_CAVEAT",

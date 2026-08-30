@@ -1,74 +1,142 @@
 # Qwen3.8-XXB-Instruct-Distill
 
-Research infrastructure for compressing **Qwen3.8-27B** into an instruct model that
-runs comfortably on a **single 16 GB consumer GPU**, keeps a genuinely large context
-window, and spends far fewer tokens thinking about easy questions.
+Distilling **Qwen3.8-27B** into a hybrid sparse-MoE student that runs on a **single 16 GB
+consumer GPU**, keeps a genuinely large context window, and is studied carefully enough to
+publish.
 
-> **Project status: Phase 2A — first scaling experiment.**
-> **No final student model has been trained.** A 4.03M Level-1 hybrid prototype trained
-> successfully on a Tesla T4, proving the pipeline executes and optimises and nothing
-> about language quality. The Level-2 run (94.48M, real byte-level text) is configured
-> and validated on CPU but **has not yet run on a GPU** — the authoring environment has
-> none, so the numbers below are estimates until someone runs it. No benchmark has been
-> run against the teacher, and the `XXB` in the name is a placeholder: the final
-> parameter count is a research result, not a design input.
+Two goals, held at the same time — see [PROJECT_DIRECTION.md](docs/PROJECT_DIRECTION.md):
 
-## Why this project exists
+- **a paper** — *Beyond Layer Matching: Distilling Computational Behavior in Hybrid
+  Language Models*, plus a second component on context-length specialisation, with a
+  falsifier written down for every claim before the run;
+- **a release** — the strongest deployable model under a strict 16 GB end-to-end VRAM
+  constraint.
 
-Qwen3.8-27B is a remarkably capable open-weight model for its size. But it does not
-fit a 16 GB card — and not by a small margin.
+> **Status: architecture frozen, initialisation implemented and measured, nothing trained.**
+> No student has been distilled from the real teacher. No benchmark has been run. No
+> external compute has been used — everything here was produced in a browser session with
+> no GPU, so every number is either an audit of a locally constructed model, an analytical
+> estimate labelled as one, or a third-party figure with a source.
 
-Running our estimator against the published configuration:
+## The student
+
+One frozen target, `qwen38_19b_h5120_l48_moe`. Not a ladder, not a search space.
 
 ```
-$ python scripts/estimate_vram.py --preset teacher --matrix
-
-peak VRAM (GiB) by context x quantisation, budget 15.0 GiB
-  quant            8k      32k      64k     128k     256k
-  bf16          49.2*    50.7*    52.7*    56.7*    64.7*
-  int8          26.5*    28.0*    30.0*    34.0*    42.0*
-  q4_k_m        17.7*    19.2*    21.2*    25.2*    33.2*
-  (* exceeds budget)
+48 layers = 36 Gated DeltaNet + 12 full attention     [D, D, D, A] x 12
+hidden 5120,  vocab 248,320,  context 262,144,  untied embeddings
+attention   24 query heads, 2 KV heads, head_dim 256, output gate, rotary dim 64
+DeltaNet    16 key heads, 48 value heads, head dim 128, conv kernel 4
+MoE         24 routed experts (top-2) + 1 shared expert, expert width 768
 ```
 
-At 4-bit the **weights alone are 15.85 GiB** — over budget before a single token of
-context. That is the gap this project tries to close.
+Compression from the teacher is depth-only plus sparsity: 64 -> 48 layers, dense
+17408-wide FFN -> 24 experts of 768, 4 KV heads -> 2. Width, vocabulary, head dimensions
+and the hybrid pattern are unchanged, which is what makes each reduction attributable.
+Full specification: [STUDENT_ARCHITECTURE.md](docs/STUDENT_ARCHITECTURE.md).
 
-## What the analysis already tells us
+## Two measured findings that changed the plan
 
-Three findings, all reproducible from this repository, all analytical rather than
-measured:
+Both were run before any training code was written. Both returned inconvenient answers, and
+both are reported rather than worked around.
 
-**1. The bottleneck is weights, not context.** Qwen3.8's hybrid design puts Gated
-DeltaNet on 48 of 64 layers, and those layers carry a *constant-size* recurrent state
-regardless of sequence length. Only the 16 full-attention layers hold a growing KV
-cache. At 128k context that is 8 GiB of KV against a fixed 0.15 GiB of recurrent
-state. **Long context is already cheap here** — the problem is purely parameter count.
+### It weighs 22.07B, not 19B
 
-**2. The FFN is where the parameters are.**
+```
+$ python scripts/student_report.py --section architecture
 
-| Component | Share of 26.90B |
-|---|---:|
-| **MLP (SwiGLU)** | **63.6%** |
-| Gated DeltaNet | 20.7% |
-| Embedding + LM head | 9.4% |
-| Gated attention | 6.2% |
+    component               parameters    share
+    embedding            1,271,398,400    5.76%
+    lm_head              1,271,398,400    5.76%
+    attention            1,195,382,784    5.42%
+    deltanet             4,171,538,304   18.90%
+    routed_experts      13,589,544,960   61.57%
+    shared_expert          566,476,800    2.57%
+    router                   5,898,240    0.03%
+    norms                      496,640    0.00%
+    TOTAL               22,072,134,528
 
-**3. The student should be much larger than the obvious guess.** Ranking
-architectures by capacity subject to fitting 15.0 GiB at 4-bit:
+    difference_from_19B       +3,072,134,528     (+16.2%)
+    non_embedding             19,529,337,728
+    active_per_token           9,615,051,648
+```
 
-| Required context | Largest feasible model |
-|---|---|
-| 32k | ~21B |
-| 128k | ~16.5B |
-| 262k | ~13.5B |
+The name is the label the project inherited; 19.53B non-embedding is its likely origin. The
+architecture is frozen, so it is not adjusted to make the label true. **61.57% of the model
+is routed experts** — the number that drives every memory decision downstream.
 
-The answer to "how big?" is not 7B or 10B — it is **13–21B**, and the choice is
-governed almost entirely by how much context you demand. Going from 32k to 262k costs
-roughly 7.7B parameters of capacity.
+### It does not fit 16 GB
 
-These are calculations, not measurements. They narrow the search space; they do not
-tell us what a trained model will score.
+End to end, fully GPU-resident, at Q4/Q5/Q6, at every context length from 2,048 tokens up:
+
+| quant | context | weights | KV | state | acts | runtime | total | verdict |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| Q4 | 2,048 | 13.09 | 0.05 | 0.111 | 0.28 | 0.90 | **14.44** | DOES NOT FIT |
+| Q4 | 32,768 | 13.09 | 0.75 | 0.111 | 0.28 | 0.90 | **15.14** | DOES NOT FIT |
+| Q4 | 262,144 | 13.09 | 6.00 | 0.111 | 0.28 | 0.90 | **20.39** | DOES NOT FIT |
+
+The cheapest all-Q4 configuration is **13.93 GiB at 2,048 tokens against 13.56 GiB usable —
+short by 0.37 GiB** before a single long-context token is cached. Fits begin one precision
+step below the release set, at 3-bit experts, reaching 64K context.
+
+A 16 GB card reports 14.56 GiB, and planning against the nominal 16.0 GiB instead makes Q4
+appear to reach 65,536 tokens. That gap is the whole difference between a plan that works
+and an OOM on hardware that obviously had room.
+
+**This is an open decision on the critical path**: ship at 3-bit experts and report the
+quality cost, or reduce the expert budget. The repository does not make that call
+unilaterally. [PARETO_EVALUATION.md](docs/PARETO_EVALUATION.md).
+
+## The research
+
+**Behavioural distillation** — [BEHAVIORAL_DISTILLATION.md](docs/BEHAVIORAL_DISTILLATION.md).
+Conventional layer matching asks the student to visit the teacher's intermediate hidden
+states. But removing 16 of 64 layers removes *work*, and pointwise matching never says who
+took over. Residual contributions telescope — the total work of a teacher span `[a, b)` is
+exactly `h_b - h_a` — so each student layer can instead be trained to reproduce the combined
+contribution of every teacher layer it replaced, removed ones included, at no extra cost.
+
+**Context specialisation** — [CONTEXT_SPECIALIZATION.md](docs/CONTEXT_SPECIALIZATION.md).
+`max_position_embeddings = 262144` is a config field and is free. What is measurable is the
+context-performance curve and where its knee sits. In a hybrid model the 12 attention layers
+can look back arbitrarily far and pay linearly; the 36 DeltaNet layers keep a fixed state and
+cannot. What that state learns to carry comes from the lengths in the training data — which
+is the mechanism by which a training-time choice moves a deployment-time capability.
+
+**The ablation matrix** — `research/ablations.py`. Family A is a 2x2 factorial over
+{pointwise matching} x {behavioural delta}; family B is four sequence-length curricula where
+B2 and B3 share a token budget exactly, isolating ordering from exposure. Every arm carries
+a `falsified_if` written before the run, and `no_measurable_effect` is a reachable, tested
+verdict.
+
+```bash
+python scripts/student_report.py                 # architecture, memory, context, ablations
+python scripts/student_report.py --json out.json --ledger
+```
+
+## Reporting standards
+
+1. **Never call an estimate a measurement.** The ledger enforces a closed provenance set —
+   `measured_here`, `reported_by_third_party`, `estimated` — where an estimate must carry its
+   method and a third-party number must carry its source.
+   [EXPERIMENT_LEDGER.md](docs/EXPERIMENT_LEDGER.md)
+2. **Never claim a benchmark before running it.** Qwen3.5-9B's published figures are the
+   target, not evidence about us. This project holds no benchmark results of its own.
+3. **A negative result is a result.** If the central claim fails, it is reported as failed.
+4. **16 GB is end-to-end and GPU-resident.** CPU offload is a different product and never
+   counts as compliance.
+5. **Nothing degrades silently.** Unavailable objectives raise with the reason; a mismatched
+   checkpoint is fatal, not a warning. MTP is declared by the specification and **not built**
+   by the runtime, so no MTP result is claimed and the loss term refuses to run.
+
+---
+
+# Historical record
+
+Everything below predates the direction reset and is retained, not deleted. The
+from-scratch ladder (Levels 1 / 2 / 2R / 3) validated the training mechanism; the dense
+`h5120 L40` 17.76B candidate remains the baseline against which the sparse MoE student is
+first compared.
 
 ## Level 1 result — infrastructure validated on a real T4
 
@@ -155,6 +223,29 @@ schedule, precision and gradient checkpointing. The estimator puts it at **6.18 
 Estimated ~12.9 h and ~28.3 GB of Drive for ten checkpoints. The stopping rule, the
 continuation rule and the reading of every outcome are **written down before the run**:
 [`docs/experiments/level3_plan.md`](docs/experiments/level3_plan.md).
+
+## Choosing what comes after Level 3
+
+The destination is a Qwen3.8-27B alternative that runs on **16 GB**, with a path to
+**12 GB**. Which architecture gets there is a question to answer with numbers before it
+costs GPU hours:
+
+```bash
+python scripts/architecture_report.py --list                       # known architectures
+python scripts/architecture_report.py --sweep level2r level3 teacher
+python scripts/architecture_report.py --presets level3:hidden_size=1280
+python scripts/architecture_report.py --summary <run-a> <run-b>    # the decision report
+```
+
+A sweep reports parameters, training memory, and 16 GB / 12 GB feasibility **with the
+longest context each supports** — because "fits on 16 GB" is true of a long-context model
+at 4K and can be false at 256K. Nothing is trained; rejecting a candidate costs
+milliseconds.
+
+The comparison refuses what the data does not support: no delta across different
+validation corpora, no invented capability score, and no conclusion that assumes a bigger
+model is a better one. Full loop:
+[ARCHITECTURE_RESEARCH.md](docs/ARCHITECTURE_RESEARCH.md).
 
 ## Level 2 — the procedural control
 
@@ -336,7 +427,7 @@ development ladder from CPU to the final run.
 
 ```bash
 pip install -e ".[dev]"
-pytest                                    # 925 tests, no GPU required
+pytest                                    # 990 tests, no GPU required
 
 python scripts/estimate_vram.py --preset teacher --matrix --max-context
 python scripts/search_architectures.py --vram 16 --context 32768 --top 15
@@ -359,7 +450,7 @@ scripts/          hardware_info, train_student, estimate_vram, validate_checkpoi
 docs/             plans and analysis (start with VERIFICATION.md)
 experiments/      architecture search outputs
 vendor/           teacher metadata, supplied out-of-band
-tests/            925 tests pinning every formula
+tests/            990 tests pinning every formula
 ```
 
 ## Verification status
@@ -421,6 +512,7 @@ capability regression cannot be presented as an efficiency win. See
 | [TEACHER_BASELINE.md](docs/TEACHER_BASELINE.md) | The measuring instrument: modes, suites, determinism |
 | [REASONING_BASELINE.md](docs/REASONING_BASELINE.md) | Measuring what the reasoning controls actually do |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Where parameters, memory and compute go |
+| [ARCHITECTURE_RESEARCH.md](docs/ARCHITECTURE_RESEARCH.md) | **The research loop: define, estimate, sweep, compare — and how 16/12 GB feasibility is decided** |
 | [PROJECT_PLAN.md](docs/PROJECT_PLAN.md) | Phases, decision gates, and failure modes |
 | [EVALUATION_PLAN.md](docs/EVALUATION_PLAN.md) | Tiers, baselines, contamination, reporting standards |
 | [DEPLOYMENT_PLAN.md](docs/DEPLOYMENT_PLAN.md) | The 16 GB envelope and measurement methodology |
