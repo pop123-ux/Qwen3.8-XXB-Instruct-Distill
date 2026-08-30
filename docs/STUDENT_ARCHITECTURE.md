@@ -25,7 +25,7 @@ attention               24 query heads, 2 KV heads, head_dim 256
 DeltaNet                16 key heads, 48 value heads, key/value head dim 128
                         conv kernel 4, state dtype float32
 
-MoE                     24 routed experts, 2 active
+MoE                     8 routed experts, 2 active   (corrected from 24)
                         1 shared expert, always active
                         expert intermediate 768, shared intermediate 768
                         top-k routing, router jitter false
@@ -50,39 +50,76 @@ silently accepted by the config object and then does the wrong thing:
 
 ## What it weighs
 
-Measured by constructing the model on meta tensors and summing real parameters —
+Measured two independent ways that agree to the parameter: a closed-form derivation from the
+specification (`parameter_model`) and a sum over the tensors of the instantiated model
+(`audit`). Keeping both and asserting they match is what makes either trustworthy.
 `python scripts/student_report.py --section architecture`.
 
 | component | parameters | share |
 |---|---:|---:|
-| `embedding` | 1,271,398,400 | 5.76% |
-| `lm_head` | 1,271,398,400 | 5.76% |
-| `attention` | 1,195,382,784 | 5.42% |
-| `deltanet` | 4,171,538,304 | 18.90% |
-| `routed_experts` | 13,589,544,960 | 61.57% |
-| `shared_expert` | 566,476,800 | 2.57% |
-| `router` | 5,898,240 | 0.03% |
+| `embedding` | 1,271,398,400 | 9.77% |
+| `lm_head` | 1,271,398,400 | 9.77% |
+| `attention` | 1,195,382,784 | 9.19% |
+| `deltanet` | 4,171,538,304 | 32.07% |
+| `routed_experts` | 4,529,848,320 | 34.82% |
+| `shared_expert` | 566,476,800 | 4.35% |
+| `router` | 1,966,080 | 0.02% |
 | `norms` | 496,640 | 0.00% |
 | `mtp` | 0 | not built |
-| **total** | **22,072,134,528** | |
+| **total** | **13,008,505,728** | |
 
 ```
-difference_from_19B    +3,072,134,528  (+16.2%)
-non_embedding          19,529,337,728
-active_per_token        9,615,051,648   (43.6% of stored)
+difference_from_19B    -5,991,494,272
+non_embedding          10,465,708,928
+active_per_token        9,611,119,488   (73.9% of stored)
+fraction of teacher            48.4%    (teacher: 26,895,998,464)
 ```
 
-The name says 19B and the model weighs 22.07B. The architecture is frozen, so it is not
-adjusted to match the label; 19.53B non-embedding is the most likely origin of the name.
+The name says 19B and the model weighs 13.01B. The label is not chased in either direction:
+the 16 GB constraint set the size, and the label is what is inaccurate.
 
-Two consequences follow from the table and drive everything downstream:
+### The correction
 
-**Experts are the model.** 61.57% of all parameters are routed experts that each token
-mostly does not use. Any memory or quantisation decision that is not primarily about the
-experts is working on the other 38%.
+The first implementation of this specification used **24** routed experts and came to
+**22,072,134,528** parameters, of which 13.59B — 61.6% of the model — were routed experts.
+It did not fit a 16 GB card at any release precision or any context length, failing the
+project's primary constraint. `num_experts` 24 → 8 is the whole correction.
 
-**Sparsity is real.** 9.6B active against 22.07B stored. That ratio is the entire argument
-for choosing MoE here rather than a dense model of similar quality.
+Per-token capacity is unchanged to within 0.04% (9,615,051,648 → 9,611,119,488, all of it
+the smaller router). A token was only ever using two experts; the other sixteen cost VRAM
+and contributed nothing.
+
+### The arithmetic that decided it
+
+```
+total  = BASE + 3.H.L.(E.W + S) + H.L.E + H.L
+active = BASE + 3.H.L.(K.W + S) + H.L.E + H.L
+```
+
+Two invariants follow, and both are counter-intuitive enough to be worth stating:
+
+- **Total depends on the product `E x W`, not the split.** 8x768, 6x1024, 12x512 and 24x256
+  all give the same total parameters, the same VRAM, and the same fraction of the teacher's
+  FFN channels covered by the decomposition.
+- **Active depends on `K x W`.** So at a fixed total, *wider* experts carry more per-token
+  capacity. That is why the correction cut the count and left the width at 768 rather than
+  the reverse — 24x256 would have cost 751M active parameters for identical memory.
+
+Three alternatives were evaluated and rejected, each recorded in `REJECTED` with the
+measurement that rejected it: 12x768 (feasible but no Q6 path and half the Q4 context),
+24x256 (same memory, less per-token capacity), and 6x1024 (same memory, *more* active —
+the strongest alternative, kept on the record).
+
+`PARAMETER_BUDGET = 15,000,000,000` is a hard ceiling with a test behind it, derived from
+what a Q5 release at 32K can afford.
+
+### What this costs
+
+Real, and stated rather than glossed. The FFN decomposition now holds `8 x 768 + 768 = 6,912`
+of the teacher's 17,408 FFN channels — **39.7%, down from 100%**. The remaining 60.3% are not
+transferred and must be learned. Active width per token is unchanged at 2,304, so the
+reconstruction bound is unmoved; what shrinks is how much teacher FFN the router has to
+choose between. See [INITIALIZATION_METHOD.md](INITIALIZATION_METHOD.md).
 
 ## Why this shape
 
@@ -145,19 +182,22 @@ The earlier candidate — `h5120 L40`, **17,763,549,760** parameters, dense — 
 deleted: `research/baselines.py`, derived from the teacher preset rather than hard-coded so
 it stays transfer-compatible.
 
+After the correction the sparse student (13.01B) is *smaller* than this dense baseline
+(17.76B) in total as well as in active parameters, which sharpens the comparison: it is no
+longer "more parameters, fewer active" but fewer of both.
+
 It is a *good* control, not merely an old idea. Its transfer plan from the teacher is 533
 pure tensor copies, 100% coverage, zero warnings, no width reduction anywhere — which
 removes the `slice`-baseline assumption (that a teacher's parameters are ordered by
-importance, which nothing guarantees) from the comparison entirely. And it fits 16 GB at
-13.18 GiB at 32K, where the MoE target does not, which makes it the fallback if the
-expert-budget decision in [PARETO_EVALUATION.md](PARETO_EVALUATION.md) goes the other way.
+importance, which nothing guarantees) from the comparison entirely. Both now fit 16 GB — the dense baseline at 13.18 GiB at 32K, the corrected sparse student at
+10.21 GiB at the same context.
 
-**The project's first scientific comparison is 17.76B dense L40 against 22.07B sparse-MoE
+**The project's first scientific comparison is 17.76B dense L40 against 13.01B sparse-MoE
 L48.** Held constant: teacher and revision, hidden size 5120, vocabulary 248,320, head_dim
 256, the 3:1 hybrid pattern, the objective and the token budget. Varying: depth 40 vs 48,
-and dense FFN vs 24-expert top-2 MoE. The question is whether routing 22.07B stored
-parameters at 9.6B active per token beats 17.76B dense at the same width from the same
-teacher — and 9.6B active is *less* than the dense baseline's total, which is what makes
-the comparison interesting rather than a foregone conclusion.
+and dense FFN vs 24-expert top-2 MoE. The question is whether routing 13.01B stored
+parameters at 9.61B active per token beats 17.76B dense at the same width from the same
+teacher. The sparse student is smaller on both counts, so a win would be a win on capability
+per parameter rather than on capacity.
 
 Neither model has been distilled. `comparison()` states the design so it can be run.

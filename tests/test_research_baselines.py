@@ -37,7 +37,7 @@ def test_it_shares_everything_with_the_moe_student_except_depth_and_the_ffn():
 
 def test_the_comparison_names_what_varies_and_what_is_held_constant():
     c = comparison()
-    assert set(c["varies"]) == {"depth 40 vs 48", "dense FFN vs 24-expert top-2 MoE"}
+    assert set(c["varies"]) == {"depth 40 vs 48", "dense FFN vs 8-expert top-2 MoE"}
     assert len(c["held_constant"]) >= 5
     assert c["status"].startswith("not run")
 
@@ -45,9 +45,12 @@ def test_the_comparison_names_what_varies_and_what_is_held_constant():
 def test_the_comparison_carries_both_models_real_numbers():
     c = comparison()
     assert c["baseline"]["parameters"] == 17_763_549_760
-    assert c["candidate"]["parameters"] == 22_072_134_528
-    assert c["candidate"]["active_parameters_per_token"] == 9_615_051_648
-    # Sparsity is the point: fewer active parameters than the dense baseline has in total.
+    assert c["candidate"]["parameters"] == 13_008_505_728
+    assert c["candidate"]["active_parameters_per_token"] == 9_611_119_488
+    # After the expert-budget correction the sparse student is smaller than the dense
+    # baseline in total as well as in active parameters, which sharpens the comparison:
+    # it is no longer "more parameters, fewer active" but "fewer of both".
+    assert c["candidate"]["parameters"] < c["baseline"]["parameters"]
     assert c["candidate"]["active_parameters_per_token"] < c["baseline"]["parameters"]
 
 

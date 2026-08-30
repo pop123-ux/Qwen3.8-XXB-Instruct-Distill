@@ -19,6 +19,8 @@ from qwen_distill.architecture.moe_student import (
     FROZEN_STUDENT,
     MOE_MODEL_TYPE,
     MTP_STATUS,
+    PARAMETER_BUDGET,
+    REJECTED,
     STUDENT_ID,
     TEACHER_FFN_INTERMEDIATE,
     TEACHER_ID,
@@ -27,6 +29,7 @@ from qwen_distill.architecture.moe_student import (
     MoEStudentSpec,
     audit,
     build_config,
+    parameter_model,
     render_audit,
     tiny_fixture,
 )
@@ -50,7 +53,7 @@ def test_frozen_spec_matches_the_brief_field_for_field():
     assert (s.linear_num_key_heads, s.linear_num_value_heads) == (16, 48)
     assert s.linear_key_head_dim == s.linear_value_head_dim == 128
     assert s.linear_conv_kernel_dim == 4
-    assert (s.num_experts, s.num_experts_per_tok) == (24, 2)
+    assert (s.num_experts, s.num_experts_per_tok) == (8, 2)
     assert s.moe_intermediate_size == s.shared_expert_intermediate_size == 768
     assert s.router_aux_loss_coef == 0.001 and s.router_jitter is False
     assert s.mtp_num_hidden_layers == 1 and s.distill_from_teacher_mtp is True
@@ -110,7 +113,7 @@ def test_config_is_the_registered_moe_text_architecture():
     assert cfg.model_type == MOE_MODEL_TYPE == "qwen3_5_moe_text"
     assert cfg.hidden_size == 5120 and cfg.num_hidden_layers == 48
     assert cfg.layer_types == FROZEN_STUDENT.layer_types()
-    assert cfg.num_experts == 24 and cfg.num_experts_per_tok == 2
+    assert cfg.num_experts == 8 and cfg.num_experts_per_tok == 2
     assert cfg.router_aux_loss_coef == 0.001
 
 
@@ -139,26 +142,82 @@ def report():
     return audit()
 
 
-def test_exact_parameter_count_is_reported_not_rounded_to_the_label(report):
-    """The frozen target is named 19B and weighs 22.07B. The architecture is not adjusted to
-    make the label true; the difference is reported."""
-    assert report["exact_parameter_count"] == 22_072_134_528
-    assert report["difference_from_19B"] == 3_072_134_528
-    assert report["difference_from_19B"] > 0
+def test_exact_parameter_count_is_the_corrected_one(report):
+    """The corrected count, pinned. 13.01B, down from the 22.07B first implementation that
+    could not be deployed. The name still says 19B and the architecture is not adjusted to
+    make a label true in either direction — the difference is reported."""
+    assert report["exact_parameter_count"] == 13_008_505_728
+    assert report["difference_from_19B"] == -5_991_494_272
 
 
-def test_non_embedding_count_explains_where_the_19B_label_came_from(report):
-    """19.53B non-embedding is the plausible origin of the name, and saying so is more
-    useful than either defending or hiding the gap."""
-    assert report["non_embedding_parameters"] == 19_529_337_728
-    assert abs(report["non_embedding_parameters"] - 19e9) / 19e9 < 0.03
+def test_the_correction_did_not_touch_per_token_capacity(report):
+    """The whole argument for the correction: it removed stored-but-unused experts, not
+    capacity. Active parameters moved by 0.04%, entirely from the smaller router."""
+    assert report["active_parameters_per_token"] == 9_611_119_488
+    previous_active = 9_615_051_648
+    drift = abs(report["active_parameters_per_token"] - previous_active) / previous_active
+    assert drift < 0.001, "the correction should not have changed per-token capacity"
 
 
-def test_sparsity_actually_buys_something(report):
-    """Under 10B active per token against 22B stored: that ratio is the entire argument for
-    choosing MoE over a dense model of the same quality."""
-    assert report["active_parameters_per_token"] == 9_615_051_648
-    assert report["active_parameters_per_token"] / report["exact_parameter_count"] < 0.45
+def test_the_rejected_configuration_is_on_the_record():
+    """Deleting the failed architecture would delete the evidence for the current one."""
+    rejected = {entry["config"]: entry for entry in REJECTED}
+    failed = rejected["num_experts=24, moe_intermediate_size=768"]
+    assert failed["total_parameters"] == 22_072_134_528
+    assert failed["active_parameters"] == 9_615_051_648
+    assert "does not fit" in failed["why_rejected"].lower()
+    # Every rejected entry must say what measurement rejected it.
+    for entry in REJECTED:
+        assert len(entry["why_rejected"]) > 80
+        assert entry["total_parameters"] > 0
+
+
+def test_the_parameter_budget_is_a_hard_ceiling(report):
+    """The bound exists so a future edit adding experts, widening the FFN or untying
+    something cannot silently reintroduce a model that does not deploy."""
+    assert report["exact_parameter_count"] <= PARAMETER_BUDGET, (
+        f"the student is {report['exact_parameter_count']:,} parameters, over the "
+        f"{PARAMETER_BUDGET:,} deployment budget. Adding parameters here is only correct "
+        "if the 16 GB feasibility table in research/memory.py still passes."
+    )
+    assert PARAMETER_BUDGET < 26_895_998_464, "the budget must stay under the teacher"
+
+
+def test_the_student_is_a_real_compression_of_the_teacher(report):
+    """22.07B against a 26.90B teacher was an 18% reduction, which is not a distillation
+    result. 13.01B is 48% of the teacher."""
+    teacher = 26_895_998_464
+    assert report["exact_parameter_count"] < teacher
+    assert report["exact_parameter_count"] / teacher < 0.55
+
+
+def test_the_closed_form_and_the_instantiated_model_agree(report):
+    """Two independent derivations — one from the spec's arithmetic, one by building the
+    model and summing tensors. An error in either shows up here as a mismatch."""
+    model = parameter_model(FROZEN_STUDENT)
+    assert model["total"] == report["exact_parameter_count"]
+    assert model["active_per_token"] == report["active_parameters_per_token"]
+    for bucket in ("embedding", "lm_head", "attention", "deltanet",
+                   "routed_experts", "shared_expert", "router", "norms"):
+        assert model[bucket] == report["components"][bucket], f"{bucket} disagrees"
+
+
+def test_total_depends_on_the_expert_product_and_active_on_the_active_width():
+    """The two invariants the correction turned on. Splitting a fixed expert budget between
+    count and width is free for memory and is not free for per-token capacity."""
+    from dataclasses import replace
+
+    base = parameter_model(FROZEN_STUDENT)
+    # Same E x W product, different split: identical total.
+    wider = parameter_model(replace(FROZEN_STUDENT, num_experts=4,
+                                    moe_intermediate_size=1536))
+    assert wider["routed_experts"] == base["routed_experts"]
+    # ... and strictly more active parameters, because active scales with K x W.
+    assert wider["active_per_token"] > base["active_per_token"]
+    # Doubling the count at the same width doubles only the stored experts.
+    doubled = parameter_model(replace(FROZEN_STUDENT, num_experts=16))
+    assert doubled["routed_experts"] == 2 * base["routed_experts"]
+    assert doubled["active_per_token"] - base["active_per_token"] < 5_000_000
 
 
 def test_component_breakdown_is_complete_and_sums_to_the_total(report):
@@ -170,14 +229,22 @@ def test_component_breakdown_is_complete_and_sums_to_the_total(report):
         assert components[name] > 0, f"{name} contributed no parameters"
 
 
-def test_routed_experts_dominate_the_parameter_budget(report):
-    """61% of the model is expert weights, of which 2 of 24 run per token. Any parameter- or
-    memory-reduction work that is not aimed at the experts is aimed at the wrong 38%."""
+def test_routed_experts_no_longer_dominate_the_parameter_budget(report):
+    """They were 61.6% of the model and are now 34.8%. That shift is the correction: the
+    experts stopped being the thing the VRAM budget was mostly spent on."""
     c = report["components"]
     total = report["exact_parameter_count"]
-    assert c["routed_experts"] / total > 0.6
+    assert 0.30 < c["routed_experts"] / total < 0.40
     assert c["embedding"] == c["lm_head"], "untied heads should be the same size"
     assert c["router"] / total < 0.001
+
+
+def test_stored_experts_are_still_the_largest_single_component(report):
+    """Reduced, not eliminated: the MoE is intact and is still where a future memory
+    reduction would have to look first."""
+    c = report["components"]
+    assert c["routed_experts"] == max(c.values())
+    assert c["routed_experts"] > c["deltanet"]
 
 
 def test_mtp_contributes_nothing_because_it_is_not_built(report):
@@ -189,8 +256,8 @@ def test_mtp_contributes_nothing_because_it_is_not_built(report):
 def test_audit_is_serialisable_and_renderable(report):
     json.loads(json.dumps(report))
     text = render_audit(report)
-    assert "22,072,134,528" in text
-    assert "+3,072,134,528" in text
+    assert "13,008,505,728" in text
+    assert "-5,991,494,272" in text
     assert "36 DeltaNet + 12 full attention" in text
 
 

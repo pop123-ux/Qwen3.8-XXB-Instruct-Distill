@@ -1,9 +1,10 @@
 """End-to-end VRAM accounting against the 16 GB ceiling.
 
-The load-bearing test here is :func:`test_frozen_student_does_not_fit_sixteen_gb`. It pins
-a finding that is inconvenient — the frozen research target exceeds the deployment
-constraint — so that no later change can quietly turn the answer into "fits" without the
-change being visible in this file.
+The load-bearing tests are :func:`test_the_student_fits_sixteen_gb_at_every_release_quant`
+and :func:`test_inactive_experts_are_not_free`. The first pins the deployment claim so it
+cannot silently stop being true; the second pins the reason the previous architecture
+failed, which was counting an MoE against its active parameters rather than its stored
+ones.
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ from qwen_distill.research.memory import (
     CONTEXT_LADDER,
     DOES_NOT_FIT,
     NOMINAL_VRAM_GIB,
+    RELEASE_HEADROOM_GIB,
     RELEASE_QUANTS,
     USABLE_GIB,
     MemoryAccount,
@@ -88,19 +90,34 @@ def test_all_state_together_is_smaller_than_one_octave_of_kv():
 
 
 def test_weights_are_bucketed_by_component_not_uniformly(components):
-    """Experts are 61.6% of the model, so a per-component quantisation is the lever with the
-    most mass. A uniform model would hide it."""
+    """Per-component quantisation is a real lever and a uniform model would hide it."""
     cheap = weight_bytes(components, RuntimeConfig(expert_quant="q3_k_m", dense_quant="q6_k"))
     uniform = weight_bytes(components, RuntimeConfig(expert_quant="q6_k", dense_quant="q6_k"))
     assert cheap["experts"] < uniform["experts"]
     assert cheap["dense"] == uniform["dense"]
-    assert cheap["experts"] > cheap["dense"] + cheap["embeddings"]
 
 
 def test_weight_counts_come_from_the_audit(components):
     """Memory and parameter tables cannot disagree if they share one source."""
     acc = account(components=components)
-    assert acc.parameters == sum(components.values()) == 22_072_134_528
+    assert acc.parameters == sum(components.values()) == 13_008_505_728
+
+
+def test_inactive_experts_are_not_free(components):
+    """The mistake that produced the rejected architecture. 9.61B of 13.01B parameters are
+    active per token, but all 13.01B are resident, and the weight total must reflect that.
+    Sizing an MoE against its active count is how a model that cannot deploy looks
+    deployable on paper."""
+    acc = account(components=components)
+    active = 9_611_119_488
+    assert acc.parameters > active
+    q4 = acc.weight_total
+    active_only = int(active * (4.9 / 8))
+    assert q4 > active_only, "weights were sized against active parameters"
+    # Every expert bucket is counted in full.
+    assert acc.weights["experts"] == int(
+        (components["routed_experts"] + components["shared_expert"]) * (4.9 / 8)
+    )
 
 
 def test_unknown_quantisation_is_refused(components):
@@ -113,10 +130,21 @@ def test_unknown_quantisation_is_refused(components):
 # ---------------------------------------------------------------------------
 def test_total_includes_every_term(components):
     acc = account(components=components)
-    parts = (acc.weight_total, acc.kv_cache, acc.recurrent_state,
+    parts = (acc.weight_total, acc.quantisation_overhead, acc.kv_cache, acc.recurrent_state,
              acc.conv_state, acc.activations, acc.runtime_overhead)
     assert all(p > 0 for p in parts), "a term contributed nothing, which means it is missing"
     assert acc.total == sum(parts)
+
+
+def test_quantisation_overhead_is_counted_on_top_of_the_nominal_bits(components):
+    """A nominal 4.9 bits per parameter is a file-size number. Treating it as the VRAM
+    number is a standard way to be wrong by a third of a gigabyte."""
+    acc = account(components=components)
+    assert acc.quantisation_overhead == int(acc.weight_total * 0.03)
+    assert acc.quantisation_overhead / GIB > 0.2
+    bare = account(config=RuntimeConfig(quantisation_overhead_fraction=0.0),
+                   components=components)
+    assert bare.total < acc.total
 
 
 def test_runtime_overhead_is_not_optional(components):
@@ -136,61 +164,80 @@ def test_fp32_logits_over_a_248k_vocabulary_are_counted(components):
 # ---------------------------------------------------------------------------
 # the finding
 # ---------------------------------------------------------------------------
-def test_frozen_student_does_not_fit_sixteen_gb(components):
-    """The headline result, pinned. The frozen architecture exceeds the deployment
-    constraint at every release precision and every context length — including 2,048
-    tokens, before long context is even a factor."""
+def test_the_student_fits_sixteen_gb_at_every_release_quant(components):
+    """The headline deployment claim, pinned. Fully GPU-resident, quantisation overhead and
+    runtime included, every stored expert counted."""
     for quant in RELEASE_QUANTS:
-        for length in (CONTEXT_LADDER[0], CONTEXT_LADDER[-1]):
-            acc = account(config=RuntimeConfig(context_length=length, expert_quant=quant,
-                                               dense_quant=quant, embedding_quant=quant),
-                          components=components)
-            assert acc.verdict() == DOES_NOT_FIT, f"{quant} at {length} now fits — verify why"
-    assert headline()["fits_at_any_release_quant"] is False
+        acc = account(config=RuntimeConfig(context_length=4_096, expert_quant=quant,
+                                           dense_quant=quant, embedding_quant=quant),
+                      components=components)
+        assert acc.verdict() != DOES_NOT_FIT, f"{quant} no longer fits at 4K"
+        assert acc.headroom_gib() >= RELEASE_HEADROOM_GIB
+    assert headline()["fits_at_any_release_quant"] is True
 
 
-def test_the_shortfall_is_small_enough_to_be_worth_reporting_precisely(components):
-    """Under half a gigabyte at the best case. That is a design decision away from fitting,
-    which is why the number is reported rather than rounded to 'too big'."""
-    h = headline()
-    assert 0 < h["shortfall_gib"] < 1.0
-    assert h["best_case_release_quant_gib"] > USABLE_GIB
+def test_each_release_quant_reaches_a_useful_context(components):
+    """Fitting at 4,096 tokens would not be a deployable long-context model. The claim is
+    about the context each precision actually reaches with headroom kept in reserve."""
+    reach = headline()["max_context_by_quant"]
+    assert reach["Q4"] >= 131_072
+    assert reach["Q5"] >= 65_536
+    assert reach["Q6"] >= 32_768
 
 
-def test_planning_against_the_nominal_sixteen_gib_gives_the_wrong_answer():
-    """The specific arithmetic error this module exists to prevent: against a nominal
-    16.0 GiB, Q4 appears to reach 64K; against a real card it never fits at all."""
-    h = headline()
-    naive = {row["quant"]: row["max_context"] for row in h["naive_nominal_16gib_result"]}
-    assert naive["q4_k_m"] >= 65_536
-    assert h["fits_at_any_release_quant"] is False
+def test_the_full_window_needs_a_quantised_kv_cache(components):
+    """262,144 tokens is 6 GiB of fp16 KV on its own. Reported as its own row rather than
+    folded into the headline, because KV quantisation costs retrieval accuracy."""
+    full = headline()["full_window_262k"]
+    assert full["Q4"]["fp16_kv_gib"] > USABLE_GIB
+    assert full["Q4"]["fits_with_fp8_kv"] is True
+    assert full["Q4"]["fp8_kv_gib"] < full["Q4"]["fp16_kv_gib"]
+    assert "retrieval accuracy" in headline()["full_window_note"]
+
+
+def test_the_headline_states_that_active_parameters_never_reduce_vram():
+    note = headline()["sparsity_note"]
+    assert "never reduce VRAM" in note
+    assert "resident" in note
+
+
+def test_planning_against_the_nominal_sixteen_gib_is_still_the_wrong_ceiling():
+    """The correction fixed the model, not the arithmetic trap. A real card reports
+    14.56 GiB, and the last gigabyte belongs to the rest of the system."""
     assert USABLE_GIB < NOMINAL_VRAM_GIB
+    assert NOMINAL_VRAM_GIB - USABLE_GIB > 2.0
 
 
-def test_fits_begin_below_the_release_precisions(components):
-    fits = frontier()
-    assert fits, "nothing fits at all, which would be a different finding"
-    assert all(not f["uses_release_quant_only"] for f in fits)
-    assert fits[0]["expert_quant"] == "q3_k_m"
+def test_the_rejected_architecture_would_still_fail_this_table(components):
+    """Guards the correction itself: restore the 24-expert budget and the table must go
+    red again, or this suite is not actually testing feasibility."""
+    inflated = dict(components)
+    inflated["routed_experts"] = 13_589_544_960
+    for quant in RELEASE_QUANTS:
+        acc = account(config=RuntimeConfig(context_length=4_096, expert_quant=quant,
+                                           dense_quant=quant, embedding_quant=quant),
+                      components=inflated)
+        assert acc.verdict() == DOES_NOT_FIT, (
+            f"the 22.07B architecture appears to fit at {quant}, which contradicts the "
+            "measurement that rejected it"
+        )
 
 
 def test_max_context_reports_zero_when_nothing_fits(components):
-    assert max_context(config=RuntimeConfig(expert_quant="q4_k_m", dense_quant="q4_k_m")) == 0
-    assert max_context(config=RuntimeConfig(expert_quant="q3_k_m", dense_quant="q3_k_m",
-                                            embedding_quant="q3_k_m")) > 0
+    """A model that cannot fit at the shortest context must report 0, not the shortest."""
+    assert max_context(config=RuntimeConfig(expert_quant="q8_0", dense_quant="q8_0",
+                                            embedding_quant="q8_0"),
+                       usable_gib=2.0) == 0
+    assert max_context(config=RuntimeConfig(expert_quant="q4_k_m", dense_quant="q4_k_m",
+                                            embedding_quant="q4_k_m")) >= 131_072
 
 
-def test_a_smaller_expert_budget_is_what_would_close_the_gap(components):
-    """Named in the implication text, and checked here so the advice is arithmetic rather
-    than intuition: halving the routed-expert count frees more than the shortfall."""
-    h = headline()
-    halved = dict(components)
-    halved["routed_experts"] //= 2
-    acc = account(config=RuntimeConfig(context_length=2_048, expert_quant="q4_k_m",
-                                       dense_quant="q4_k_m", embedding_quant="q4_k_m"),
-                  components=halved)
-    assert acc.headroom_gib() > 0
-    assert h["shortfall_gib"] < (sum(components.values()) - sum(halved.values())) * 0.6125 / GIB
+def test_release_precisions_are_on_the_frontier(components):
+    """Before the correction nothing on the frontier used a release precision. Now the
+    release set is reachable, which is what makes a Q4/Q5 release plan real."""
+    fits = frontier()
+    assert fits, "nothing fits at all, which would be a different finding"
+    assert any(f["uses_release_quant_only"] for f in fits)
 
 
 # ---------------------------------------------------------------------------

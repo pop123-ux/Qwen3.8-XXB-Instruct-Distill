@@ -9,7 +9,7 @@ the natural control for the sparse MoE target, because the two differ in exactly
     property            dense_h5120_l40       frozen MoE student
     ==================  ====================  ====================
     layers              40                    48
-    FFN                 dense, 17408 wide     24 experts x 768, top-2
+    FFN                 dense, 17408 wide     8 experts x 768, top-2
     hidden size         5120                  5120
     vocabulary          248,320               248,320
     head_dim            256                   256
@@ -28,9 +28,10 @@ for bit. That removes the `slice`-baseline assumption (that a teacher's paramete
 ordered by importance, which nothing guarantees) from the comparison entirely, so a result
 cannot be blamed on a questionable width-reduction heuristic.
 
-It is also the candidate that *fits*: 13.18 GiB at 32K on 16 GB, where the MoE target does
-not fit at any release precision. That makes it the fallback if the expert-budget decision
-in ``PARETO_EVALUATION.md`` goes the other way, which is a second reason not to delete it.
+Both candidates fit 16 GB: the dense baseline at 13.18 GiB at 32K, the corrected sparse
+student at 10.21 GiB at the same context. The sparse student is the smaller of the two after
+the expert-budget correction, so the comparison is no longer "more parameters, fewer active"
+— it is fewer of both, which is a cleaner question.
 """
 from __future__ import annotations
 
@@ -122,10 +123,12 @@ def comparison() -> dict[str, Any]:
             "head_dim 256", "hybrid pattern 3 DeltaNet : 1 full attention",
             "distillation objective and token budget",
         ],
-        "varies": ["depth 40 vs 48", "dense FFN vs 24-expert top-2 MoE"],
+        "varies": ["depth 40 vs 48", "dense FFN vs 8-expert top-2 MoE"],
         "question": (
-            "Does routing 22.07B stored parameters at 9.6B active per token beat 17.76B "
-            "dense at the same width, from the same teacher, under the same objective?"
+            "Does routing 13.01B stored parameters at 9.61B active per token beat 17.76B "
+            "dense at the same width, from the same teacher, under the same objective? The "
+            "sparse student is smaller on both counts, so a win would be a win on capability "
+            "per parameter and not merely on capacity."
         ),
         "why_it_is_fair": (
             "The dense candidate transfers as pure copies with no width reduction, so its "

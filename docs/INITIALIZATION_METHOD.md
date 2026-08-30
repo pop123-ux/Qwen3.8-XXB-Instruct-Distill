@@ -9,7 +9,7 @@ next to it, because after training the differences are unattributable.
 | reduction | teacher | student |
 |---|---|---|
 | depth | 64 layers | 48 layers |
-| FFN | dense, 17408 wide | 24 experts x 768, top-2 |
+| FFN | dense, 17408 wide | 8 experts x 768, top-2 |
 | KV heads | 4 | 2 |
 
 ---
@@ -39,16 +39,30 @@ plus the 16 removed teacher layers.
 
 ---
 
-## 2. Dense FFN -> 24 experts
+## 2. Dense FFN -> 8 experts
 
 ### The bound, stated first
 
-**Top-2-of-24 experts at width 768 cannot reproduce a 17408-wide dense FFN.** Active FFN
+**Top-2-of-8 experts at width 768 cannot reproduce a 17408-wide dense FFN.** Active FFN
 width per token is `2 x 768 + 768 (shared) = 2304` against the teacher's 17408 — a 7.6x
 reduction. Even a perfect decomposition reconstructs at most about 13% of the teacher's
 per-token FFN capacity. The method's job is to choose *which* 13% and to scale it sensibly.
 **A method reporting near-zero reconstruction error would indicate a bug, not success**, and
 a test asserts the error stays above a floor for exactly that reason.
+
+### The coverage bound
+
+A second limit, introduced by the expert-budget correction that brought the student inside
+16 GB. The 8 experts plus the shared expert hold `8 x 768 + 768 = 6,912` of the teacher's
+17,408 FFN channels, so **39.7% of the teacher's FFN is transferred and 60.3% is not** — the
+rest has to be learned.
+
+This is a *coverage* limit, not a per-token one. Active width is unchanged at 2,304, so the
+reconstruction numbers below are unmoved; what shrinks is how much teacher FFN the router
+has to choose between. And coverage is fixed by the expert budget rather than by how it is
+split: `8 x 768`, `24 x 256` and `12 x 512` all cover the same 6,912 channels, because they
+store the same number of parameters. Measured by `plan_ffn_decomposition`, tested by
+`test_channel_coverage_is_the_price_paid_for_fitting_sixteen_gb`.
 
 ### What the method is
 
@@ -136,16 +150,21 @@ expert favoured. On 4096 hidden states at the frozen width:
 
 | init scale | entropy / max | dead experts | max load share |
 |---:|---:|---:|---:|
-| `0.0` | 1.000000 | **22 of 24** | 0.5000 |
-| `1e-3` | 0.999230 | 0 of 24 | 0.0455 |
-| `2e-2` | 0.750482 | 0 of 24 | 0.0455 |
+| `0.0` | 1.000000 | **6 of 8** | 0.5000 |
+| `1e-3` | 0.997196 | 0 of 8 | 0.1292 |
+| `1e-2` | 0.900751 | 0 of 8 | 0.1292 |
+| `2e-2` | 0.707873 | 0 of 8 | 0.1292 |
 
 With every logit identical, `torch.topk` breaks the tie by index and sends **every** token
-to experts 0 and 1. The other 22 receive no gradient and stay dead. Entropy reports 1.000
+to experts 0 and 1. The other six receive no gradient and stay dead. Entropy reports 1.000
 throughout — **entropy alone does not detect this failure; only realised load does.**
 
-`DEFAULT_ROUTER_SCALE = 1e-3` breaks the tie randomly while keeping entropy at 99.92% of
-maximum. `scale=0.0` stays reachable as the exactly-uniform ablation, and
+The pathology is not specific to an expert count — it was first measured at 24 experts,
+where it left 22 of 24 dead — but the usable range of `scale` is, because maximum entropy is
+`ln(E)`: with fewer experts the same logit noise costs more entropy.
+
+`DEFAULT_ROUTER_SCALE = 1e-3` breaks the tie randomly while keeping entropy at 99.7% of
+maximum, and is comfortably inside the safe range at both expert counts. `scale=0.0` stays reachable as the exactly-uniform ablation, and
 `measure_router_balance` reports which was used along with routing entropy, tokens per
 expert, load share, dead experts and overloaded experts.
 

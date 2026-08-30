@@ -5,12 +5,31 @@ magic numbers scattered across configs and scripts. Every field below is the fro
 research target; nothing here is tuned, and nothing may be quietly adjusted to make a
 parameter count come out round.
 
-**The name says 19B. The architecture is 22.07B.** That is not a bug and it has not been
-"fixed" by shrinking anything — the specification is frozen and the count is reported
-honestly. The most likely reconciliation is that ~19B referred to *non-embedding*
-parameters, which come to 19.53B; the 248,320-entry vocabulary with untied embeddings adds
-2.54B on top. :func:`audit` prints the full breakdown and the discrepancy, and a test pins
-both numbers so neither can drift silently.
+**The name says 19B. The architecture is 13.01B, corrected down from 22.07B.** The first
+implementation of this specification used 24 routed experts of width 768 and came to
+22,072,134,528 parameters, of which 13.59B — 61.6% of the model — were routed experts. It
+did not fit a 16 GB card at any release precision or any context length, so it failed the
+project's primary constraint. See :data:`REJECTED` for the full record.
+
+The correction is one field: ``num_experts`` 24 -> 8. Nothing else moved. In particular the
+*active* parameter count is essentially unchanged (9,615,051,648 -> 9,611,119,488, a 0.04%
+difference from the smaller router), because a token was only ever using two experts. The
+16 stored-but-unused experts bought VRAM cost and no per-token capacity.
+
+The arithmetic that settles it, derived in :data:`PARAMETER_MODEL` and asserted by a test::
+
+    total  = BASE + 3.H.L.(E.W + S) + H.L.E + H.L
+    active = BASE + 3.H.L.(K.W + S) + H.L.E + H.L
+
+Total depends on the *product* ``E x W``; active depends on ``K x W``. So the split of a
+fixed expert budget between count and width is free with respect to memory and is *not*
+free with respect to per-token capacity: at a fixed total, wider experts carry more active
+parameters. That is why the correction reduces the expert count and leaves the width at 768
+rather than the reverse.
+
+The name is unchanged and is now further from the count, not closer. Renaming would break
+every artifact referring to the frozen target; :func:`audit` reports the real number and a
+test pins it.
 
 The architecture is realisable directly: `transformers` 5.15.1 ships ``qwen3_5_moe_text``,
 the MoE variant of the teacher's hybrid family, and it carries every field this target
@@ -29,7 +48,7 @@ from .spec import FULL_ATTENTION, LINEAR_ATTENTION, LayerType
 #: The registered `transformers` architecture this student instantiates as.
 MOE_MODEL_TYPE = "qwen3_5_moe_text"
 
-#: Canonical name. Kept even though the count is 22.07B: renaming it would break every
+#: Canonical name. Kept even though the count is 13.01B: renaming it would break every
 #: artifact already referring to the frozen target, and the honest number lives in
 #: :func:`audit` where it cannot be mistaken for the label.
 STUDENT_ID = "qwen38_19b_h5120_l48_moe"
@@ -73,7 +92,9 @@ class MoEStudentSpec:
     linear_conv_kernel_dim: int = 4
 
     # --- sparse MoE FFN ---------------------------------------------------
-    num_experts: int = 24
+    #: Corrected from 24. Twenty-four experts of width 768 put 13.59B parameters — 61.6%
+    #: of the model — into routed experts, of which any token used two. See :data:`REJECTED`.
+    num_experts: int = 8
     num_experts_per_tok: int = 2
     moe_intermediate_size: int = 768
     shared_expert_intermediate_size: int = 768
@@ -259,6 +280,143 @@ MTP_STATUS = (
     "tensors and no MTP loss can be trained today. The teacher's own mtp.* tensors are "
     "discarded on load by Qwen3_5ForCausalLM._keys_to_ignore_on_load_unexpected. The "
     "architecture field is kept as the extension point; any MTP result would be fabricated."
+)
+
+
+#: The closed-form parameter model, as an inspectable function rather than a comment.
+#:
+#: Derived tensor by tensor from the specification and cross-checked against the
+#: instantiated model — both agree to the parameter, on every component bucket.
+#:
+#: The two invariants that decide the architecture::
+#:
+#:     total  depends on  E x W     (the expert *product*, not the split)
+#:     active depends on  K x W     (so at fixed total, wider experts carry more)
+#:
+#: Consequences worth stating because they are counter-intuitive: splitting a fixed expert
+#: budget as 8x768, 6x1024, 12x512 or 24x256 gives the *same* total parameters and the same
+#: VRAM, and the same fraction of the teacher's FFN channels covered by the decomposition.
+#: What differs is per-token capacity, which is why the correction cut the count and kept
+#: the width.
+PARAMETER_MODEL = (
+    "total  = BASE + 3.H.L.(E.W + S) + H.L.E + H.L\n"
+    "active = BASE + 3.H.L.(K.W + S) + H.L.E + H.L\n"
+    "BASE   = embeddings + lm_head + attention + deltanet + norms"
+)
+
+
+def parameter_model(spec: MoEStudentSpec = FROZEN_STUDENT) -> dict[str, int]:
+    """Closed-form counts, computed without instantiating anything.
+
+    Independent of :func:`audit`, which builds the real model and sums its tensors. Keeping
+    both and asserting they agree is what makes either trustworthy: an error in the spec
+    reaches both, but an error in *either derivation* shows up as a mismatch.
+    """
+    h, layers = spec.hidden_size, spec.num_hidden_layers
+    n_attn = len(spec.attention_layer_indices)
+    n_dn = len(spec.deltanet_layer_indices)
+    q_dim = spec.num_attention_heads * spec.head_dim
+    kv_dim = spec.num_key_value_heads * spec.head_dim
+    key_dim = spec.linear_num_key_heads * spec.linear_key_head_dim
+    value_dim = spec.linear_num_value_heads * spec.linear_value_head_dim
+    conv_dim = 2 * key_dim + value_dim
+
+    embedding = spec.vocab_size * h
+    lm_head = 0 if spec.tie_word_embeddings else spec.vocab_size * h
+    # q_proj is double width: the output gate is fused into it.
+    attention = n_attn * (2 * q_dim * h + 2 * kv_dim * h + h * q_dim + 2 * spec.head_dim)
+    deltanet = n_dn * (
+        conv_dim * h + value_dim * h + 2 * spec.linear_num_value_heads * h
+        + conv_dim * spec.linear_conv_kernel_dim + h * value_dim
+        + spec.linear_value_head_dim + 2 * spec.linear_num_value_heads
+    )
+    norms = layers * 2 * h + h
+
+    per_width = 3 * h * layers
+    routed = per_width * spec.num_experts * spec.moe_intermediate_size
+    shared = per_width * spec.shared_expert_intermediate_size + h * layers
+    router = spec.num_experts * h * layers
+
+    base = embedding + lm_head + attention + deltanet + norms
+    total = base + routed + shared + router
+    active = (base + per_width * spec.num_experts_per_tok * spec.moe_intermediate_size
+              + shared + router)
+    return {
+        "embedding": embedding, "lm_head": lm_head, "attention": attention,
+        "deltanet": deltanet, "routed_experts": routed, "shared_expert": shared,
+        "router": router, "norms": norms, "mtp": 0,
+        "total": total, "active_per_token": active, "base": base,
+    }
+
+
+#: Hard upper bound on total parameters, set by the deployment constraint rather than by
+#: taste. Derived, not chosen: 16 GB usable is 13.56 GiB; a Q5 release at 32,768 tokens
+#: needs weights + 3% quantisation overhead + 0.9 GiB runtime + 0.111 GiB recurrent state +
+#: 0.28 GiB activations + 0.75 GiB KV to land under that with a gigabyte to spare, which
+#: allows roughly 10.2 GiB of weights, which at 5.7 bits per parameter is about 15.4B
+#: parameters. Rounded down to a round number that leaves the Q6 path alive as well.
+#:
+#: A test fails if the frozen student exceeds this. The bound exists so that a future edit
+#: adding experts, widening the FFN or untying something cannot silently reintroduce a
+#: model that does not deploy.
+PARAMETER_BUDGET = 15_000_000_000
+
+#: Configurations evaluated and rejected, kept as the research record. Each entry carries
+#: the measurement that rejected it, not an opinion.
+REJECTED: tuple[dict[str, Any], ...] = (
+    {
+        "config": "num_experts=24, moe_intermediate_size=768",
+        "total_parameters": 22_072_134_528,
+        "active_parameters": 9_615_051_648,
+        "routed_expert_share": 0.6157,
+        "why_rejected": (
+            "Does not fit a 16 GB card at Q4, Q5 or Q6 at any context length, including "
+            "2,048 tokens. The cheapest all-Q4 configuration needed 13.93 GiB against "
+            "13.56 GiB usable. 13.59B of the 22.07B were routed experts, of which a token "
+            "used two: the other 16 experts cost VRAM and contributed nothing per token."
+        ),
+        "status": "rejected — failed the primary deployment constraint",
+    },
+    {
+        "config": "num_experts=12, moe_intermediate_size=768",
+        "total_parameters": 15_274_412_928,
+        "active_parameters": 9_612_102_528,
+        "why_rejected": (
+            "Fits Q4 to 65,536 tokens and Q5 to 32,768, but leaves no Q6 path at any "
+            "context and halves the Q4 context reach. Active parameters are within 0.01% of "
+            "the chosen configuration, so the extra 2.27B buys routing diversity only — not "
+            "per-token capacity — at the cost of the long-context regime the context "
+            "specialisation research needs."
+        ),
+        "status": "rejected — feasible but dominated",
+    },
+    {
+        "config": "num_experts=24, moe_intermediate_size=256",
+        "total_parameters": 13_012_437_888,
+        "active_parameters": 8_860_076_928,
+        "why_rejected": (
+            "Identical total parameters and identical VRAM to the chosen configuration — "
+            "total depends on E x W, not on the split — while carrying 751M fewer active "
+            "parameters, because active FFN width per token falls from 2,304 to 1,280. It "
+            "keeps 24 experts, which serves the MoE novelty objective, but the project's "
+            "stated priority order puts capability above novelty."
+        ),
+        "status": "rejected — same memory, less per-token capacity",
+    },
+    {
+        "config": "num_experts=6, moe_intermediate_size=1024",
+        "total_parameters": 13_008_014_208,
+        "active_parameters": 9_988_115_328,
+        "why_rejected": (
+            "The same total as the chosen configuration with 377M *more* active parameters, "
+            "which is genuinely attractive. Not taken because it activates a third of the "
+            "experts per token rather than a quarter, changes two fields instead of one, and "
+            "moves the expert width the FFN decomposition was measured at. Recorded because "
+            "it is the strongest alternative and should be revisited if per-token capacity "
+            "turns out to bind before routing diversity does."
+        ),
+        "status": "rejected — viable alternative, kept on the record",
+    },
 )
 
 

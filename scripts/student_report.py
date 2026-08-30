@@ -47,11 +47,12 @@ def _memory() -> tuple[str, dict]:
     table = build_table()
     result = headline()
     text = render_table(table) + "\n\n  FINDING\n    " + _wrap(result["finding"])
-    text += "\n\n  IMPLICATION\n    " + _wrap(result["implication"])
-    fits = frontier()[:5]
-    if fits:
-        text += "\n\n    closest configurations that do fit:"
-        for row in fits:
+    text += "\n\n  FULL WINDOW\n    " + _wrap(result["full_window_note"])
+    text += "\n\n  SPARSITY\n    " + _wrap(result["sparsity_note"])
+    release = [r for r in frontier() if r["uses_release_quant_only"]][:5]
+    if release:
+        text += "\n\n    release-precision configurations, longest context each reaches:"
+        for row in release:
             text += (f"\n      experts {row['expert_quant']:<8} dense {row['dense_quant']:<8} "
                      f"embeddings {row['embedding_quant']:<8} -> "
                      f"{row['max_context']:,} tokens")

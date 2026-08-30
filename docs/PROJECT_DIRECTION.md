@@ -30,7 +30,7 @@ Three simultaneous reductions define the problem:
 | reduction | teacher | student | where it is handled |
 |---|---|---|---|
 | depth | 64 layers | 48 layers | [INITIALIZATION_METHOD.md](INITIALIZATION_METHOD.md) |
-| FFN | dense, 17408 wide | 24 experts x 768, top-2 | same |
+| FFN | dense, 17408 wide | 8 experts x 768, top-2 | same |
 | KV heads | 4 | 2 | same |
 
 Width, vocabulary and the hybrid pattern are unchanged from the teacher. That is deliberate:
@@ -44,51 +44,71 @@ Two audits were run before any training code was written, and both returned answ
 changed the plan. They are recorded here rather than in a footnote because they are the two
 facts a reader most needs in order to interpret everything else.
 
-### The frozen target weighs 22.07B, not 19B
+### The student weighs 13.01B, and getting there required a correction
+
+The first implementation of the frozen specification used 24 routed experts and came to
+**22,072,134,528** parameters — 61.57% of them routed experts, and 82% of the 26.90B
+teacher, which is not a distillation result. It did not fit a 16 GB card at any release
+precision or any context length.
+
+`num_experts` 24 → 8 is the entire correction:
 
 ```
-exact_parameter_count     22,072,134,528
-difference_from_19B       +3,072,134,528   (+16.2%)
-non_embedding             19,529,337,728
-active_per_token           9,615,051,648
+exact_parameter_count     13,008,505,728      (was 22,072,134,528)
+active_per_token           9,611,119,488      (was  9,615,051,648)
+non_embedding             10,465,708,928
+difference_from_19B       -5,991,494,272
+fraction of the teacher            48.4%      (was 82%)
 ```
 
-The name is the label the project inherited; 19.53B non-embedding is the likely origin of
-it. The architecture is frozen, so the architecture is not adjusted to make the label true
-— the difference is reported. `routed_experts` are 61.57% of the total, which is the single
-most important number for every memory decision that follows.
-
-Reproduce with `python scripts/student_report.py --section architecture`.
-
-### It does not fit 16 GB
-
-At Q4, Q5 or Q6, at any context length from 2,048 tokens upward, fully GPU-resident:
+Per-token capacity is unchanged to within 0.04%, all of it the smaller router. A token was
+only ever using two experts; the other sixteen cost VRAM and contributed nothing. Two
+invariants make that precise, and both are counter-intuitive enough to be worth stating:
 
 ```
-best all-Q4 configuration, 2,048 tokens    13.93 GiB
-usable on a real 16 GB card                13.56 GiB
-shortfall                                   0.37 GiB
+total  = BASE + 3.H.L.(E.W + S) + H.L.E + H.L      depends on the product E x W
+active = BASE + 3.H.L.(K.W + S) + H.L.E + H.L      depends on K x W
 ```
 
-The shortfall is small, which is why it is reported to two decimals rather than rounded to
-"too big". Fits begin one precision step below the release set, at 3-bit experts, reaching
-65,536 tokens.
+So splitting a fixed expert budget between count and width is free for memory and is *not*
+free for per-token capacity — which is why the correction cut the count and left the width
+at 768. `parameter_model()` computes both in closed form; `audit()` builds the model and
+sums its tensors; a test asserts they agree to the parameter on every component.
 
-A 16 GB card reports 14.56 GiB, and a process that must coexist with a display server
-should not plan on the last gigabyte of that. Planning against the nominal 16.0 GiB instead
-makes Q4 appear to reach 65,536 tokens. That gap is the entire difference between a plan
-that works and an out-of-memory error on hardware that "obviously" had room.
+The name still says 19B and the model is now 6B under it. The label is not chased in either
+direction: the 16 GB constraint set the size.
+
+Reproduce: `python scripts/student_report.py --section architecture`.
+
+### It fits 16 GB
+
+Fully GPU-resident, quantisation overhead and runtime included, every stored expert counted:
+
+| precision | weights | longest context |
+|---|---:|---:|
+| **Q4** | 7.42 GiB | **131,072** |
+| **Q5** | 8.63 GiB | **65,536** |
+| **Q6** | 9.99 GiB | **32,768** |
+
+Against 13.56 GiB usable on a real 16 GB card, with 0.5 GiB held in reserve. The full
+262,144-token window needs an 8-bit KV cache — fp16 KV alone is 6.00 GiB there — which is a
+quality decision reported as its own row rather than folded into the headline.
+
+**Inactive experts are not free.** 9.61B of 13.01B parameters are active per token, and all
+13.01B are resident. Active parameters govern compute and latency and never reduce VRAM.
+Sizing an MoE against its active count is exactly how the 22.07B architecture looked
+deployable on paper.
 
 Full accounting in [PARETO_EVALUATION.md](PARETO_EVALUATION.md);
 `python scripts/student_report.py --section memory`.
 
-**This is an open decision, not a solved problem.** Two honest options, and the choice
-belongs to whoever owns the release: ship the 22.07B target at 3-bit experts and report the
-quality cost, or reduce the expert budget. Experts are 61.6% of the weights and each token
-touches 2 of 24, so expert count and expert width are the only levers with enough mass to
-close 0.37 GiB without touching the path every token depends on. The repository does not
-make that choice unilaterally, and it does not hide the constraint by quietly re-scoping
-the target.
+### What the correction cost
+
+Stated rather than glossed: the FFN decomposition now holds 6,912 of the teacher's 17,408
+FFN channels — **39.7%, down from 100%**. The remaining 60.3% are not transferred and must
+be learned. Active width per token is unchanged at 2,304, so the reconstruction bound is
+unmoved; what shrinks is how much teacher FFN the router has to choose between. Whether that
+costs measurable quality is an open question and the first thing a pilot should measure.
 
 ---
 

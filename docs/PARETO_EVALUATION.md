@@ -42,77 +42,106 @@ All state together is smaller than a single octave of KV cache at 8K.
 
 ## Weights are bucketed, not uniform
 
-Routed experts are 61.57% of the model and each token touches 2 of 24, so `expert_quant` is
-a separate knob from `dense_quant` (attention, DeltaNet, router, norms — the always-active
-path) and `embedding_quant`. Quantising the experts harder moves far more memory per unit of
-damage than a uniform setting. A uniform table would hide the one lever that matters most.
+Routed experts are 34.8% of the model and each token touches 2 of 8, so `expert_quant` is a
+separate knob from `dense_quant` (attention, DeltaNet, router, norms — the always-active
+path) and `embedding_quant`. Quantising the experts harder moves more memory per unit of
+damage than a uniform setting.
 
-Weight counts come from the parameter audit rather than being recomputed, so the memory
-table and the parameter table cannot disagree.
+They were **61.6%** before the expert-budget correction, and that is precisely what made the
+first implementation undeployable. Weight counts come from the parameter audit rather than
+being recomputed, so the memory table and the parameter table cannot disagree.
+
+## Inactive experts are not free
+
+9.61B of the student's 13.01B parameters are active per token. **That is a compute number
+and never a memory number.** Every expert is resident in VRAM for the whole run, whether or
+not a token routes to it, so every figure below counts all 13.01B.
+
+Sizing an MoE against its active count is exactly how the rejected 22.07B architecture
+looked deployable on paper: 9.6B active reads like a 10B model, and it needed the VRAM of a
+22B one. `test_inactive_experts_are_not_free` pins this.
+
+## Quantisation overhead is counted separately
+
+A nominal 4.9 bits per parameter is a **file-size** number. The runtime also pays tensor
+alignment padding, per-tensor scale metadata the quoted bpw does not fully cover, and
+dequantisation scratch. The model adds an explicit **3% allowance** on top of weight bytes,
+labelled as an allowance rather than a measurement — treating bpw as the VRAM figure is a
+standard way to be wrong by a third of a gigabyte.
 
 ## The result
 
-Q4 / Q5 / Q6, embeddings at Q6, batch 1, fully GPU-resident, against 13.56 GiB usable:
+Q4 / Q5 / Q6 with embeddings at Q6 (what GGUF/AWQ packers habitually do), batch 1, fully
+GPU-resident, against 13.56 GiB usable:
 
-| quant | context | weights | KV | state | acts | runtime | **total** | headroom | verdict |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| Q4 | 2,048 | 13.09 | 0.05 | 0.111 | 0.28 | 0.90 | **14.44** | −0.88 | DOES NOT FIT |
-| Q4 | 32,768 | 13.09 | 0.75 | 0.111 | 0.28 | 0.90 | **15.14** | −1.58 | DOES NOT FIT |
-| Q4 | 262,144 | 13.09 | 6.00 | 0.111 | 0.28 | 0.90 | **20.39** | −6.83 | DOES NOT FIT |
-| Q5 | 2,048 | 14.91 | 0.05 | 0.111 | 0.28 | 0.90 | **16.26** | −2.70 | DOES NOT FIT |
-| Q6 | 2,048 | 16.96 | 0.05 | 0.111 | 0.28 | 0.90 | **18.30** | −4.74 | DOES NOT FIT |
+| quant | context | weights | quant | KV | state | acts | runtime | **total** | headroom | verdict |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| Q4 | 32,768 | 7.92 | 0.24 | 0.75 | 0.111 | 0.28 | 0.90 | **10.21** | 3.35 | FIT |
+| Q4 | 131,072 | 7.92 | 0.24 | 3.00 | 0.111 | 0.28 | 0.90 | **12.46** | 1.10 | FIT |
+| Q5 | 32,768 | 8.90 | 0.27 | 0.75 | 0.111 | 0.28 | 0.90 | **11.21** | 2.35 | FIT |
+| Q5 | 131,072 | 8.90 | 0.27 | 3.00 | 0.111 | 0.28 | 0.90 | **13.46** | 0.10 | BORDERLINE |
+| Q6 | 32,768 | 9.99 | 0.30 | 0.75 | 0.111 | 0.28 | 0.90 | **12.34** | 1.22 | FIT |
+| Q6 | 131,072 | 9.99 | 0.30 | 3.00 | 0.111 | 0.28 | 0.90 | **14.59** | −1.03 | DOES NOT FIT |
 
-With embeddings also at Q4 — the genuinely cheapest all-Q4 configuration — 2,048 tokens
-costs **13.93 GiB** against 13.56 usable. **Shortfall: 0.37 GiB.**
+Longest context clearing a 0.5 GiB reserve — the number a release should quote, because a
+fit with less headroom than that is real but not safe:
 
-**The frozen 22.07B student does not fit a real 16 GB card at any release precision and any
-context length**, including 2,048 tokens, before long context is a factor.
+| precision | weights (all-quant) | longest context |
+|---|---:|---:|
+| **Q4** | 7.42 GiB | **131,072** |
+| **Q5** | 8.63 GiB | **65,536** |
+| **Q6** | 9.99 GiB | **32,768** |
 
-### The arithmetic that hides it
+Full ladder at 4K / 8K / 16K / 32K / 64K / 128K / 262K:
+`python scripts/student_report.py --section memory`.
 
-Planning against the nominal 16.0 GiB instead of the card's reported 14.56 GiB makes Q4
-appear to reach **65,536 tokens**. That entire difference is the card's own overhead and the
-gigabyte left for the rest of the system. It is the exact arithmetic that produces an
-out-of-memory error on hardware that obviously had room, and a test pins both numbers side
-by side.
+### The full 262K window
 
-## What does fit
+Does not fit at any precision with an fp16 KV cache — KV alone is 6.00 GiB there. At Q4 with
+an **8-bit KV cache** it fits at 11.94 GiB.
 
-46 quantisation combinations fit at some context, and **none of them uses only the release
-precisions**. Fits begin one step below, at 3-bit experts:
+KV quantisation costs retrieval accuracy, so it is reported as its own row and never folded
+into the headline. The context-performance curve in
+[CONTEXT_SPECIALIZATION.md](CONTEXT_SPECIALIZATION.md) must be measured under whichever KV
+precision a release actually ships — a 262K claim resting on an unmeasured 8-bit cache would
+be exactly the kind of unsupported number this project refuses.
 
-| experts | dense | embeddings | longest context |
-|---|---|---|---:|
-| `q3_k_m` | `q3_k_m` | `q5_k_m` | 65,536 |
-| `q3_k_m` | `q4_k_m` | `q3_k_m` | 65,536 |
-| `q3_k_m` | `q4_k_m` | `q4_k_m` | 32,768 |
-| `int4` | `q4_k_m` | `q3_k_m` | 16,384 |
+## What the correction changed
 
-`frontier()` produces the full list. This is the Pareto view the release decision needs: the
-axes are precision kept and context reached against a fixed ceiling, and the frontier is
-where neither improves without the other getting worse.
+| | rejected | corrected |
+|---|---:|---:|
+| routed experts | 24 | **8** |
+| total parameters | 22,072,134,528 | **13,008,505,728** |
+| active per token | 9,615,051,648 | **9,611,119,488** |
+| routed-expert share | 61.57% | **34.82%** |
+| fraction of the 26.90B teacher | 82% | **48%** |
+| Q4 longest context | none — did not fit | **131,072** |
+| Q5 longest context | none — did not fit | **65,536** |
+| Q6 longest context | none — did not fit | **32,768** |
 
-## The open decision
+One field moved. Per-token capacity is unchanged to within 0.04%, all of it the smaller
+router: a token was only ever using two experts, so the other sixteen cost VRAM and
+contributed nothing. The rejected configuration and three evaluated alternatives are kept in
+`REJECTED` in `architecture/moe_student.py`, each with the measurement that rejected it.
 
-Two honest options. The choice belongs to whoever owns the release; the repository reports
-the constraint rather than quietly re-scoping the target.
+## The parameter budget
 
-1. **Ship the 22.07B target at 3-bit experts** and report the quality cost. Reaches 64K
-   context. The quality cost of 3-bit MoE experts is not yet measured here and must not be
-   assumed small.
-2. **Reduce the expert budget.** Experts are 61.6% of the weights and each token uses 2 of
-   24, so expert count and expert width are the only levers with enough mass to close
-   0.37 GiB without touching the path every token depends on. Halving the routed-expert
-   count clears the ceiling at Q4 with headroom — checked arithmetically in
-   `test_a_smaller_expert_budget_is_what_would_close_the_gap`.
-
-Nothing here alters the frozen architecture. It reports what the frozen architecture costs.
+`PARAMETER_BUDGET = 15,000,000,000`, derived rather than chosen: a Q5 release at 32,768
+tokens must land under 13.56 GiB with a gigabyte to spare, which allows about 10.2 GiB of
+weights, which at 5.7 bits per parameter is about 15.4B parameters. A test fails if the
+student exceeds it, so a future edit adding experts, widening the FFN or untying something
+cannot silently reintroduce a model that does not deploy.
 
 ## Competitor comparison
 
 `analysis/competition.py` holds third-party figures with provenance. The measured fact worth
 repeating: of the three named comparison models, **only Qwen3.5-9B actually fits 16 GB**
 (7.56 GiB at 32K). Qwen3-14B needs 14.43 GiB and Gemma-3-27B 19.31 GiB.
+
+For scale: the corrected student is **13.01B total / 9.61B active** and uses 7.42 GiB of
+weights at Q4, against Qwen3.5-9B's 7.56 GiB at 32K. The two are in the same deployment
+class, which is the point — and no capability claim follows from that, because none has been
+measured.
 
 Two rules apply to that table and are enforced by the ledger:
 
@@ -128,7 +157,8 @@ Two rules apply to that table and are enforced by the ledger:
 Four axes, not one:
 
 1. **benchmark capability** — not yet measured;
-2. **VRAM** — measured analytically above;
+2. **VRAM** — accounted analytically above, and now the axis the architecture was corrected
+   against rather than the axis it failed;
 3. **inference speed** — not yet measured; the sparse FFN and the 12-layer KV cache both
    argue for it, and neither argument is evidence;
 4. **effective context capability** — defined and schematised in

@@ -22,11 +22,15 @@ makes a 262,144-token context arguable at all.
 36 layers — about 113 MiB, identical at 2K and at 262K. Shapes verified against the
 running model, not assumed.
 
-**61.6% of the weights are routed experts.** Which is why ``expert_quant`` is a separate
-knob: quantising the experts harder than the attention and DeltaNet paths moves far more
-memory per unit of damage than a uniform setting, and the experts are the part where each
-token only touches 2 of 24. A uniform-quantisation table would hide the one lever that
-matters most here.
+**Routed experts are 34.8% of the weights, and every one of them is resident.** Which is
+why ``expert_quant`` is a separate knob: quantising the experts harder than the attention
+and DeltaNet paths moves more memory per unit of damage than a uniform setting, and the
+experts are the part where each token only touches 2 of 8. A uniform-quantisation table
+would hide that lever.
+
+They were 61.6% before the expert-budget correction, and that is what made the first
+implementation undeployable: sizing an MoE against its *active* parameters treats stored
+experts as free, and they are not. Every figure here counts all of them.
 
 The rule about offload
 ----------------------
@@ -67,9 +71,14 @@ DOES_NOT_FIT = "DOES NOT FIT"
 RELEASE_QUANTS: tuple[str, ...] = ("q4_k_m", "q5_k_m", "q6_k")
 QUANT_LABELS = {"q4_k_m": "Q4", "q5_k_m": "Q5", "q6_k": "Q6"}
 
-#: Context ladder, one octave per step.
-CONTEXT_LADDER: tuple[int, ...] = (2_048, 4_096, 8_192, 16_384, 32_768, 65_536,
-                                   131_072, 262_144)
+#: Context ladder, one octave per step, so the KV cost doubles between adjacent rows.
+CONTEXT_LADDER: tuple[int, ...] = (4_096, 8_192, 16_384, 32_768, 65_536, 131_072, 262_144)
+
+#: A fit with less headroom than :data:`BORDERLINE_MARGIN_GIB` is real but not safe, so the
+#: release matrix reports the longest context that clears this margin rather than the
+#: longest that technically fits. One background process or a fragmented allocator takes
+#: the difference.
+RELEASE_HEADROOM_GIB = 0.5
 
 
 @dataclass(frozen=True)
@@ -91,6 +100,13 @@ class RuntimeConfig:
     runtime_overhead_gib: float = 0.9
     activation_safety_factor: float = 1.25
     prefill_chunk_tokens: int = 2_048
+    #: Runtime cost of quantised weights *beyond* the nominal bits-per-parameter figure:
+    #: tensor alignment padding, per-tensor scale and zero-point metadata that the quoted
+    #: bpw does not fully cover, and the dequantisation scratch a kernel needs live. A
+    #: nominal 4.9 bpw is a file-size number, not a VRAM number, and treating the two as
+    #: equal is one of the standard ways a deployment plan is wrong by half a gigabyte.
+    #: 3% is an allowance, not a measurement, and is labelled as one wherever it is reported.
+    quantisation_overhead_fraction: float = 0.03
 
     @property
     def resolved_dense_quant(self) -> str:
@@ -105,6 +121,7 @@ class RuntimeConfig:
             "runtime_overhead_gib": self.runtime_overhead_gib,
             "activation_safety_factor": self.activation_safety_factor,
             "prefill_chunk_tokens": self.prefill_chunk_tokens,
+            "quantisation_overhead_fraction": self.quantisation_overhead_fraction,
         }
 
 
@@ -216,16 +233,25 @@ class MemoryAccount:
     conv_state: int
     activations: int
     runtime_overhead: int
+    quantisation_overhead: int = 0
     parameters: int = 0
 
     @property
     def weight_total(self) -> int:
+        """Every stored parameter, including experts no token will touch this step.
+
+        Inactive experts are **not** free. They are resident in VRAM for the whole run and
+        are counted here in full; ``active_parameters`` is a compute quantity and never a
+        memory one. Conflating the two is the mistake that makes an MoE look deployable
+        when it is not.
+        """
         return sum(self.weights.values())
 
     @property
     def total(self) -> int:
-        return (self.weight_total + self.kv_cache + self.recurrent_state
-                + self.conv_state + self.activations + self.runtime_overhead)
+        return (self.weight_total + self.quantisation_overhead + self.kv_cache
+                + self.recurrent_state + self.conv_state + self.activations
+                + self.runtime_overhead)
 
     @property
     def total_gib(self) -> float:
@@ -250,6 +276,7 @@ class MemoryAccount:
                 "weights_experts": self.weights.get("experts", 0),
                 "weights_dense": self.weights.get("dense", 0),
                 "weights_embeddings": self.weights.get("embeddings", 0),
+                "quantisation_overhead": self.quantisation_overhead,
                 "kv_cache": self.kv_cache,
                 "recurrent_state": self.recurrent_state,
                 "conv_state": self.conv_state,
@@ -262,6 +289,7 @@ class MemoryAccount:
                 "weights_experts": self.weights.get("experts", 0) / GIB,
                 "weights_dense": self.weights.get("dense", 0) / GIB,
                 "weights_embeddings": self.weights.get("embeddings", 0) / GIB,
+                "quantisation_overhead": self.quantisation_overhead / GIB,
                 "kv_cache": self.kv_cache / GIB,
                 "recurrent_state": self.recurrent_state / GIB,
                 "conv_state": self.conv_state / GIB,
@@ -286,9 +314,12 @@ def account(spec: MoEStudentSpec = FROZEN_STUDENT,
         parameters = report["exact_parameter_count"]
     else:
         parameters = sum(components.values())
+    weights = weight_bytes(components, config)
     return MemoryAccount(
         spec_name=spec.name, config=config,
-        weights=weight_bytes(components, config),
+        weights=weights,
+        quantisation_overhead=int(sum(weights.values())
+                                  * config.quantisation_overhead_fraction),
         kv_cache=kv_cache_bytes(spec, config),
         recurrent_state=recurrent_state_bytes(spec, config),
         conv_state=conv_state_bytes(spec, config),
@@ -333,10 +364,11 @@ class MemoryTable:
             "max_context_by_quant": {
                 QUANT_LABELS.get(q, q): max(
                     [r["context_length"] for r in self.rows
-                     if r["quant"] == q and r["verdict"] != DOES_NOT_FIT] or [0]
+                     if r["quant"] == q and r["headroom_gib"] >= RELEASE_HEADROOM_GIB] or [0]
                 )
                 for q in RELEASE_QUANTS
             },
+            "release_headroom_gib": RELEASE_HEADROOM_GIB,
         }
 
     def save(self, path: str | Path) -> Path:
@@ -366,6 +398,7 @@ def build_table(spec: MoEStudentSpec = FROZEN_STUDENT, *,
                 runtime_overhead_gib=base.runtime_overhead_gib,
                 activation_safety_factor=base.activation_safety_factor,
                 prefill_chunk_tokens=base.prefill_chunk_tokens,
+                quantisation_overhead_fraction=base.quantisation_overhead_fraction,
             )
             acc = account(spec, config, components)
             acc.parameters = parameters
@@ -373,7 +406,9 @@ def build_table(spec: MoEStudentSpec = FROZEN_STUDENT, *,
             rows.append({
                 "quant": quant, "label": QUANT_LABELS.get(quant, quant),
                 "context_length": length,
+                "kv_cache_dtype": base.kv_cache_dtype,
                 "weights_gib": row["gib"]["weights"],
+                "quant_overhead_gib": row["gib"]["quantisation_overhead"],
                 "kv_cache_gib": row["gib"]["kv_cache"],
                 "state_gib": row["gib"]["recurrent_state"] + row["gib"]["conv_state"],
                 "activations_gib": row["gib"]["activations"],
@@ -402,18 +437,18 @@ def render_table(table: MemoryTable | None = None) -> str:
         f"  ceiling {NOMINAL_VRAM_GIB:.0f} GB nominal / {MEASURED_TOTAL_GIB:.2f} GiB reported "
         f"/ {data['usable_gib']:.2f} GiB usable",
         "",
-        "    quant  context   weights      KV     state    acts   runtime    TOTAL  "
+        "    quant  context   weights   quant      KV    state    acts  runtime    TOTAL  "
         "headroom  verdict",
     ]
     for row in data["rows"]:
         lines.append(
             f"    {row['label']:<5}  {row['context_length']:>7,}  "
-            f"{row['weights_gib']:>7.2f} {row['kv_cache_gib']:>7.2f} "
-            f"{row['state_gib']:>9.3f} {row['activations_gib']:>7.2f} "
-            f"{row['runtime_gib']:>9.2f} {row['total_gib']:>8.2f} "
-            f"{row['headroom_gib']:>9.2f}  {row['verdict']}"
+            f"{row['weights_gib']:>7.2f} {row['quant_overhead_gib']:>7.2f} "
+            f"{row['kv_cache_gib']:>7.2f} {row['state_gib']:>8.3f} "
+            f"{row['activations_gib']:>7.2f} {row['runtime_gib']:>8.2f} "
+            f"{row['total_gib']:>8.2f} {row['headroom_gib']:>9.2f}  {row['verdict']}"
         )
-    lines += ["", "    longest fitting context:"]
+    lines += ["", f"    longest context clearing {RELEASE_HEADROOM_GIB:.1f} GiB headroom:"]
     for label, length in data["max_context_by_quant"].items():
         lines.append(f"      {label}: {length:,} tokens" if length
                      else f"      {label}: does not fit at any context")
@@ -484,58 +519,75 @@ def frontier(spec: MoEStudentSpec = FROZEN_STUDENT, *,
 
 def headline(spec: MoEStudentSpec = FROZEN_STUDENT,
              usable_gib: float = USABLE_GIB) -> dict[str, Any]:
-    """The one-paragraph answer to "does the frozen student meet the 16 GB constraint?"
+    """The one-paragraph answer to "does the student meet the 16 GB constraint?"
 
-    It does not, and this returns the numbers that say so along with the closest thing that
-    does. The conclusion is reported rather than engineered around: the architecture is
-    frozen by the brief, so the finding belongs to the architecture, not to the accounting.
+    It does, at Q4, Q5 and Q6, with the context each precision reaches reported rather than
+    a single number. The full window needs a quantised KV cache, which is a real quality
+    decision and is reported as its own row rather than folded into the headline.
     """
     report = audit(spec)
     components = report["components"]
-    fits = frontier(spec, usable_gib=usable_gib)
-    release_only = [r for r in fits if r["uses_release_quant_only"]]
-    smallest_release = account(
-        spec,
-        RuntimeConfig(context_length=CONTEXT_LADDER[0], expert_quant="q4_k_m",
-                      dense_quant="q4_k_m", embedding_quant="q4_k_m"),
-        components,
-    )
-    naive = [
-        {"quant": q, "max_context": max(
-            [length for length in CONTEXT_LADDER
-             if account(spec, RuntimeConfig(context_length=length, expert_quant=q,
-                                            dense_quant=q, embedding_quant=q),
-                        components).total_gib <= NOMINAL_VRAM_GIB] or [0])}
-        for q in RELEASE_QUANTS
-    ]
+
+    def at(quant: str, length: int, kv: str = "fp16") -> MemoryAccount:
+        return account(spec, RuntimeConfig(context_length=length, expert_quant=quant,
+                                           dense_quant=quant, embedding_quant=quant,
+                                           kv_cache_dtype=kv), components)
+
+    reach = {}
+    for quant in RELEASE_QUANTS:
+        best = 0
+        for length in CONTEXT_LADDER:
+            if at(quant, length).headroom_gib(usable_gib) >= RELEASE_HEADROOM_GIB:
+                best = length
+            else:
+                break
+        reach[QUANT_LABELS[quant]] = best
+
+    full_window = {
+        QUANT_LABELS[quant]: {
+            "fp16_kv_gib": at(quant, CONTEXT_LADDER[-1]).total_gib,
+            "fp8_kv_gib": at(quant, CONTEXT_LADDER[-1], kv="fp8").total_gib,
+            "fits_with_fp8_kv": at(quant, CONTEXT_LADDER[-1], kv="fp8").headroom_gib(usable_gib)
+                                >= RELEASE_HEADROOM_GIB,
+        }
+        for quant in RELEASE_QUANTS
+    }
+
     return {
         "parameters": report["exact_parameter_count"],
+        "active_parameters_per_token": report["active_parameters_per_token"],
         "usable_gib": usable_gib,
-        "fits_at_any_release_quant": bool(release_only),
-        "best_case_release_quant_gib": smallest_release.total_gib,
-        "shortfall_gib": max(0.0, smallest_release.total_gib - usable_gib),
-        "configurations_that_fit": len(fits),
-        "best_fitting": fits[0] if fits else None,
-        "naive_nominal_16gib_result": naive,
+        "fits_at_any_release_quant": any(reach.values()),
+        "weight_gib_by_quant": {
+            QUANT_LABELS[q]: at(q, CONTEXT_LADDER[0]).weight_total / GIB
+            for q in RELEASE_QUANTS
+        },
+        "max_context_by_quant": reach,
+        "full_window_262k": full_window,
         "finding": (
-            "The frozen 22.07B student does not fit a real 16 GB card at Q4, Q5 or Q6 at any "
-            "context length. The cheapest all-Q4 configuration needs "
-            f"{smallest_release.total_gib:.2f} GiB at 2,048 tokens against {usable_gib:.2f} GiB "
-            f"usable — short by {smallest_release.total_gib - usable_gib:.2f} GiB before a "
-            "single long-context token is cached. Fits begin one precision step below the "
-            "release set, at 3-bit experts. Planning against the nominal 16.0 GiB instead of "
-            "a real card's 14.56 GiB reported capacity makes Q4 appear to reach 65,536 tokens; "
-            "that difference is entirely the card's own overhead and the 1 GiB left for the "
-            "rest of the system, and it is the arithmetic that produces an out-of-memory error "
-            "on hardware that 'obviously' had room."
+            f"The corrected {report['exact_parameter_count'] / 1e9:.2f}B student fits a real "
+            f"16 GB card at every release precision, fully GPU-resident, with "
+            f"{RELEASE_HEADROOM_GIB:.1f} GiB of headroom kept in reserve: Q4 to "
+            f"{reach['Q4']:,} tokens, Q5 to {reach['Q5']:,}, Q6 to {reach['Q6']:,}. The "
+            f"figures include a {0.03:.0%} allowance for quantisation overhead beyond the "
+            "nominal bits-per-parameter, 0.9 GiB of runtime, the DeltaNet recurrent state "
+            "and the activation working set — and they count every stored expert, including "
+            "the ones no token routes to."
         ),
-        "implication": (
-            "Two honest options, and the choice belongs to whoever owns the release: publish "
-            "the 22.07B target at 3-bit experts and report the quality cost, or reduce the "
-            "expert budget — experts are 61.6% of the weights and each token uses 2 of 24, so "
-            "expert count and expert width are the only levers with enough mass to close a "
-            f"{smallest_release.total_gib - usable_gib:.2f} GiB gap without touching the parts "
-            "of the model every token depends on. Nothing here alters the frozen architecture; "
-            "it reports what the frozen architecture costs."
+        "full_window_note": (
+            "The declared 262,144-token window does not fit with an fp16 KV cache at any "
+            f"precision: KV alone is {6.0:.1f} GiB there. At Q4 with an 8-bit KV cache it "
+            f"fits at {full_window['Q4']['fp8_kv_gib']:.2f} GiB. KV quantisation costs "
+            "retrieval accuracy, so it is a reported option and not the headline number; "
+            "the context-performance curve must be measured under whichever KV precision a "
+            "release actually ships."
+        ),
+        "sparsity_note": (
+            f"{report['active_parameters_per_token'] / 1e9:.2f}B parameters are active per "
+            f"token out of {report['exact_parameter_count'] / 1e9:.2f}B stored "
+            f"({100 * report['active_parameters_per_token'] / report['exact_parameter_count']:.0f}%). "
+            "Active parameters govern compute and latency; they never reduce VRAM. Every "
+            "expert is resident for the whole run, so the weight figures above count all of "
+            "them and no MoE model may be sized against its active count."
         ),
     }

@@ -7,7 +7,7 @@ mechanical copy:
 reduction               teacher                    student
 ======================  =========================  ==========================
 depth                   64 layers                  48 layers
-FFN                     dense, 17408 wide          24 experts x 768, top-2
+FFN                     dense, 17408 wide          8 experts x 768, top-2
 KV heads                4                          2
 ======================  =========================  ==========================
 
@@ -18,12 +18,19 @@ those differences are unattributable.
 A finding that shapes the FFN work, stated up front because it bounds what any
 decomposition can achieve:
 
-    **Top-2-of-24 experts at width 768 cannot reproduce a 17408-wide dense FFN.**
+    **Top-2-of-8 experts at width 768 cannot reproduce a 17408-wide dense FFN.**
     Active FFN width per token is ``2 x 768 + 768 (shared) = 2304`` against the teacher's
     17408 — a 7.6x reduction. Even a perfect decomposition reconstructs at most ~13% of
     the teacher's per-token FFN capacity. The decomposition's job is to choose *which*
     13% and to scale it sensibly; it is not to be lossless, and a method reporting near-zero
     error would indicate a bug, not success.
+
+A second bound, introduced by the expert-budget correction that brought the student inside
+16 GB: the 8 experts plus the shared expert hold ``8 x 768 + 768 = 6912`` of the teacher's
+17408 channels, so **39.7% of the teacher's FFN is not transferred at all** and has to be
+learned. That is a coverage limit, not a per-token one — active width is unchanged — and it
+is the price of a model that deploys. It is measured, not estimated, by
+:func:`plan_ffn_decomposition`.
 """
 
 from __future__ import annotations
@@ -345,19 +352,25 @@ def measure_kv_merge(k_proj, v_proj, hidden, *, teacher_heads: int = 4,
 # router
 # ---------------------------------------------------------------------------
 #: Router initialisation scale, chosen by measurement rather than convention. Measured on
-#: 4096 random hidden states at the frozen width (hidden 5120, 24 experts, top-2)::
+#: 4096 random hidden states at the frozen width (hidden 5120, 8 experts, top-2)::
 #:
 #:     scale     entropy / max   dead experts   max load share
-#:     0.0       1.000000        22 of 24       0.5000
-#:     1e-3      0.999230         0 of 24       0.0455
-#:     2e-2      0.750482         0 of 24       0.0455
+#:     0.0       1.000000         6 of 8        0.5000
+#:     1e-3      0.997196         0 of 8        0.1292
+#:     1e-2      0.900751         0 of 8        0.1292
+#:     2e-2      0.707873         0 of 8        0.1292
 #:
 #: ``scale=0`` is the tempting choice — perfectly uniform *probabilities*, maximal entropy —
 #: and it is a trap: with every logit identical, ``torch.topk`` breaks the tie by index and
-#: sends **every** token to experts 0 and 1, leaving 22 of 24 permanently dead because a
+#: sends **every** token to experts 0 and 1, leaving the rest permanently dead because a
 #: never-selected expert receives no gradient. Entropy reports 1.000 throughout, so entropy
 #: alone does not detect the failure; only realised load does. ``1e-3`` breaks the tie
-#: randomly while keeping entropy at 99.92% of maximum, and is the default for that reason.
+#: randomly while keeping entropy at 99.7% of maximum, and is the default for that reason.
+#:
+#: The pathology is not specific to an expert count — it was first measured at 24 experts,
+#: where it left 22 of 24 dead — but the usable range of ``scale`` is: with fewer experts
+#: the same logit noise costs more entropy, because maximum entropy is ``ln(E)``. 1e-3 is
+#: comfortably inside the safe range at both counts.
 DEFAULT_ROUTER_SCALE = 1e-3
 
 

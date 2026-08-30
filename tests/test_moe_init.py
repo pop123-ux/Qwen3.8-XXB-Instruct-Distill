@@ -135,7 +135,7 @@ def test_mapping_serialises_for_the_ledger():
 
 
 # ---------------------------------------------------------------------------
-# dense FFN -> 24 experts
+# dense FFN -> 8 experts
 # ---------------------------------------------------------------------------
 def test_decomposition_partitions_rather_than_duplicating_the_teacher(tiny, teacher_ffn):
     """The explicitly forbidden shortcut is copying the whole teacher FFN into every
@@ -204,6 +204,32 @@ def test_active_width_is_the_documented_fraction_of_the_teacher():
     assert plan.teacher_intermediate == TEACHER_FFN_INTERMEDIATE == 17408
     ratio = plan.active_width / TEACHER_FFN_INTERMEDIATE
     assert 0.12 < ratio < 0.14
+
+
+def test_channel_coverage_is_the_price_paid_for_fitting_sixteen_gb():
+    """The expert-budget correction's real cost, measured rather than glossed.
+
+    With 24 experts the decomposition could hold every one of the teacher's 17,408 FFN
+    channels somewhere. With 8 it holds 6,912 of them — 39.7%. The remaining 60.3% are
+    dropped at initialisation and have to be learned rather than transferred.
+
+    What did *not* change is what any single token sees: active width is still 2,304, so
+    the reconstruction bound is unmoved. The loss is in how much teacher FFN the router has
+    to choose between, not in per-token capacity."""
+    from dataclasses import replace
+
+    plan = mi.plan_ffn_decomposition(FROZEN_STUDENT, importance=None)
+    assert plan.coverage == pytest.approx(6912 / 17408, rel=1e-3)
+    assert 0.39 < plan.coverage < 0.40
+    # Coverage is fixed by the expert budget, not by how it is split between count and
+    # width: the same total parameters buy the same coverage either way.
+    resplit = mi.plan_ffn_decomposition(
+        replace(FROZEN_STUDENT, num_experts=24, moe_intermediate_size=256), importance=None
+    )
+    assert resplit.coverage == pytest.approx(plan.coverage, rel=1e-3)
+    # ... but the resplit carries strictly less per-token capacity, which is why the
+    # correction cut the count and kept the width.
+    assert resplit.active_width < plan.active_width
 
 
 # ---------------------------------------------------------------------------
