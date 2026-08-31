@@ -371,9 +371,65 @@ def test_an_unpinned_revision_is_flagged_rather_than_accepted(loaded):
     assert "not reproducible" in identity["pinning_note"]
 
 
+PINNED = "0f9e8d7c6b5a49382716051423f6e5d4c3b2a190"
+
+
 def test_a_pinned_revision_reaches_the_plan():
-    plan = TeacherLoadPlan(revision="abc123")
-    assert plan.to_dict()["revision"] == "abc123"
+    plan = TeacherLoadPlan(revision=PINNED)
+    assert plan.to_dict()["revision"] == PINNED
+    assert plan.validate() == []
+
+
+# --- the revision gate ------------------------------------------------------
+def test_a_hub_load_without_a_revision_is_refused_before_anything_downloads():
+    """A repo id does not name weights: the same id serves different bytes over time. The
+    check lives in validate() so every caller inherits it, and validate() runs before the
+    first byte is fetched."""
+    problems = TeacherLoadPlan(model=DEFAULT_TEACHER_MODEL).validate()
+    assert any("--revision is required" in p for p in problems), problems
+
+
+@pytest.mark.parametrize("revision", ["main", "master", "latest", "HEAD", "refs/heads/main"])
+def test_a_moving_pointer_is_refused(revision):
+    """These look like a pin and are not one: they resolve to whatever the repository holds
+    at load time, which is the substitution the gate exists to prevent."""
+    problems = TeacherLoadPlan(revision=revision).validate()
+    assert any("moving pointer" in p for p in problems), problems
+
+
+@pytest.mark.parametrize("revision", ["v1.0", "release-2", "main~1", "zzzzzzz", "abc12"])
+def test_something_that_is_not_a_commit_id_is_refused(revision):
+    """Tags and branches can be moved or deleted upstream; only a commit id cannot change
+    what it names. 'abc12' is five characters, below the seven-character minimum."""
+    problems = TeacherLoadPlan(revision=revision).validate()
+    assert any("not a commit SHA" in p for p in problems), problems
+
+
+@pytest.mark.parametrize("revision", ["a1b2c3d", PINNED, PINNED.upper()])
+def test_a_commit_id_is_accepted(revision):
+    assert TeacherLoadPlan(revision=revision).validate() == []
+
+
+def test_a_local_load_may_omit_the_revision():
+    """The bytes on disk are the pin. Requiring a SHA here would block every fixture."""
+    plan = TeacherLoadPlan(local_path="/checkpoints/qwen", revision=None)
+    assert plan.is_hub_load is False
+    assert plan.validate() == []
+
+
+def test_a_local_load_still_records_a_revision_when_one_is_given():
+    """A directory does not say which upstream commit produced it, so the SHA is worth
+    carrying even when it is not required."""
+    plan = TeacherLoadPlan(local_path="/checkpoints/qwen", revision=PINNED)
+    assert plan.validate() == []
+    assert plan.to_dict()["revision"] == PINNED
+
+
+def test_the_gate_does_not_weaken_the_missing_weights_gate():
+    """Two independent safety properties; adding the revision check must not have replaced
+    the one that rejects a checkpoint whose tensors did not load."""
+    problems = TeacherLoadPlan(model="", revision=PINNED).validate()
+    assert any("non-empty" in p for p in problems)
 
 
 def test_the_load_report_records_what_was_discarded(loaded):

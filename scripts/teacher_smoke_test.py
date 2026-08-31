@@ -71,7 +71,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--model", default=DEFAULT_TEACHER_MODEL)
-    parser.add_argument("--revision", default=None, help="commit SHA; unpinned is flagged")
+    parser.add_argument("--revision", default=None,
+                        help="exact commit SHA. Required for a hub load; a repo id alone "
+                             "does not pin weights. Omit only with --local-path.")
     parser.add_argument("--local-path", default=None,
                         help="load from a directory instead of the hub")
     parser.add_argument("--dtype", default="auto")
@@ -100,23 +102,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  --max-memory is not valid JSON: {exc}", file=sys.stderr)
         return 2
 
-    if args.revision is None and args.local_path is None:
-        print(
-            "  --revision is required for a hub load. The same repo id serves different "
-            "weights over time,\n  so an unpinned run cannot be reproduced and its tail-mass "
-            "numbers could not be\n  attributed to a specific checkpoint later. Pass the "
-            "commit SHA from the model's\n  Hugging Face page. (--local-path runs without "
-            "one, for fixtures.)",
-            file=sys.stderr,
-        )
-        return 2
-
     plan = TeacherLoadPlan(
         model=args.model, revision=args.revision, local_path=args.local_path,
         dtype=args.dtype, device_map=None if args.device == "cpu" else args.device,
         quantization=args.quantization, max_memory=max_memory,
         offload_folder=args.offload_folder,
     )
+    # The revision gate lives in TeacherLoadPlan.validate() so every caller gets it, not
+    # only this script. It runs before anything downloads.
     problems = plan.validate()
     if problems:
         print("  invalid load plan:\n    - " + "\n    - ".join(problems), file=sys.stderr)
@@ -129,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     estimate = teacher_memory_estimate(4096, args.quantization)
     print(f"\n{RULE}\nTEACHER SMOKE TEST\n{RULE}")
     print(f"  model          : {plan.source}")
-    print(f"  revision       : {args.revision or 'UNPINNED — result is not reproducible'}")
+    print(f"  revision       : {args.revision or 'local checkpoint — the bytes on disk are the pin'}")
     print(f"  dtype / quant  : {args.dtype} / {args.quantization or 'none'}")
     print(f"  device map     : {plan.device_map or 'cpu'}")
     if is_project_teacher:

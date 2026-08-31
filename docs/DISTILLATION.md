@@ -39,7 +39,7 @@ It is the wrong choice for a distilled student, and not marginally:
 
 **Still missing:** `vendor/qwen38-metadata/` carries `config.json`, `tokenizer_config.json`
 and the chat template, but **no `tokenizer.json`**. The corpus pipeline is byte-level, so
-a Qwen-vocabulary student has no tokenised corpus yet. `scripts/distill_pilot.py` detects
+a Qwen-vocabulary student has no tokenised corpus yet. `scripts/chain_selftest.py` detects
 this and stops with the reason rather than training against mis-encoded text.
 
 ---
@@ -230,7 +230,7 @@ real distillation available — it needs no teacher-generated answers at all.
 
 ## 7. The pilot
 
-`scripts/distill_pilot.py` runs the whole chain in one command: plan → materialise →
+`scripts/chain_selftest.py` runs the whole chain in one command: plan → materialise →
 evaluate cold → distil → checkpoint.
 
 **Stage 0 — `--stand-in`.** A small randomly-initialised teacher, structured like the real
@@ -246,7 +246,7 @@ that checkpoint — not the architecture spec — is what training loads. This i
 convenience: the trainer builds its student from the config, so passing it a spec would
 rebuild a random model and discard the transfer, while still printing a transfer report, a
 cold evaluation and a falling KD loss. Every number would look right and the run would
-mean nothing. `tests/test_distill_pilot.py` pins it. Keeping the artifact also matters at
+mean nothing. `tests/test_chain_selftest.py` pins it. Keeping the artifact also matters at
 Stage 1 for its own sake: a 54 GB transfer is not something to redo per run, and
 `--transfer-only` produces it without training.
 
