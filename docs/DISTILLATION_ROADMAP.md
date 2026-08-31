@@ -1,22 +1,34 @@
 # Distillation roadmap
 
 Where the project is on the path to a benchmarked 16 GB model, and what the next step is.
+Direction and goals: [PROJECT_DIRECTION.md](PROJECT_DIRECTION.md).
 
 > **Distillation is not complete.** No student has been distilled from the real teacher. No
-> benchmark has been run. This document says what now works and what does not.
+> benchmark has been run. No external compute has been used. This document says what now
+> works and what does not.
 
 ---
 
 ## 1. State of the chain
 
-**The project has left the from-scratch ladder.** Levels 2 / 2R / 3 were byte-level
-from-scratch experiments; their records stand and their tokenizer path still works, but
-they are history. Nothing further is built on them, and no Level 4 exists or should.
+The target is now a single frozen student, `qwen38_19b_h5120_l48_moe` — 48 layers,
+36 DeltaNet + 12 full attention, 8 routed experts with top-2 routing and one shared
+expert. It is not a ladder and not a search space; see
+[STUDENT_ARCHITECTURE.md](STUDENT_ARCHITECTURE.md). The earlier dense candidates are
+retained as historical baselines, not deleted.
 
 ```
     historical from-scratch experiments (2 / 2R / 3)   — closed
             ↓
     real Qwen3.8-27B teacher                           ✅ loads, verified
+            ↓
+    frozen MoE student, specified + audited            ✅ 13.01B measured, structurally valid
+            ↓
+    initialisation: depth / FFN / KV / router          ✅ implemented + measured
+            ↓
+    behavioural + context objectives                   ✅ implemented, ablations defined
+            ↓
+    16 GB accounting                                   ✅ fits Q4/Q5/Q6, corrected to get there
             ↓
     real teacher smoke test                            ← NEXT (needs rented GPU)
             ↓
@@ -24,14 +36,37 @@ they are history. Nothing further is built on them, and no Level 4 exists or sho
             ↓
     first benchmark                                    ⬜ registry exists, IFEval not added
             ↓
-    student architecture optimization                  ⬜ candidates known, none selected
+    A1-A4 and B1-B4 ablations                          ⬜ defined, none run
             ↓
     full distillation                                  ⬜
             ↓
-    16 GB release                                      ⬜
+    16 GB release                                      ⬜ architecture cleared; blocked on benchmarks
             ↓
     separate 12 GB release                             ⬜
 ```
+
+### The correction that unblocked the release path
+
+The first implementation of the frozen specification used **24 routed experts** and weighed
+**22,072,134,528** parameters, of which 61.57% were routed experts. It did not fit a 16 GB
+card at Q4, Q5 or Q6 at *any* context length — the best all-Q4 configuration needed
+13.93 GiB at 2,048 tokens against 13.56 GiB usable.
+
+`num_experts` 24 → 8 fixed it. One field:
+
+| | rejected | corrected |
+|---|---:|---:|
+| total parameters | 22,072,134,528 | **13,008,505,728** |
+| active per token | 9,615,051,648 | **9,611,119,488** |
+| Q4 longest context | did not fit | **131,072** |
+| Q5 longest context | did not fit | **65,536** |
+| Q6 longest context | did not fit | **32,768** |
+
+Per-token capacity is unchanged to within 0.04%: a token was only ever using two experts, so
+the other sixteen cost VRAM and contributed nothing. The cost that *is* real is FFN channel
+coverage, down from 100% to 39.7%. Full accounting in
+[PARETO_EVALUATION.md](PARETO_EVALUATION.md); the rejected configurations are kept in
+`REJECTED` in `architecture/moe_student.py`.
 
 Both commands below run today against small fixtures and are the same code paths the real
 teacher takes — only the weights differ:
@@ -50,7 +85,11 @@ The pilot loads the teacher through the **verified loader**, not a bare
 when a checkpoint's keys do not match, and a KD loss computed against random 27B weights is
 finite, falls, and means nothing.
 
-## 2. Student candidates
+## 2. Historical student candidates
+
+> Superseded as *targets* by the frozen MoE student, and retained as **baselines**. The
+> project's first scientific comparison is 17.76B dense L40 against 13.01B sparse-MoE L48:
+> same teacher, same width, different sparsity and depth. Nothing below is deleted.
 
 Transfer-compatible means the teacher's `head_dim` (256), GQA ratio (6 query heads per KV
 head), DeltaNet ratio (3 value heads per key head), conv kernel and **vocabulary** are
@@ -113,7 +152,17 @@ suites, runs bound to what they measured, comparability checks). What is missing
 benchmark in it. IFEval is the cheapest: programmatic constraint checks, no model judge, no
 gated dataset, no code sandbox.
 
-**4. Then, and only then, select a student size.**
+**4. Measure what the expert-budget correction cost.** Resolved on the memory axis; the
+quality axis is open. Two numbers to get: what dropping 60.3% of the teacher's FFN channels
+costs against the 24-expert configuration on a short pilot, and whether 8 experts route as
+diversely as 24 did. Either could argue for spending the remaining ~2B of budget headroom on
+experts again.
+
+**5. Run A1-A4 and B1-B4.** Defined in `research/ablations.py` with a falsifier on every
+arm. A1 (pointwise layer matching) is the control for the paper's central claim; B1
+(4K-only distillation) is the control for the context component. Before any margin is
+called significant, the control arm has to be run more than once so seed variance is
+measured — the matrix records that this is currently uncontrolled.
 
 ---
 
@@ -127,6 +176,10 @@ gated dataset, no code sandbox.
 | B4 | No corpus in the teacher's vocabulary — `vendor/` has no `tokenizer.json` | KD over real text at scale | yes, once the tokenizer is downloaded with the weights |
 | B5 | No benchmark harness | every capability claim, and student selection | yes, and it is the critical path |
 | B6 | Offline logit format unchosen | training without a resident teacher | deliberately gated on B1's tail-mass number |
+| B7 | ~~Frozen student exceeds 16 GB at every release precision~~ | ~~the release itself~~ | **closed** — `num_experts` 24 → 8; fits Q4 to 131,072, Q5 to 65,536, Q6 to 32,768 |
+| B10 | 262,144-token window needs an 8-bit KV cache to fit | a full-window release claim | yes, once KV-quantised retrieval accuracy is measured |
+| B8 | MTP not built by the runtime | any MTP training or result | no; the field is kept as an extension point and no MTP result is claimed |
+| B9 | Seed-to-seed variance unmeasured | calling any ablation margin significant | yes: run the control arm more than once |
 
 B2 is the cheapest to close and the easiest to forget: it costs one command-line flag on the
 first real run and is unrecoverable afterwards if the upstream repo moves.
