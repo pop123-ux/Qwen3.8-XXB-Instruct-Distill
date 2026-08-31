@@ -558,3 +558,212 @@ def measure_block_reconstruction(block, gate_proj, up_proj, down_proj, hidden) -
         "norm_ratio": float(student_out.norm() / (teacher_out.norm() + 1e-12)),
         "router": "the block's own initialised router",
     }
+
+
+# ---------------------------------------------------------------------------
+# the whole student, from the teacher
+# ---------------------------------------------------------------------------
+#: Teacher tensor names, relative to a layer prefix, that transfer to the student as exact
+#: copies because the student's dimensions are unchanged from the teacher's.
+#:
+#: The DeltaNet block is the striking case: 16 key heads, 48 value heads and head dim 128 in
+#: both, so all nine of its tensors copy bit for bit. Of the three reductions this module
+#: implements, none touches DeltaNet — depth removes whole blocks, the FFN reduction is the
+#: MoE decomposition, and the KV reduction is confined to full attention.
+DELTANET_COPIES: tuple[str, ...] = (
+    "linear_attn.in_proj_qkv.weight", "linear_attn.in_proj_z.weight",
+    "linear_attn.in_proj_b.weight", "linear_attn.in_proj_a.weight",
+    "linear_attn.conv1d.weight", "linear_attn.out_proj.weight",
+    "linear_attn.norm.weight", "linear_attn.dt_bias", "linear_attn.A_log",
+)
+
+#: Attention tensors that copy unchanged. ``q_proj`` is included because the student keeps
+#: all 24 query heads *and* the fused output gate, so its width matches the teacher's.
+ATTENTION_COPIES: tuple[str, ...] = (
+    "self_attn.q_proj.weight", "self_attn.o_proj.weight",
+    "self_attn.q_norm.weight", "self_attn.k_norm.weight",
+)
+
+#: Attention tensors that must be merged 4 -> 2 heads.
+ATTENTION_MERGES: tuple[str, ...] = ("self_attn.k_proj.weight", "self_attn.v_proj.weight")
+
+#: Per-layer norms, and the model-level tensors outside the layer stack.
+LAYER_NORM_COPIES: tuple[str, ...] = ("input_layernorm.weight", "post_attention_layernorm.weight")
+MODEL_COPIES: tuple[str, ...] = ("model.embed_tokens.weight", "model.norm.weight", "lm_head.weight")
+
+
+@dataclass
+class MaterialisationReport:
+    """What the transfer actually did, tensor by tensor.
+
+    ``coverage`` is the fraction of the student's parameters that came **from the teacher**.
+    Tensors the transfer *initialises* rather than transfers — the router, which has no
+    teacher counterpart, and the shared-expert gate — are excluded from the numerator on
+    purpose. Counting them would report full coverage for a model that reduces three
+    dimensions, which is exactly the reassuring-and-wrong number this report exists to
+    avoid. ``complete`` is the separate question of whether every tensor was written at all.
+    """
+
+    copied: list[str] = field(default_factory=list)
+    merged: list[str] = field(default_factory=list)
+    decomposed: list[str] = field(default_factory=list)
+    initialised: list[str] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list)
+    layer_mapping: dict[int, int] = field(default_factory=dict)
+    measurements: dict[str, Any] = field(default_factory=dict)
+    student_parameters: int = 0
+    transferred_parameters: int = 0
+
+    @property
+    def coverage(self) -> float:
+        return self.transferred_parameters / self.student_parameters if self.student_parameters else 0.0
+
+    @property
+    def complete(self) -> bool:
+        """Every student tensor was written by *something* — copied, merged, decomposed or
+        deliberately initialised. A non-empty ``missing`` means tensors were left at their
+        random values, which is the silent partial transfer this whole module exists to
+        prevent."""
+        return not self.missing
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "n_copied": len(self.copied), "n_merged": len(self.merged),
+            "n_decomposed": len(self.decomposed), "n_initialised": len(self.initialised),
+            "missing": self.missing, "complete": self.complete,
+            "coverage": self.coverage,
+            "student_parameters": self.student_parameters,
+            "transferred_parameters": self.transferred_parameters,
+            "layer_mapping": {str(k): v for k, v in sorted(self.layer_mapping.items())},
+            "measurements": self.measurements,
+        }
+
+
+def materialise_student(
+    model,
+    source,
+    spec: MoEStudentSpec = FROZEN_STUDENT,
+    *,
+    teacher_layers: int = 64,
+    teacher_kv_heads: int = 4,
+    teacher_intermediate: int = TEACHER_FFN_INTERMEDIATE,
+    mapping: LayerMapping | None = None,
+    kv_method: KVMergeMethod = "mean",
+    ffn_method: FFNMethod = "importance_partition",
+    importance_provider=None,
+    compensate: bool = True,
+    seed: int = 0,
+) -> MaterialisationReport:
+    """Write teacher weights into an instantiated canonical student.
+
+    Composes the three reductions this module implements — the layer mapping, the KV merge
+    and the FFN decomposition — into one pass over the model, and reports what each tensor
+    received. Nothing here is a new method; every step is the routine defined above, so the
+    measurements taken of those routines describe this too.
+
+    ``source`` is any :class:`~qwen_distill.architecture.materialize.WeightSource`: a
+    ``StateDictSource`` for fixtures, a ``SafetensorsSource`` to stream a real checkpoint
+    one tensor at a time without ever holding the 54 GB teacher in memory.
+
+    ``importance_provider`` is called as ``provider(teacher_layer)`` and should return a
+    per-channel importance vector for that layer's FFN, measured on real activations. Left
+    ``None``, the decomposition falls back to a contiguous split and says so in the report —
+    it does not silently pretend to have measured anything.
+    """
+    import torch
+
+    mapping = mapping or map_layers(spec, teacher_layers=teacher_layers)
+    report = MaterialisationReport(layer_mapping=dict(mapping.mapping))
+    available = source.names()
+    student_tensors = dict(model.named_parameters())
+    report.student_parameters = sum(p.numel() for p in student_tensors.values())
+    written: set[str] = set()
+
+    def put(name: str, tensor, bucket: list[str]) -> None:
+        param = student_tensors.get(name)
+        if param is None:
+            raise KeyError(f"the student has no tensor named {name!r}")
+        if param.shape != tensor.shape:
+            raise ValueError(f"{name}: student wants {tuple(param.shape)}, "
+                             f"teacher gave {tuple(tensor.shape)}")
+        with torch.no_grad():
+            param.copy_(tensor.to(param.dtype))
+        bucket.append(name)
+        written.add(name)
+        if bucket is not report.initialised:
+            report.transferred_parameters += param.numel()
+
+    def fetch(name: str):
+        return source.get(name) if name in available else None
+
+    # --- model-level tensors -------------------------------------------
+    for name in MODEL_COPIES:
+        if name not in student_tensors:      # tied embeddings have no lm_head
+            continue
+        tensor = fetch(name)
+        if tensor is None:
+            report.missing.append(name)
+            continue
+        put(name, tensor, report.copied)
+
+    # --- per layer ------------------------------------------------------
+    types = spec.layer_types()
+    for student_layer in sorted(mapping.mapping):
+        teacher_layer = mapping.mapping[student_layer]
+        s_prefix = f"model.layers.{student_layer}."
+        t_prefix = f"model.layers.{teacher_layer}."
+
+        names = list(LAYER_NORM_COPIES)
+        names += (list(ATTENTION_COPIES) if types[student_layer] == FULL_ATTENTION
+                  else list(DELTANET_COPIES))
+        for suffix in names:
+            tensor = fetch(t_prefix + suffix)
+            if tensor is None:
+                report.missing.append(s_prefix + suffix)
+                continue
+            put(s_prefix + suffix, tensor, report.copied)
+
+        if types[student_layer] == FULL_ATTENTION:
+            for suffix in ATTENTION_MERGES:
+                tensor = fetch(t_prefix + suffix)
+                if tensor is None:
+                    report.missing.append(s_prefix + suffix)
+                    continue
+                merged = merge_kv_heads(
+                    tensor, teacher_heads=teacher_kv_heads,
+                    student_heads=spec.num_key_value_heads, head_dim=spec.head_dim,
+                    method=kv_method,
+                )
+                put(s_prefix + suffix, merged, report.merged)
+
+        # --- the dense FFN becomes the MoE block ------------------------
+        ffn = {
+            role: fetch(f"{t_prefix}mlp.{role}.weight")
+            for role in ("gate_proj", "up_proj", "down_proj")
+        }
+        if any(v is None for v in ffn.values()):
+            report.missing.extend(
+                f"{s_prefix}mlp.{role}" for role, v in ffn.items() if v is None
+            )
+            continue
+        importance = importance_provider(teacher_layer) if importance_provider else None
+        plan = plan_ffn_decomposition(
+            spec, importance=importance, method=ffn_method,
+            teacher_intermediate=teacher_intermediate,
+        )
+        weights = build_moe_weights(
+            plan, ffn["gate_proj"], ffn["up_proj"], ffn["down_proj"],
+            spec=spec, compensate=compensate, seed=seed + student_layer,
+        )
+        for key, tensor in weights.items():
+            name = f"{s_prefix}mlp.{key}"
+            bucket = (report.initialised if key in ("gate.weight", "shared_expert_gate.weight")
+                      else report.decomposed)
+            put(name, tensor, bucket)
+        report.measurements.setdefault("ffn_coverage", plan.coverage)
+        report.measurements.setdefault("ffn_active_width", plan.active_width)
+        report.measurements.setdefault("ffn_method", plan.method)
+
+    untouched = sorted(set(student_tensors) - written)
+    report.missing.extend(n for n in untouched if n not in report.missing)
+    return report

@@ -69,7 +69,7 @@ Failures:
 | `could not load the tokenizer` | vendored metadata has no `tokenizer.json`; it must come with the weights |
 | CUDA OOM | use `--quantization 4bit`, or `--max-memory` / `--offload-folder` |
 
-## E. First KD pilot
+## E. First transfer: teacher -> the canonical student
 
 Only after the smoke test passes. Assumes the weights are already on disk from step C.
 
@@ -77,21 +77,30 @@ Only after the smoke test passes. Assumes the weights are already on disk from s
 python scripts/distill_pilot.py \
     --teacher <PATH_TO_DOWNLOADED_QWEN3.8-27B> \
     --revision <EXACT_QWEN_COMMIT_SHA> \
-    --teacher-quantization 4bit \
-    --layers 4 --steps 1 --top-k 64 \
-    --seq-len 128 --batch-size 1 \
-    --output runs/kd_pilot
+    --output runs/pilot1
 ```
 
-Chain: teacher → transfer init → TeacherSignal → KD loss → backward → optimizer step →
-checkpoint → reload.
+The pilot has **no architecture arguments**. The student is always the canonical frozen
+target `qwen38_19b_h5120_l48_moe` — 13,008,505,728 parameters, 48 layers, 8 routed experts
+of width 768 with top-2 routing plus one shared expert. A pilot that could quietly run a
+different geometry would produce a result nobody could attribute.
 
-`--layers 4` is a **depth-only slice at teacher width**, chosen so transfer is pure tensor
-copies with no width slicing: a failure then implicates the pipeline, not the reduction
-strategy. It is an engineering validation and **not a release architecture**. The release
-search space (~11.5B–17.8B) stays open until benchmarks exist.
+Chain: pinned revision → verified load → 64→48 group-aligned layer mapping → materialise
+(copy, KV-merge 4→2, decompose the dense FFN into experts) → coverage report → checkpoint.
 
-Expect a finite KD loss and a written checkpoint. Its *value* means nothing about capability.
+Add `--dry-run` to see the plan, the parameter audit and the 16 GB verdict without loading
+or writing anything. It runs in seconds on a laptop and is worth doing before the GPU is
+rented.
+
+What to expect: `complete: True` with no missing tensors, and coverage just under 100% —
+the router and the shared-expert gate have no teacher counterpart and are initialised
+rather than transferred, so a report claiming 100% would be wrong.
+
+**Mechanism check, not this.** `scripts/chain_selftest.py` is the developer harness that
+drives a small dense student through transfer → KD → checkpoint. It keeps geometry flags
+because varying geometry is its job. It is not a research run and its loss means nothing
+about capability.
+
 
 ## F. Preserve these
 

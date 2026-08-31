@@ -35,6 +35,7 @@ where it can be read in one screen.
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -69,6 +70,15 @@ THINK_OPEN_TOKEN = "<think>"
 THINK_CLOSE_TOKEN = "</think>"
 
 #: Quantisation schemes this loader knows how to configure, and what each needs.
+#: Revision strings that look like a pin and are not one. A Hub load naming any of these
+#: is refused: they resolve to whatever the repository holds at load time, which is exactly
+#: the substitution the gate exists to prevent.
+MOVING_REVISIONS: frozenset[str] = frozenset({"main", "master", "latest", "head", "refs/heads/main"})
+
+#: A git commit id: 7 to 40 hexadecimal characters. Tags and branch names are rejected
+#: because upstream can move or delete them; a commit id cannot change what it names.
+_COMMIT_SHA = re.compile(r"[0-9a-fA-F]{7,40}")
+
 QUANTIZATION_SCHEMES: dict[str, str] = {
     "4bit": "bitsandbytes NF4; ~15 GiB of weights for this teacher",
     "8bit": "bitsandbytes int8; ~27 GiB of weights for this teacher",
@@ -93,9 +103,11 @@ class TeacherLoadPlan:
     """
 
     model: str = DEFAULT_TEACHER_MODEL
-    #: Commit SHA. ``None`` means unpinned, which is recorded as a reproducibility gap
-    #: rather than treated as acceptable — the same repo id serves different weights over
-    #: time.
+    #: Commit SHA, **required for a Hub load**. A repo id alone does not name weights: the
+    #: same id serves different bytes over time, so an unpinned run cannot be reproduced and
+    #: cannot be compared against an earlier one. :meth:`validate` refuses it, which puts
+    #: the failure before the download rather than after 54 GB of it. A ``local_path`` load
+    #: is exempt — the bytes on disk are the pin.
     revision: str | None = None
     dtype: str = "auto"
     #: ``accelerate`` device map, or ``"cpu"`` to load without it. ``None`` leaves the
@@ -114,10 +126,16 @@ class TeacherLoadPlan:
     def source(self) -> str:
         return self.local_path or self.model
 
+    @property
+    def is_hub_load(self) -> bool:
+        """True when weights come from the Hub rather than from a directory on disk."""
+        return self.local_path is None
+
     def validate(self) -> list[str]:
         problems: list[str] = []
         if not self.model:
             problems.append("model must be a non-empty repo id or path")
+        problems.extend(self._revision_problems())
         if self.quantization is not None and self.quantization not in QUANTIZATION_SCHEMES:
             problems.append(
                 f"unknown quantization {self.quantization!r}; known: "
@@ -128,6 +146,37 @@ class TeacherLoadPlan:
         if self.offload_folder and self.device_map is None:
             problems.append("offload_folder has no effect without a device_map")
         return problems
+
+    def _revision_problems(self) -> list[str]:
+        """Refuse a Hub load that is not pinned to an exact commit.
+
+        Three separate failures are worth distinguishing, because they need different
+        fixes: no revision at all, a moving pointer, and something that is pinned in
+        intent but not actually a commit id.
+        """
+        if not self.is_hub_load:
+            return []
+        if not self.revision:
+            return [
+                f"--revision is required for a Hub load of {self.model!r}. The same repo id "
+                "serves different weights over time, so an unpinned run cannot be "
+                "reproduced and cannot be compared against an earlier one. Pass the exact "
+                "commit SHA, or load a downloaded checkpoint with local_path."
+            ]
+        revision = self.revision.strip()
+        if revision.lower() in MOVING_REVISIONS:
+            return [
+                f"revision {self.revision!r} is a moving pointer, not a pin: it resolves to "
+                "different weights as the repository changes. Pass the exact commit SHA it "
+                "currently points at."
+            ]
+        if not _COMMIT_SHA.fullmatch(revision):
+            return [
+                f"revision {self.revision!r} is not a commit SHA. Tags and branch names can "
+                "be moved or deleted upstream; only a 7-to-40 character hexadecimal commit "
+                "id pins the weights."
+            ]
+        return []
 
     def to_dict(self) -> dict[str, Any]:
         return {

@@ -68,16 +68,56 @@ coverage, down from 100% to 39.7%. Full accounting in
 [PARETO_EVALUATION.md](PARETO_EVALUATION.md); the rejected configurations are kept in
 `REJECTED` in `architecture/moe_student.py`.
 
+### The canonical path
+
+One route from the teacher to a materialised student. Nothing else is reachable by
+accident: the mock teacher is never selected implicitly, an unpinned Hub revision is
+refused before the download starts, and the pilot has no architecture arguments.
+
+```text
+Qwen/Qwen3.8-27B
+    |
+    |  --revision <EXACT COMMIT SHA>      required for a Hub load; refused without it
+    v
+TeacherLoadPlan.validate()                before any bytes are fetched
+    |
+    v
+load_verified_teacher()                   missing weights are fatal, never a warning
+    |
+    v
+teacher tensors (streamed, one at a time)
+    |
+    v
+FROZEN_STUDENT = qwen38_19b_h5120_l48_moe  13,008,505,728 parameters, not configurable
+    |
+    v
+materialise_student()                     copy | KV-merge 4->2 | dense FFN -> 8 experts
+    |
+    v
+checkpoint  ->  distillation
+```
+
 Both commands below run today against small fixtures and are the same code paths the real
 teacher takes — only the weights differ:
 
 ```bash
 # 1. is the teacher operational?  (rented 24 GB card)
-python scripts/teacher_smoke_test.py --quantization 4bit --revision <sha>
+#    --revision is required for a Hub load and is checked before anything downloads.
+python scripts/teacher_smoke_test.py \
+    --quantization 4bit \
+    --revision <EXACT_QWEN_COMMIT_SHA>
 
-# 2. does the whole chain produce a real gradient?  (same card)
-python scripts/distill_pilot.py --teacher ./qwen3.8-27b --revision <sha> \
-    --teacher-quantization 4bit --layers 4 --steps 1 --top-k 64
+# 2. teacher -> the canonical student. No architecture arguments exist.
+python scripts/distill_pilot.py \
+    --teacher ./qwen3.8-27b \
+    --revision <EXACT_QWEN_COMMIT_SHA> \
+    --output runs/pilot1
+
+# the same plan, the audit and the 16 GB verdict, loading nothing (laptop, seconds)
+python scripts/distill_pilot.py --revision <EXACT_QWEN_COMMIT_SHA> --dry-run
+
+# the mechanism regression harness — a small dense student, not a research run
+python scripts/chain_selftest.py --stand-in --output runs/selftest
 ```
 
 The pilot loads the teacher through the **verified loader**, not a bare
@@ -144,8 +184,10 @@ which is the measurement the offline-vs-online decision has been waiting on. Sma
 mass at k=64 means an offline corpus loses almost nothing; large means a bigger k or
 staying online.
 
-**2. One-step real KD pilot.** Implemented and tested — `scripts/distill_pilot.py` with
-`--teacher`. Engineering validation only: its loss says nothing about capability.
+**2. Materialise the canonical student.** `scripts/distill_pilot.py` targets
+`qwen38_19b_h5120_l48_moe` and nothing else — it has no geometry flags. The KD-chain
+mechanism is checked separately by `scripts/chain_selftest.py`, whose loss says nothing
+about capability.
 
 **3. A benchmark harness.** The registry exists (`evaluation/benchmark.py`: digest-pinned
 suites, runs bound to what they measured, comparability checks). What is missing is a first

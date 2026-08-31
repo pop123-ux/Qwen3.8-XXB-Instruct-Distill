@@ -62,8 +62,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", default="Qwen/Qwen3.8-27B", help="teacher model id or path")
     parser.add_argument(
         "--revision",
-        help="teacher revision. Without it the dataset is not reproducible from the "
-             "model id alone, and the manifest records that gap.",
+        help="exact teacher commit SHA. Required for a real hub load — the load plan "
+             "refuses an unpinned or moving revision before anything downloads.",
     )
     parser.add_argument(
         "--metadata-dir", type=Path, default=Path("vendor/qwen38-metadata"),
@@ -170,9 +170,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  already done   : {len(already):,}")
     print(f"  to generate    : {len(pending):,}")
     print(f"  output         : {args.output}  (shards of {args.shard_size:,})")
-    if not identity.is_pinned:
-        print("\n  ! teacher revision is not pinned: this dataset will not be fully "
-              "reproducible\n    from the model id alone. Pass --revision to fix.")
+    if not identity.is_pinned and backend.describe().get("is_synthetic"):
+        # The mock has no revision and never will; saying "pass --revision" there would be
+        # advice that cannot be followed.
+        print("\n  ! synthetic backend: there is no teacher revision to pin.")
+    elif not identity.is_pinned:
+        print("\n  ! teacher revision is not pinned. The load plan will refuse this before "
+              "downloading;\n    pass the exact commit SHA with --revision.")
 
     if args.dry_run:
         print("\n  DRY RUN: nothing was generated.")

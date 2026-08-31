@@ -464,3 +464,194 @@ def test_teacher_and_student_hybrid_layouts_are_the_ones_recorded():
     assert student.count(LINEAR_ATTENTION) == 36
     assert student.count(FULL_ATTENTION) == 12
     assert len(student) == 48
+
+
+# ---------------------------------------------------------------------------
+# the whole student, from a teacher
+# ---------------------------------------------------------------------------
+def _fixture_teacher(spec, teacher_layers, teacher_kv_heads, teacher_intermediate, seed=0):
+    """A synthetic teacher with the real one's *structure*: the same hybrid period, the
+    same DeltaNet dimensions the student inherits unchanged, and more KV heads than the
+    student so the merge is actually exercised."""
+    g = torch.Generator().manual_seed(seed)
+    h = spec.hidden_size
+    types = mi._hybrid_types(teacher_layers, spec.deltanet_per_group, spec.attention_per_group)
+    key_dim = spec.linear_num_key_heads * spec.linear_key_head_dim
+    value_dim = spec.linear_num_value_heads * spec.linear_value_head_dim
+    conv_dim = 2 * key_dim + value_dim
+    q_dim = spec.num_attention_heads * spec.head_dim
+
+    def r(*shape):
+        return torch.randn(*shape, generator=g)
+
+    sd = {
+        "model.embed_tokens.weight": r(spec.vocab_size, h),
+        "model.norm.weight": r(h),
+        "lm_head.weight": r(spec.vocab_size, h),
+    }
+    for layer in range(teacher_layers):
+        p = f"model.layers.{layer}."
+        for name in mi.LAYER_NORM_COPIES:
+            sd[p + name] = r(h)
+        if types[layer] == FULL_ATTENTION:
+            sd[p + "self_attn.q_proj.weight"] = r(2 * q_dim, h)
+            sd[p + "self_attn.o_proj.weight"] = r(h, q_dim)
+            sd[p + "self_attn.q_norm.weight"] = r(spec.head_dim)
+            sd[p + "self_attn.k_norm.weight"] = r(spec.head_dim)
+            sd[p + "self_attn.k_proj.weight"] = r(teacher_kv_heads * spec.head_dim, h)
+            sd[p + "self_attn.v_proj.weight"] = r(teacher_kv_heads * spec.head_dim, h)
+        else:
+            sd[p + "linear_attn.in_proj_qkv.weight"] = r(conv_dim, h)
+            sd[p + "linear_attn.in_proj_z.weight"] = r(value_dim, h)
+            sd[p + "linear_attn.in_proj_b.weight"] = r(spec.linear_num_value_heads, h)
+            sd[p + "linear_attn.in_proj_a.weight"] = r(spec.linear_num_value_heads, h)
+            sd[p + "linear_attn.conv1d.weight"] = r(conv_dim, 1, spec.linear_conv_kernel_dim)
+            sd[p + "linear_attn.out_proj.weight"] = r(h, value_dim)
+            sd[p + "linear_attn.norm.weight"] = r(spec.linear_value_head_dim)
+            sd[p + "linear_attn.dt_bias"] = r(spec.linear_num_value_heads)
+            sd[p + "linear_attn.A_log"] = r(spec.linear_num_value_heads)
+        sd[p + "mlp.gate_proj.weight"] = r(teacher_intermediate, h) / h**0.5
+        sd[p + "mlp.up_proj.weight"] = r(teacher_intermediate, h) / h**0.5
+        sd[p + "mlp.down_proj.weight"] = r(h, teacher_intermediate) / teacher_intermediate**0.5
+    return sd
+
+
+T_LAYERS, T_KV = 12, 4
+
+
+@pytest.fixture
+def materialised(tiny):
+    from transformers import AutoModelForCausalLM
+
+    from qwen_distill.architecture.materialize import StateDictSource
+
+    torch.manual_seed(0)
+    state = _fixture_teacher(tiny, T_LAYERS, T_KV, TI)
+    model = AutoModelForCausalLM.from_config(build_config(tiny))
+    model.eval()
+    report = mi.materialise_student(
+        model, StateDictSource(state), tiny,
+        teacher_layers=T_LAYERS, teacher_kv_heads=T_KV, teacher_intermediate=TI,
+    )
+    return model, state, report
+
+
+def test_materialisation_leaves_no_tensor_at_its_random_value(materialised):
+    """A silent partial transfer is the failure mode that matters: the model would train,
+    the loss would fall, and part of it would never have seen the teacher."""
+    _, _, report = materialised
+    assert report.missing == []
+    assert report.complete is True
+
+
+def test_every_student_tensor_is_accounted_for_exactly_once(materialised):
+    model, _, report = materialised
+    written = report.copied + report.merged + report.decomposed + report.initialised
+    assert len(written) == len(set(written)), "a tensor was written twice"
+    assert set(written) == {n for n, _ in model.named_parameters()}
+
+
+def test_the_deltanet_blocks_transfer_as_exact_copies(materialised):
+    """The student's DeltaNet dimensions are the teacher's, so all nine tensors copy bit
+    for bit. None of the three reductions touches this block."""
+    model, state, report = materialised
+    mapping = report.layer_mapping
+    dn_layers = [i for i, t in enumerate(model.config.layer_types) if t == LINEAR_ATTENTION]
+    student_layer = dn_layers[0]
+    teacher_layer = mapping[student_layer]
+    for suffix in mi.DELTANET_COPIES:
+        got = dict(model.named_parameters())[f"model.layers.{student_layer}.{suffix}"]
+        want = state[f"model.layers.{teacher_layer}.{suffix}"]
+        assert torch.equal(got, want), suffix
+
+
+def test_the_kv_projections_are_merged_not_copied(materialised):
+    """4 teacher heads into 2 student heads: the tensor must be half the height and must
+    not equal any contiguous slice of the teacher's."""
+    model, state, report = materialised
+    assert len(report.merged) > 0
+    name = report.merged[0]
+    student_layer = int(name.split(".")[2])
+    teacher_layer = report.layer_mapping[student_layer]
+    suffix = name.split(f"layers.{student_layer}.")[1]
+    got = dict(model.named_parameters())[name]
+    want = state[f"model.layers.{teacher_layer}.{suffix}"]
+    assert got.shape[0] * 2 == want.shape[0]
+    assert not torch.equal(got, want[: got.shape[0]])
+
+
+def test_the_dense_ffn_becomes_experts_rather_than_being_copied(materialised):
+    """Every MoE tensor is written by the decomposition, and none of them has a teacher
+    counterpart of the same name."""
+    model, state, report = materialised
+    assert report.decomposed, "no FFN tensor was decomposed"
+    for name in report.decomposed:
+        assert ".mlp." in name
+        assert name not in state
+
+
+def test_the_router_is_initialised_not_transferred(materialised):
+    """It has no teacher counterpart. Counting it as transferred would inflate coverage."""
+    _, state, report = materialised
+    assert report.initialised, "the router was not recorded as initialised"
+    for name in report.initialised:
+        assert name.endswith(("mlp.gate.weight", "mlp.shared_expert_gate.weight"))
+        assert name not in state
+
+
+def test_coverage_excludes_what_was_initialised(materialised):
+    """Coverage must mean 'came from the teacher'. Reporting 100% for a model that reduces
+    three dimensions would be the reassuring-and-wrong number."""
+    model, _, report = materialised
+    initialised = sum(dict(model.named_parameters())[n].numel() for n in report.initialised)
+    assert report.transferred_parameters == report.student_parameters - initialised
+    assert report.coverage < 1.0
+
+
+def test_the_model_still_runs_after_materialisation(materialised, tiny):
+    model, _, _ = materialised
+    ids = torch.randint(0, tiny.vocab_size, (1, 16))
+    with torch.no_grad():
+        out = model(input_ids=ids)
+    assert torch.isfinite(out.logits).all()
+
+
+def test_a_teacher_missing_tensors_is_reported_not_silently_skipped(tiny):
+    from transformers import AutoModelForCausalLM
+
+    from qwen_distill.architecture.materialize import StateDictSource
+
+    torch.manual_seed(0)
+    state = _fixture_teacher(tiny, T_LAYERS, T_KV, TI)
+    del state["model.embed_tokens.weight"]
+    model = AutoModelForCausalLM.from_config(build_config(tiny))
+    report = mi.materialise_student(
+        model, StateDictSource(state), tiny,
+        teacher_layers=T_LAYERS, teacher_kv_heads=T_KV, teacher_intermediate=TI,
+    )
+    assert report.complete is False
+    assert "model.embed_tokens.weight" in report.missing
+
+
+def test_a_shape_mismatch_raises_rather_than_writing_garbage(tiny):
+    from transformers import AutoModelForCausalLM
+
+    from qwen_distill.architecture.materialize import StateDictSource
+
+    torch.manual_seed(0)
+    state = _fixture_teacher(tiny, T_LAYERS, T_KV, TI)
+    state["model.embed_tokens.weight"] = torch.randn(tiny.vocab_size + 1, tiny.hidden_size)
+    model = AutoModelForCausalLM.from_config(build_config(tiny))
+    with pytest.raises(ValueError, match="student wants"):
+        mi.materialise_student(model, StateDictSource(state), tiny,
+                               teacher_layers=T_LAYERS, teacher_kv_heads=T_KV,
+                               teacher_intermediate=TI)
+
+
+def test_the_report_serialises_for_the_ledger(materialised):
+    import json
+
+    _, _, report = materialised
+    data = json.loads(json.dumps(report.to_dict()))
+    assert data["complete"] is True
+    assert data["layer_mapping"]["0"] == 0

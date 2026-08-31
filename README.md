@@ -121,6 +121,34 @@ python scripts/student_report.py                 # architecture, memory, context
 python scripts/student_report.py --json out.json --ledger
 ```
 
+## The canonical path
+
+One route, and nothing else reachable by accident — the mock teacher is never selected
+implicitly, an unpinned Hub revision is refused before the download starts, and the pilot
+exposes no architecture arguments at all.
+
+```text
+Qwen/Qwen3.8-27B  --revision <EXACT COMMIT SHA>   refused without the pin
+      -> TeacherLoadPlan.validate()               before any bytes are fetched
+      -> load_verified_teacher()                  missing weights are fatal
+      -> FROZEN_STUDENT (qwen38_19b_h5120_l48_moe)
+      -> materialise_student()                    copy | KV-merge 4->2 | FFN -> 8 experts
+      -> checkpoint -> distillation
+```
+
+```bash
+# the plan, the audit and the 16 GB verdict, loading nothing
+python scripts/distill_pilot.py --revision <EXACT_QWEN_COMMIT_SHA> --dry-run
+
+# the real transfer, from a downloaded checkpoint
+python scripts/distill_pilot.py --teacher ./qwen3.8-27b \
+    --revision <EXACT_QWEN_COMMIT_SHA> --output runs/pilot1
+```
+
+`scripts/chain_selftest.py` is the separate developer harness for the KD mechanism. It
+drives a small dense student and keeps geometry flags because varying geometry is its job;
+it is not a research run.
+
 ## Where the project has been
 
 Every rung is a real record under [`experiments/`](experiments/) or [`docs/`](docs/), kept
