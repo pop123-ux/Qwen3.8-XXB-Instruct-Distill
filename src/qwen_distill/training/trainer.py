@@ -64,6 +64,7 @@ from .text_data import (
     prepare_corpus_from_files,
 )
 from .throughput import ThroughputTracker
+from .tokenized_data import prepare_tokenized_corpus
 
 
 @dataclass
@@ -257,8 +258,29 @@ def train(
 
     # --- data ---------------------------------------------------------
     corpus_stats = None
+    # Two distinctions, deliberately separate. `sequence_mode` is about the *plumbing*:
+    # both corpus paths yield packed id sequences and share the sampler, the validation
+    # loop and the resume position. `text_mode` is about what a token *means*: only the
+    # byte-level path may report bits per byte, because on BPE ids that number would be
+    # bits per token wearing the wrong name.
+    sequence_mode = config.data.is_sequence_corpus
     text_mode = config.data.mode == "text"
-    if text_mode:
+    if config.data.mode == "tokenized":
+        train_sequences, validation_sequences, corpus_stats = prepare_tokenized_corpus(
+            text_path=config.data.text_path,
+            tokenizer_path=config.data.tokenizer_path,
+            sequence_length=config.data.max_sequence_length,
+            validation_fraction=config.data.validation_fraction,
+            document_separator=config.data.document_separator,
+            max_documents=config.data.max_documents,
+            max_tokens=config.data.max_tokens,
+            max_bytes=config.data.max_corpus_bytes,
+            expected_vocab_size=config.data.expected_vocab_size,
+            teacher_model=config.teacher.get("model"),
+            teacher_revision=config.teacher.get("revision"),
+            trust_remote_code=config.model.trust_remote_code,
+        )
+    elif text_mode:
         if config.data.text_path and config.data.validation_path:
             # Level 2R: train and validation are separate, document-level-split files.
             # The split lives in the files, so it cannot drift between sessions.
@@ -277,11 +299,19 @@ def train(
                 seed=config.data.shuffle_seed,
                 max_bytes=config.data.max_corpus_bytes,
             )
+    if sequence_mode:
         print(f"  corpus: {corpus_stats.source}")
         print(f"          {corpus_stats.n_bytes:,} bytes, {corpus_stats.n_sequences} sequences "
               f"of {corpus_stats.sequence_length} "
               f"({corpus_stats.n_train} train / {corpus_stats.n_validation} validation)")
         print(f"          sha256 {corpus_stats.sha256[:16]}")
+        if config.data.mode == "tokenized":
+            facts = corpus_stats.tokenizer
+            print(f"          tokenizer {facts['tokenizer_class']} vocab "
+                  f"{facts['vocab_size']:,} eos {facts['eos_token_id']}")
+            print(f"          {corpus_stats.n_tokens:,} tokens from "
+                  f"{corpus_stats.n_documents:,} document(s), "
+                  f"{corpus_stats.n_tokens_dropped} dropped in the tail")
         batches = ResumableBatchSampler(
             train_sequences, config.training.batch_size, seed=config.training.seed
         )
@@ -378,7 +408,7 @@ def train(
                 max_lr=config.training.learning_rate,
             )
         rng_restored = restore_rng_state(loaded["rng_state"])
-        if text_mode and state.data_state:
+        if sequence_mode and state.data_state:
             batches.load_state_dict(state.data_state)
         print("\n  RESUMED")
         print(f"    resume requested   : {config.runtime.resume_from}")
@@ -386,7 +416,7 @@ def train(
         print(f"    restored step      : {state.step} of {config.training.max_steps}")
         print(f"    restored           : {', '.join(loaded['restored']) or 'nothing'}")
         print(f"    RNG restored       : {', '.join(rng_restored) or 'none'}")
-        if text_mode:
+        if sequence_mode:
             print(f"    data position      : epoch {batches.epoch}, batch {batches.index}")
         print(f"    tokens seen        : {state.tokens_seen:,}")
         if compatibility.extends_schedule or compatibility.notable:
@@ -447,7 +477,7 @@ def train(
 
     def write_checkpoint(step: int, *, reason: str) -> Path | None:
         """Persist everything needed to resume, atomically. Returns the directory."""
-        state.data_state = batches.state_dict() if text_mode else {}
+        state.data_state = batches.state_dict() if sequence_mode else {}
         state.elapsed_seconds = resumed_elapsed + (time.perf_counter() - started)
         last_loss = next(
             (h["loss"] for h in reversed(state.history) if "loss" in h), None
@@ -531,7 +561,10 @@ def train(
             accumulated = 0.0
             kd_records: list[dict[str, float]] = []
             for _ in range(config.training.gradient_accumulation_steps):
-                if text_mode:
+                if sequence_mode:
+                    # The trainer's batch contract: a rectangular (B, L) tensor used as
+                    # both input and label. The causal shift lives inside the model, so
+                    # the data layer never builds a separate label tensor.
                     batch = torch.tensor(next(batches), dtype=torch.long, device=device)
                 else:
                     batch = _synthetic_batch(
@@ -607,7 +640,7 @@ def train(
                     "tokens_per_second": rates["tokens_per_second"],
                     "interval_tokens_per_second": rates["interval_tokens_per_second"],
                     "session_tokens_per_second": rates["session_tokens_per_second"],
-                    "epoch": batches.epoch if text_mode else state.epoch,
+                    "epoch": batches.epoch if sequence_mode else state.epoch,
                 }
                 if text_mode:
                     record["bits_per_byte"] = round(bits_per_byte(accumulated), 4)
@@ -643,7 +676,7 @@ def train(
             if state.step % config.training.eval_every == 0:
                 validation_loss = (
                     _validate_text(model, validation_sequences, config, device)
-                    if text_mode
+                    if sequence_mode
                     else _validate(model, config, vocab, device)
                 )
                 record = {"step": state.step, "validation_loss": validation_loss}
@@ -715,6 +748,7 @@ def train(
         output, config, spec, state, profile, corpus_stats,
         elapsed=elapsed, tokens_seen=throughput.total_tokens, device=device,
         text_mode=text_mode, throughput=throughput_summary,
+        data_mode=config.data.mode,
         effective_precision=precision, precision_note=precision_note, oom=oom,
         persisted=persisted, persistent_destination=config.training.persistent_backup,
         distillation=_distillation_summary(config, state, teacher, kd_alpha, kd_tail),
@@ -756,6 +790,17 @@ SYNTHETIC_PERIOD = 8
 #: purpose: the Level-1 prototype must show a clearly falling loss within a few hundred
 #: steps. Level 2 uses real text instead (see qwen_distill.training.text_data).
 SYNTHETIC_ALPHABET = 64
+
+
+def _sft_label(text_mode: bool, data_mode: str) -> str:
+    """How a non-KD run over this data is described in the summary.
+
+    A tokenised run is not "byte-level causal LM"; calling it that would misreport both
+    the vocabulary and the unit the loss is in.
+    """
+    if data_mode == "tokenized":
+        return "tokenized causal LM"
+    return "byte-level causal LM" if text_mode else "sft"
 
 
 def _validate_text(model, sequences: list[list[int]], config: ExperimentConfig, device: str) -> float:
@@ -848,6 +893,7 @@ def _write_summary(
     tokens_seen: int,
     device: str,
     text_mode: bool,
+    data_mode: str = "text",
     throughput: dict[str, Any] | None = None,
     effective_precision: str,
     precision_note: str | None,
@@ -922,7 +968,7 @@ def _write_summary(
         "objective": (
             config.training.objective
             if config.training.objective != "sft"
-            else ("byte-level causal LM" if text_mode else "sft")
+            else _sft_label(text_mode, data_mode)
         ),
         "parameters": count_parameters(spec).as_dict() if spec else None,
         "steps": state.step,

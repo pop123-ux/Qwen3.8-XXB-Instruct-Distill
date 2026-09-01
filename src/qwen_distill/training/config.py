@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from ..architecture.spec import HybridArchSpec
+from .tokenized_data import DOCUMENT_SEPARATORS
 
 #: Training strategies, cheapest first. See docs/TRAINING_ON_LIMITED_HARDWARE.md for
 #: why LoRA is a prototyping tool here rather than a route to the final model.
@@ -79,14 +80,46 @@ class DataConfig:
     streaming: bool = False
     shuffle_seed: int = 0
 
+    #: Language modelling on real text through the **teacher's own tokenizer**, rather
+    #: than the byte-level encoding above. This is what the canonical student requires:
+    #: its embedding has 248,320 rows and a byte stream only ever indexes the first 256.
+    #: Reads `text_path` and needs `tokenizer_path`; loads tokenizer files only, never
+    #: teacher weights. See qwen_distill.training.tokenized_data.
+    tokenized_text: bool = False
+    #: A local teacher checkpoint directory, or any directory holding tokenizer files.
+    #: The GPU workflow points this at the pinned teacher checkout.
+    tokenizer_path: str | None = None
+    #: Fail if the tokenizer's vocabulary is not exactly this. Set it to the student's
+    #: vocab_size to turn a silent mismatch into a refusal; leave it None to accept
+    #: whatever the tokenizer reports.
+    expected_vocab_size: int | None = None
+    #: How documents are found in the corpus file: "blank_line", "line" or "file".
+    #: Each document is followed by an explicit EOS before packing.
+    document_separator: str = "blank_line"
+    #: Smoke-test limits. Both None for a real run.
+    max_documents: int | None = None
+    max_tokens: int | None = None
+
     @property
     def mode(self) -> str:
         """Which data path this config selects."""
+        if self.tokenized_text:
+            return "tokenized"
         if self.text_corpus:
             return "text"
         if self.synthetic:
             return "synthetic"
         return "distillation"
+
+    @property
+    def is_sequence_corpus(self) -> bool:
+        """Whether this config yields packed id sequences rather than JSONL records.
+
+        Both corpus paths — byte-level and tokenised — produce ``list[list[int]]`` and
+        share the trainer's sampler, validation and resume machinery. They differ only in
+        what a token *means*, which is why `mode` still distinguishes them.
+        """
+        return self.mode in ("text", "tokenized")
 
 
 @dataclass
@@ -201,13 +234,44 @@ class ExperimentConfig:
                 "    A config shipped with `pretrained: null` is a template: choose a base "
                 "model before running it"
             )
-        if not (self.data.train_path or self.data.synthetic or self.data.text_corpus):
-            errors.append("data needs one of: train_path, synthetic: true, text_corpus: true")
-        if self.data.synthetic and self.data.text_corpus:
+        sources = [
+            name for name, on in (
+                ("train_path", bool(self.data.train_path)),
+                ("synthetic", self.data.synthetic),
+                ("text_corpus", self.data.text_corpus),
+                ("tokenized_text", self.data.tokenized_text),
+            ) if on
+        ]
+        if not sources:
             errors.append(
-                "data.synthetic and data.text_corpus are different objectives "
-                "(induction task vs byte-level language modelling); set exactly one"
+                "data needs one of: train_path, synthetic: true, text_corpus: true, "
+                "tokenized_text: true"
             )
+        elif len(sources) > 1:
+            # Each source is a different objective over different tokens. Silently
+            # preferring one would make the run something other than the config says.
+            errors.append(
+                f"data sources {', '.join(sources)} are mutually exclusive; set exactly "
+                "one (synthetic is an induction task, text_corpus is byte-level, "
+                "tokenized_text is the teacher's tokenizer, train_path is a "
+                "teacher-generated dataset)"
+            )
+        if self.data.tokenized_text:
+            if not self.data.text_path:
+                errors.append("data.tokenized_text needs data.text_path (a UTF-8 corpus file)")
+            if not self.data.tokenizer_path:
+                errors.append(
+                    "data.tokenized_text needs data.tokenizer_path: a local teacher "
+                    "checkpoint directory, or any directory holding tokenizer files. "
+                    "Only the tokenizer is read; teacher weights are never loaded."
+                )
+            if self.data.document_separator not in DOCUMENT_SEPARATORS:
+                errors.append(
+                    f"data.document_separator must be one of {DOCUMENT_SEPARATORS}, "
+                    f"got {self.data.document_separator!r}"
+                )
+            if self.data.expected_vocab_size is not None and self.data.expected_vocab_size < 1:
+                errors.append("data.expected_vocab_size must be >= 1, or null to skip the check")
         if self.training.batch_size < 1:
             errors.append("batch_size must be >= 1")
         if self.training.gradient_accumulation_steps < 1:
@@ -223,7 +287,7 @@ class ExperimentConfig:
         # to come from the records, which a text corpus has none of.
         if (
             self.training.objective != "sft"
-            and self.data.text_corpus
+            and (self.data.text_corpus or self.data.tokenized_text)
             and (self.objective.get("signal_source") or "dataset") != "online"
         ):
             errors.append(

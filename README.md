@@ -372,6 +372,15 @@ Byte-level tokenization is the deliberate choice here: no tokenizer to download 
 version, any text file works unchanged, and the loss is directly comparable across runs
 because it does not depend on a tokenizer's compression rate.
 
+**It is also why this path is legacy for the canonical student.** `qwen38_19b_h5120_l48_moe`
+has a 248,320-entry embedding; a byte stream indexes only the first 256 rows of it. Every
+result through Level 2R used the byte-level path and remains reproducible on it, but
+training the canonical student requires the teacher's own tokenizer — `data.tokenized_text`,
+pointed at the pinned teacher checkout. See
+[REAL_TEACHER_RUN.md § E2](docs/REAL_TEACHER_RUN.md) and
+`src/qwen_distill/training/tokenized_data.py`. Loading that tokenizer reads tokenizer files
+only; the 27B weights are never opened.
+
 **Level 2 is complete: 2000/2000 steps, no OOM, 2,089.2 tok/s run-wide, final checkpoint
 validated bit-for-bit.** Validation BPB 1.270 against an 8.0 uniform-byte baseline — and
 greedy generation from that same checkpoint is `"and and and and…"`.

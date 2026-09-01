@@ -160,6 +160,66 @@ because varying geometry is its job. It is not a research run and its loss means
 about capability.
 
 
+## E2. Tokenising a corpus for the canonical student
+
+The canonical student has a **248,320-entry embedding**, inherited from the teacher. The
+byte-level corpus path (`data.text_corpus`) emits ids in 0-255 and would only ever index
+the first 256 rows of it, so it **cannot** train this student. That path is not going
+away — every historical experiment through Level 2R used it, and it stays the byte-level
+baseline — but it is legacy for the canonical target.
+
+Tokenizer-backed training uses **the teacher's own tokenizer**, taken from the pinned
+checkpoint downloaded in step C:
+
+```bash
+/data/models/qwen3.8-27b/        # from step C; tokenizer.json lives here
+```
+
+Set the data block to:
+
+```yaml
+data:
+  tokenized_text: true
+  text_path: corpora/train.txt          # plain UTF-8
+  tokenizer_path: /data/models/qwen3.8-27b
+  document_separator: blank_line        # or "line", or "file"
+  max_sequence_length: 4096
+  expected_vocab_size: 248320           # the student's vocab_size; a mismatch refuses
+```
+
+Points worth being explicit about:
+
+- **The tokenizer path loads tokenizer files only.** `AutoTokenizer.from_pretrained(...,
+  local_files_only=True)` reads a few megabytes beside the 54 GB of weights and never
+  opens them. Corpus preparation therefore needs no GPU and no network, and can be done
+  before the machine is rented.
+- **`expected_vocab_size` is a refusal, not a repair.** If the tokenizer disagrees with the
+  student, the run stops. Nothing resizes the embedding: that would leave rows the run
+  never trains and a checkpoint whose vocabulary cannot be accounted for.
+- **248,320 is never hardcoded as the tokenizer's answer.** The vocabulary is read off the
+  loaded tokenizer with `len(tokenizer)` and recorded; `expected_vocab_size` is the
+  student's number, checked against it.
+- **Packing is `document + EOS + document + EOS + ...`**, chunked at exactly
+  `max_sequence_length`. The trailing partial chunk is dropped and counted rather than
+  padded, because the trainer feeds one rectangular tensor as both input and labels with
+  no mask and no `-100` — padding would be trained on as if it were text.
+- **`vendor/qwen38-metadata` cannot serve as `tokenizer_path`.** It carries
+  `tokenizer_config.json` but no `tokenizer.json`, so it has no vocabulary to encode with.
+  Use the downloaded checkpoint.
+- **The run summary records the tokenizer** — class, vocabulary size, EOS id, source path,
+  per-file SHA-256, and the teacher model and revision when the config supplies them —
+  inside the existing `corpus` block of `summary.json`.
+
+A smoke run needs no large corpus: `max_documents` and `max_tokens` bound the stream, and
+a few kilobytes of text is enough to prove the path end to end.
+
+**What CPU work has and has not established.** The data path, its packing, its vocabulary
+refusals and its trainer integration are tested offline against the repository's own tiny
+tokenizer fixture (`tests/test_tokenized_data.py`). None of that touches the real Qwen
+tokenizer, the real teacher, or a GPU. The full teacher SHA is resolved here, on the GPU
+machine, in step B — it was not available to the CPU work.
+
+
 ## F. Preserve these
 
 - `runs/teacher_smoke.json` — provenance, tail-mass sweep, measured peak memory
