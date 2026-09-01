@@ -14,13 +14,34 @@ from qwen_distill.distillation.behavioral import (
 from qwen_distill.research.ablations import ARMS, FAMILIES, arms, control, matrix, save_matrix
 
 
-def test_the_matrix_is_exactly_a1_to_a4_and_b1_to_b4():
-    assert sorted(ARMS) == ["A1", "A2", "A3", "A4", "B1", "B2", "B3", "B4"]
-    assert len(arms("layer_matching")) == 4
-    assert len(arms("context_specialisation")) == 4
+def test_the_matrix_covers_the_protocol_arms():
+    assert sorted(ARMS) == ["A0", "A1", "A2", "A3", "A4",
+                            "B0", "B1", "B2", "B3", "B4", "B5"]
+    assert len(arms("layer_matching")) == 5
+    assert len(arms("context_specialisation")) == 6
+
+
+def test_the_ce_only_floor_carries_no_teacher_signal():
+    """Baseline 1 of the research protocol. Without it every KD margin is measured against
+    another KD arm rather than against 'no teacher at all'."""
+    from qwen_distill.distillation.behavioral import ATTENTION, HIDDEN_DELTA, LOGIT_KD
+
+    weights = ARMS["A0"].loss_weights
+    for term in (LOGIT_KD, HIDDEN_POINTWISE, HIDDEN_DELTA, ATTENTION):
+        assert term not in weights, f"{term} is a teacher signal and A0 must have none"
+    assert "ce" in weights
+    # The load-balancing term stays on so A0 is not measuring expert collapse instead.
+    assert weights[ROUTER_BALANCE] > 0
+
+
+def test_the_protocol_baselines_are_all_distinguishable():
+    """CE-only, CE+logit KD, CE+layer KD, CE+behaviour KD must be four different losses."""
+    losses = {arm: frozenset(ARMS[arm].loss_weights) for arm in ("A0", "A2", "A1", "A3")}
+    assert len(set(losses.values())) == 4
 
 
 def test_family_a_is_a_true_two_by_two_factorial():
+    """A0 sits outside the factorial; A1-A4 are its four cells."""
     """Each cell is one combination of the two switches, and all four combinations appear.
     A ladder could not separate 'delta helps' from 'more supervision helps'."""
     cells = {

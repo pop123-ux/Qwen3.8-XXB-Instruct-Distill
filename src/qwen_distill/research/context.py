@@ -241,6 +241,26 @@ def _stage(length: int, fraction: float, why: str) -> CurriculumStage:
 #: The four arms of the context-specialisation ablation. B1 is the control; each of the
 #: others changes exactly one thing relative to it, so a difference is attributable.
 CURRICULA: dict[str, ContextCurriculum] = {
+    "B0": ContextCurriculum(
+        name="uniform_token_mixture",
+        arm="B0",
+        interleave=True,
+        hypothesis="The neutral mixture: an equal share of *tokens* at every length, which "
+                   "is not the same as an equal share of steps and is the reference point "
+                   "the other arms are read against. Predicts a curve that degrades "
+                   "gracefully rather than falling off a knee, because no length is rare.",
+        stages=(
+            # Step fractions are 1/length, normalised, so the *token* shares come out equal.
+            # A step at 262,144 carries 64x the tokens of one at 4,096, so it gets 1/64 of
+            # the steps: 64/85, 16/85, 4/85, 1/85. Splitting the steps evenly instead would
+            # put 57% of the tokens at the longest length and would not be a uniform mixture
+            # at all — which is the confusion this arm exists to avoid.
+            _stage(4_096, 64 / 85, "equal token share, so 64x the steps of the longest stage"),
+            _stage(16_384, 16 / 85, "equal token share"),
+            _stage(65_536, 4 / 85, "equal token share"),
+            _stage(262_144, 1 / 85, "equal token share"),
+        ),
+    ),
     "B1": ContextCurriculum(
         name="short_only",
         arm="B1",
@@ -295,6 +315,26 @@ CURRICULA: dict[str, ContextCurriculum] = {
         ),
     ),
 }
+
+
+CURRICULA["B5"] = ContextCurriculum(
+    name="medium_weighted",
+    arm="B5",
+    interleave=True,
+    hypothesis="Over-weights 8K-32K, the band where the DeltaNet state first has to discard "
+               "and where most document-scale work actually happens. Predicts the best "
+               "medium-context curve and, unlike B4, little short-context regression — the "
+               "cheap arm to run if the long-context arms prove expensive.",
+    stages=(
+        # Weighted so 16K carries the largest *token* share, which needs a much larger step
+        # share than intuition suggests: a 262,144 stage at 5% of steps would already be a
+        # quarter of the tokens.
+        _stage(4_096, 0.40, "retain instruction behaviour"),
+        _stage(16_384, 0.50, "the band this arm is about; the largest token share"),
+        _stage(65_536, 0.08, ""),
+        _stage(262_144, 0.02, "enough exposure not to lose the window entirely"),
+    ),
+)
 
 
 def curriculum(arm: str) -> ContextCurriculum:

@@ -101,15 +101,20 @@ Both commands below run today against small fixtures and are the same code paths
 teacher takes — only the weights differ:
 
 ```bash
+# 0. fetch the pinned checkpoint (resumable, writes a manifest)
+python scripts/download_teacher.py \
+    --revision <EXACT_QWEN_COMMIT_SHA> --output /data/models/qwen3.8-27b
+
 # 1. is the teacher operational?  (rented 24 GB card)
 #    --revision is required for a Hub load and is checked before anything downloads.
 python scripts/teacher_smoke_test.py \
+    --local-path /data/models/qwen3.8-27b \
     --quantization 4bit \
     --revision <EXACT_QWEN_COMMIT_SHA>
 
 # 2. teacher -> the canonical student. No architecture arguments exist.
 python scripts/distill_pilot.py \
-    --teacher ./qwen3.8-27b \
+    --teacher /data/models/qwen3.8-27b \
     --revision <EXACT_QWEN_COMMIT_SHA> \
     --output runs/pilot1
 
@@ -118,6 +123,9 @@ python scripts/distill_pilot.py --revision <EXACT_QWEN_COMMIT_SHA> --dry-run
 
 # the mechanism regression harness — a small dense student, not a research run
 python scripts/chain_selftest.py --stand-in --output runs/selftest
+
+# every claim this repository makes about itself, checked by running it
+python scripts/acceptance_gate.py
 ```
 
 The pilot loads the teacher through the **verified loader**, not a bare

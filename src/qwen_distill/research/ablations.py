@@ -2,14 +2,20 @@
 
 Two families, each a controlled comparison rather than a sweep.
 
-**A — layer matching.** A 2x2 factorial on two independent switches: whether conventional
-*pointwise* hidden-state matching is on, and whether *behavioural* delta matching is on.
-Factorial rather than a ladder, because a ladder cannot separate "delta helps" from "more
-supervision helps"; A2 and A3 use the same amount of supervision and differ only in kind.
+**A — layer matching.** A0 is the no-teacher floor; A1 to A4 are a 2x2 factorial on two
+independent switches: whether conventional *pointwise* hidden-state matching is on, and
+whether *behavioural* delta matching is on. Factorial rather than a ladder, because a ladder
+cannot separate "delta helps" from "more supervision helps"; A2 and A3 use the same amount
+of supervision and differ only in kind.
+
+A0 sits outside the factorial deliberately. It is the CE-only baseline the research protocol
+requires, and without it every margin in the family is relative to another KD arm rather
+than to "no teacher at all".
 
     ================  ==================  ==================
     arm               pointwise matching  behavioural delta
     ================  ==================  ==================
+    A0                -- no teacher signal at all --
     A1 (control)      on                  off
     A2                off                 off
     A3                off                 on
@@ -97,6 +103,18 @@ DEFAULT_CONTEXT_ARM = "B2"
 
 
 ARMS: dict[str, Arm] = {
+    "A0": Arm(
+        arm="A0", family="layer_matching", name="ce_only",
+        question="What does the student reach with no teacher signal at all, only the "
+                 "reference tokens? Every KD claim is a claim *relative to this*.",
+        prediction="Worst of the family. Without it, 'KD helps' is unquantified — the "
+                   "logit-KD arm could be winning on supervision density rather than on "
+                   "anything about the teacher.",
+        falsified_if="A0 matches A2, which would mean the teacher's distribution adds "
+                     "nothing over hard labels at this scale and would put the premise of "
+                     "the whole programme in question. Reportable, and would be reported.",
+        loss_weights={CE: 1.0, ROUTER_BALANCE: 1.0},
+    ),
     "A1": Arm(
         arm="A1", family="layer_matching", name="pointwise_layer_matching", is_control=True,
         question="Does conventional hidden-state layer matching help when 16 of 64 layers "
@@ -146,6 +164,17 @@ ARMS: dict[str, Arm] = {
         loss_weights=BASE_WEIGHTS | {HIDDEN_POINTWISE: 0.5, HIDDEN_DELTA: 0.5},
         combined_hidden=True,
     ),
+    "B0": Arm(
+        arm="B0", family="context_specialisation", name="uniform_token_mixture",
+        question="What does an equal share of *tokens* at every length give? The neutral "
+                 "reference the weighted arms are read against.",
+        prediction="Degrades gracefully rather than falling off a knee, because no length "
+                   "is rare in training.",
+        falsified_if="B0's curve has a sharper knee than B1's, which would mean exposure to "
+                     "a length does not help the model use it and the mechanism this family "
+                     "assumes is wrong.",
+        context_arm="B0",
+    ),
     "B1": Arm(
         arm="B1", family="context_specialisation", name="short_only", is_control=True,
         question="What does the context curve look like with conventional 4K distillation?",
@@ -175,6 +204,16 @@ ARMS: dict[str, Arm] = {
                      "length, which would mean ordering matters independently of exposure and "
                      "the mixture framing is wrong.",
         context_arm="B3",
+    ),
+    "B5": Arm(
+        arm="B5", family="context_specialisation", name="medium_weighted",
+        question="Is the 8K-32K band — where the recurrent state first has to discard, and "
+                 "where most document-scale work happens — worth weighting on its own?",
+        prediction="Best medium-context curve with little short-context regression: the "
+                   "cheap arm, if the long-context arms prove expensive to train.",
+        falsified_if="B5 beats B4 at 128K and beyond, which would mean long-context ability "
+                     "does not require long-context training and the exposure story is wrong.",
+        context_arm="B5",
     ),
     "B4": Arm(
         arm="B4", family="context_specialisation", name="long_weighted",
@@ -224,6 +263,7 @@ def matrix() -> dict[str, Any]:
             "loss; B2 and B3 share a token budget exactly, isolating ordering from exposure."
         ),
         "comparisons": [
+            {"name": "does the teacher help at all", "baseline": "A0", "candidate": "A2"},
             {"name": "does intermediate supervision help at all", "baseline": "A2",
              "candidate": "A1"},
             {"name": "is behaviour better than position", "baseline": "A1", "candidate": "A3"},

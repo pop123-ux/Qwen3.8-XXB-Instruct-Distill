@@ -8,6 +8,36 @@ and says nothing about the 16 GB student target — they are separate budgets.
 
 ---
 
+
+## The one-command start
+
+```bash
+# 1. fetch the pinned checkpoint. Resumable; writes teacher_download_manifest.json.
+python scripts/download_teacher.py \
+    --revision <EXACT_QWEN3.8-27B_COMMIT_SHA> \
+    --output /data/models/qwen3.8-27b
+
+# 2. verify the weights actually load. THIS is the authoritative check.
+python scripts/teacher_smoke_test.py \
+    --local-path /data/models/qwen3.8-27b \
+    --revision <EXACT_QWEN3.8-27B_COMMIT_SHA> \
+    --quantization 4bit \
+    --json runs/teacher_smoke.json
+```
+
+Three things are worth keeping straight, because they are easy to conflate:
+
+- **the revision SHA is the research pin.** A repo id serves different weights over time, so
+  every artifact records the SHA and an unpinned Hub load is refused before it downloads;
+- **the manifest records the download.** It says which files arrived and how big they were;
+- **the smoke test performs the pretrained-weight verification.** The downloader proves
+  files exist. It cannot prove they load as the intended teacher — `transformers` returns a
+  freshly-initialised model rather than raising when keys do not match, so the missing-weight
+  gate in `load_verified_teacher()` is the only thing standing between you and a 27B teacher
+  full of random numbers generating fluent nonsense.
+
+A fresh GPU machine should need nothing beyond those two commands before the pilot.
+
 ## A. Setup
 
 ```bash

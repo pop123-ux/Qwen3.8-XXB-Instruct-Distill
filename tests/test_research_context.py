@@ -52,11 +52,34 @@ def test_each_regime_says_what_changes_and_what_to_probe():
 # ---------------------------------------------------------------------------
 # curricula
 # ---------------------------------------------------------------------------
-def test_all_four_arms_exist_and_only_the_control_is_short_only():
-    assert sorted(CURRICULA) == ["B1", "B2", "B3", "B4"]
+def test_every_protocol_mixture_exists_and_only_the_control_is_short_only():
+    assert sorted(CURRICULA) == ["B0", "B1", "B2", "B3", "B4", "B5"]
     assert CURRICULA["B1"].max_length == 4_096
-    for arm in ("B2", "B3", "B4"):
+    for arm in ("B0", "B2", "B3", "B4", "B5"):
         assert CURRICULA[arm].max_length == MAX_CONTEXT
+
+
+def test_the_uniform_mixture_is_uniform_in_tokens_not_in_steps():
+    """The distinction the arm exists to make. Equal *step* shares would put 57% of the
+    tokens at the longest length, which is not a uniform mixture."""
+    share = CURRICULA["B0"].token_share()
+    assert len(share) == 4
+    for value in share.values():
+        assert value == pytest.approx(0.25, abs=1e-6)
+    steps = {s.sequence_length: s.fraction for s in CURRICULA["B0"].stages}
+    assert steps[4_096] > 10 * steps[MAX_CONTEXT], "uniform tokens needs unequal steps"
+
+
+def test_each_weighted_mixture_actually_weights_its_own_band():
+    """A mixture named for a band must carry the most tokens there; long sequences dominate
+    a token budget so easily that this is easy to get wrong."""
+    def heaviest(arm):
+        share = CURRICULA[arm].token_share()
+        return max(share, key=share.get)
+
+    assert heaviest("B5") == 16_384, "medium_weighted must be heaviest in the medium band"
+    assert heaviest("B4") == MAX_CONTEXT
+    assert heaviest("B1") == 4_096
 
 
 def test_fractions_must_sum_to_one():
