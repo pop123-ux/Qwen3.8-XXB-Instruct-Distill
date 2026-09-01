@@ -9,6 +9,34 @@ and says nothing about the 16 GB student target — they are separate budgets.
 ---
 
 
+
+## The pin: `72a217a`, not yet resolved to 40 characters
+
+The teacher's checkpoint-upload commit is known in abbreviated form:
+
+```
+Qwen/Qwen3.8-27B @ 72a217a          (abbreviated — NOT usable as the research pin)
+```
+
+`TeacherLoadPlan.validate()` accepts a 7-to-40 character commit id, so `72a217a` will pass
+the gate and load. **Do not use it as the recorded pin.** An abbreviation is not immutable:
+it is a prefix, and a prefix can become ambiguous as the repository grows. Final provenance
+must carry the full 40-character SHA.
+
+Resolving it needs one Hugging Face metadata request, which the authoring sandbox cannot
+make — `huggingface.co` egress is denied there by organisation policy. On the GPU machine:
+
+```bash
+python - <<'EOF'
+from huggingface_hub import HfApi
+print(HfApi().model_info("Qwen/Qwen3.8-27B", revision="72a217a").sha)
+EOF
+```
+
+That is one request and it returns the full SHA. Use that value everywhere afterwards, and
+record it in the ledger alongside the run. The abbreviation is recorded here only so the
+next session does not have to rediscover which commit is meant.
+
 ## The one-command start
 
 ```bash

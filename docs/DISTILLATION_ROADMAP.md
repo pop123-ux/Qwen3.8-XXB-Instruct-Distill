@@ -221,9 +221,9 @@ measured — the matrix records that this is currently uncontrolled.
 | | blocker | blocks | resolvable here? |
 |---|---|---|---|
 | B1 | Teacher weights unreachable — ~54 GB, `huggingface.co` egress-blocked in this sandbox | every real-teacher run | no, needs rented compute |
-| B2 | **Revision unpinned** — no commit SHA supplied or resolvable | reproducibility of any dataset | yes, on the first real run: pass `--revision` |
+| B2 | **Full revision SHA unresolved** — the checkpoint commit is known as `72a217a`; the 40-character SHA needs one HF metadata call, and `huggingface.co` egress is denied in the authoring sandbox | reproducible provenance of every artifact | yes, on the GPU box: one `HfApi().model_info(..., revision='72a217a').sha` call |
 | B3 | Teacher needs ≥24 GB — 16.3 GiB at 4-bit vs 13.56 usable | running teacher and student on one 16 GB card | no, architectural |
-| B4 | No corpus in the teacher's vocabulary — `vendor/` has no `tokenizer.json` | KD over real text at scale | yes, once the tokenizer is downloaded with the weights |
+| B4 | **KD is blocked on data, not on the model.** `train()` loads the canonical student fine via `ModelConfig(pretrained=<transferred>)`; every data source in `DataConfig` (`synthetic`, `text_corpus`, `train_path`) emits byte-level ids at vocab 256, and the student's vocab is 248,320 | any KD step against the real teacher | yes: a tokenizer-based corpus step using the teacher's own tokenizer. Not yet written — deliberately, so the first GPU session does not spend budget inventing one |
 | B5 | No benchmark harness | every capability claim, and student selection | yes, and it is the critical path |
 | B6 | Offline logit format unchosen | training without a resident teacher | deliberately gated on B1's tail-mass number |
 | B7 | ~~Frozen student exceeds 16 GB at every release precision~~ | ~~the release itself~~ | **closed** — `num_experts` 24 → 8; fits Q4 to 131,072, Q5 to 65,536, Q6 to 32,768 |
