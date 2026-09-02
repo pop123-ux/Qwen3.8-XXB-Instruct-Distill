@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from ..architecture.spec import HybridArchSpec
+from ..distillation.behavioral import behavioral_loss
 from ..distillation.kd_loss import distillation_loss
 from .checkpoints import (
     CheckpointMetadata,
@@ -224,7 +225,7 @@ def build_model(config: ExperimentConfig, spec: HybridArchSpec | None):
 
 def _require_supported(config: ExperimentConfig, teacher: Any = None) -> None:
     """Fail clearly on paths this trainer does not yet implement."""
-    if config.training.objective not in ("sft", "logit_kd", "mixed_kd"):
+    if config.training.objective not in ("sft", "logit_kd", "mixed_kd", "layer_kd"):
         raise NotImplementedError(
             f"objective {config.training.objective!r} is defined in the config schema but "
             "not yet implemented in the trainer."
@@ -317,7 +318,13 @@ def train(
     # --- distillation objective ---------------------------------------
     kd_temperature = config.training.kd_temperature
     kd_tail = config.training.kd_tail
-    kd_alpha = 1.0 if config.training.objective == "logit_kd" else config.training.kd_weight
+    layer_kd = config.training.objective == "layer_kd"
+    # Pure objectives report alpha 1.0: logit_kd optimises the KD divergence alone, and
+    # layer_kd optimises the layer term alone with the divergence kept as a diagnostic.
+    kd_alpha = 1.0 if config.training.objective in ("logit_kd", "layer_kd") \
+        else config.training.kd_weight
+    #: Built on the first step from the depths the models actually report.
+    layer_map = None
     if teacher is not None:
         provider_temperature = getattr(teacher, "temperature", kd_temperature)
         if abs(provider_temperature - kd_temperature) > 1e-9:
@@ -332,6 +339,20 @@ def train(
         describe = getattr(teacher, "describe", None)
         print(f"  objective: {config.training.objective}  alpha {kd_alpha}  "
               f"T {kd_temperature}  tail {kd_tail}")
+        if layer_kd:
+            print(f"  layer KD : pointwise hidden-state matching, map "
+                  f"'{config.training.layer_kd_map_strategy}', direction weight "
+                  f"{config.training.layer_kd_direction_weight}, "
+                  f"normalise {config.training.layer_kd_normalise}")
+            if not getattr(teacher, "capture_hidden_states", False):
+                # The failure this prevents: a teacher that returns only logits would make
+                # behavioral_loss raise a thousand tokens in, or — worse, if anything ever
+                # caught it — leave layer_kd quietly running as logit KD.
+                raise ValueError(
+                    "objective 'layer_kd' needs the teacher's hidden states, but the "
+                    "signal provider was built without capture_hidden_states=True. "
+                    "Build it with build_provider(..., capture_hidden_states=True)."
+                )
         if describe is not None:
             print(f"  teacher  : {describe()}")
 
@@ -688,16 +709,57 @@ def train(
                         # for its SIGTERM handler, and shadowing it makes every path fail.
                         teacher_signal = teacher.signal_for(batch)
                         phase[0] = "forward pass"
-                        outputs = model(input_ids=batch)
+                        outputs = model(input_ids=batch, output_hidden_states=layer_kd)
                         if first_step:
                             take(profile, "after_forward")
                         phase[0] = "distillation loss"
-                        kd_output = distillation_loss(
-                            outputs.logits, batch, teacher_signal,
-                            alpha=kd_alpha, temperature=kd_temperature, tail=kd_tail,
-                        )
-                        kd_records.append(kd_output.to_log())
-                        loss = kd_output.total / config.training.gradient_accumulation_steps
+                        if layer_kd:
+                            if teacher_signal.hidden_states is None:
+                                raise ValueError(
+                                    "the teacher returned no hidden states, so layer_kd "
+                                    "has nothing to match against"
+                                )
+                            if layer_map is None:
+                                layer_map = _layer_mapping(
+                                    len(outputs.hidden_states) - 1,
+                                    len(teacher_signal.hidden_states) - 1,
+                                    config.training.layer_kd_map_strategy,
+                                )
+                                print(f"  layer map: {len(layer_map.mapping)} pairs, "
+                                      f"{len(layer_map.removed_teacher_layers)} teacher "
+                                      f"layers unsupervised")
+                            layer_output = behavioral_loss(
+                                outputs.hidden_states, teacher_signal.hidden_states,
+                                layer_map.mapping, mode="pointwise",
+                                direction_weight=config.training.layer_kd_direction_weight,
+                                normalise=config.training.layer_kd_normalise,
+                            )
+                            # The raw teacher tuple is ~1 GiB at this sequence length and
+                            # nothing needs it now: the graph holds the normalised copies
+                            # of the mapped pairs, and the unmapped entries are dead.
+                            teacher_hidden_states = teacher_signal.hidden_states
+                            teacher_signal.hidden_states = None
+                            del teacher_hidden_states
+                            with torch.no_grad():
+                                # Diagnostics, not the objective: reported so Run 003 can
+                                # be read against Run 002 on the same axes, and computed
+                                # without a graph so they cost no gradient memory.
+                                kd_output = distillation_loss(
+                                    outputs.logits, batch, teacher_signal,
+                                    alpha=1.0, temperature=kd_temperature, tail=kd_tail,
+                                )
+                            kd_records.append({**kd_output.to_log(),
+                                               **_layer_log(layer_output)})
+                            loss = (layer_output.total
+                                    / config.training.gradient_accumulation_steps)
+                        else:
+                            kd_output = distillation_loss(
+                                outputs.logits, batch, teacher_signal,
+                                alpha=kd_alpha, temperature=kd_temperature, tail=kd_tail,
+                            )
+                            kd_records.append(kd_output.to_log())
+                            loss = (kd_output.total
+                                    / config.training.gradient_accumulation_steps)
                 if first_step:
                     # The loss path holds the logits three times over, so it gets its
                     # own stage rather than being folded into the forward pass.
@@ -743,14 +805,22 @@ def train(
                     # Reported per step, not per run: teacher entropy near zero, or a top-1
                     # agreement already at 1.0, both mean the KD term has stopped carrying
                     # more than the argmax and the objective has quietly become SFT.
+                    keys = ("kd_loss", "ce_loss", "teacher_entropy", "top1_agreement",
+                            "teacher_tail_mass")
+                    if layer_kd:
+                        keys += ("layer_kd_loss", "layer_magnitude", "layer_direction",
+                                 "layer_norm_ratio", "layer_pairs")
                     record.update({
-                        key: round(sum(r[key] for r in kd_records) / len(kd_records), 4)
-                        for key in ("kd_loss", "ce_loss", "teacher_entropy",
-                                    "top1_agreement", "teacher_tail_mass")
+                        key: round(sum(r[key] for r in kd_records) / len(kd_records), 6)
+                        for key in keys if all(r.get(key) is not None for r in kd_records)
                     })
                 state.history.append(record)
                 extra = f"  bpb {record['bits_per_byte']:.3f}" if text_mode else ""
                 if kd_records:
+                    if layer_kd:
+                        extra += (f"  layer {record['layer_kd_loss']:.4f}"
+                                  f"  (mag {record['layer_magnitude']:.4f}"
+                                  f"  dir {record['layer_direction']:.4f})")
                     extra += (f"  kd {record['kd_loss']:.3f}  ce {record['ce_loss']:.3f}"
                               f"  agree {record['top1_agreement']:.2f}"
                               f"  tail {record['teacher_tail_mass']:.3f}")
@@ -846,7 +916,8 @@ def train(
         data_mode=config.data.mode,
         effective_precision=precision, precision_note=precision_note, oom=oom,
         persisted=persisted, persistent_destination=config.training.persistent_backup,
-        distillation=_distillation_summary(config, state, teacher, kd_alpha, kd_tail),
+        distillation=_distillation_summary(config, state, teacher, kd_alpha, kd_tail,
+                                           layer_map),
         parameter_counts=param_report,
     )
     if oom is not None:
@@ -937,8 +1008,114 @@ def _parameter_count(spec: HybridArchSpec | None) -> int | None:
     return count_parameters(spec).total
 
 
+def _layer_log(output) -> dict[str, float]:
+    """The layer term and the two diagnostics that say *how* it is failing.
+
+    Magnitude and direction are reported separately, never blended: a student doing the
+    right thing at half strength and one pushing the residual stream the wrong way need
+    different fixes, and a single number cannot tell them apart. ``layer_norm_ratio`` is
+    the student's mean activation norm over the teacher's, which is the earliest sign of
+    the first failure.
+    """
+    def scalar(value: Any) -> float:
+        # These tensors are still attached to the graph the optimizer will walk. Detaching
+        # before reading keeps the log from holding a reference to it — and silences the
+        # warning that would otherwise appear once per step for the whole run.
+        detach = getattr(value, "detach", None)
+        return round(float(detach() if detach else value), 6)
+
+    return {
+        "layer_kd_loss": scalar(output.total),
+        "layer_magnitude": scalar(output.magnitude),
+        "layer_direction": scalar(output.direction),
+        "layer_norm_ratio": round(output.student_norm / output.teacher_norm, 6)
+        if output.teacher_norm else 0.0,
+        "layer_pairs": float(output.n_pairs),
+    }
+
+
+def _layer_mapping(student_layers: int, teacher_layers: int, strategy: str):
+    """The teacher->student layer correspondence ``layer_kd`` supervises.
+
+    Built from the depths the two models actually reported this step, not from a constant:
+    a mapping that assumed 64 teacher layers and got 40 would silently supervise the wrong
+    pairs, and every number downstream would look fine.
+
+    The rule is the project's documented one — whole 4-layer hybrid groups selected evenly
+    across the teacher's depth, so a student layer always lands on a teacher layer of its
+    own block type. :func:`~qwen_distill.architecture.moe_init.map_layers` raises when the
+    depths are not whole groups rather than falling back to an arbitrary correspondence.
+    """
+    import dataclasses
+
+    from ..architecture.moe_init import map_layers
+    from ..architecture.moe_student import FROZEN_STUDENT
+
+    spec = (FROZEN_STUDENT if student_layers == FROZEN_STUDENT.num_hidden_layers
+            else dataclasses.replace(FROZEN_STUDENT, num_hidden_layers=student_layers))
+    mapping = map_layers(spec, teacher_layers=teacher_layers, strategy=strategy)
+    if mapping.problems:
+        raise ValueError(
+            "the layer mapping puts student layers onto teacher layers of a different "
+            "block type, which would train DeltaNet against attention: "
+            + "; ".join(mapping.problems)
+        )
+    return mapping
+
+
+def _layer_kd_definition(config: ExperimentConfig, mapping) -> dict[str, Any]:
+    """The exact objective, written into the run record.
+
+    A layer-KD result is uninterpretable without this: which representations were taken
+    from each side, how they were paired, what alignment was applied, and how the pairs
+    were reduced to one number.
+    """
+    return {
+        "objective": "layer_kd",
+        "implementation": "qwen_distill.distillation.behavioral.behavioral_loss",
+        "mode": "pointwise",
+        "teacher_representation": (
+            "hidden_states[m(l) + 1] — the output of teacher layer m(l), from the same "
+            "no_grad forward that produced the logits (output_hidden_states=True)"
+        ),
+        "student_representation": (
+            "hidden_states[l + 1] — the output of student layer l "
+            "(output_hidden_states=True)"
+        ),
+        "mapping_strategy": mapping.strategy,
+        "mapping": {str(k): v for k, v in sorted(mapping.mapping.items())},
+        "removed_teacher_layers": list(mapping.removed_teacher_layers),
+        "n_supervised_pairs": len(mapping.mapping),
+        "projection": (
+            "none — teacher and student share hidden_size, so the comparison needs no "
+            "learned projection and behavioral_loss raises if the widths disagree"
+        ),
+        "normalisation": (
+            "per-token RMS scaling to unit norm before comparison"
+            if config.training.layer_kd_normalise else "none"
+        ),
+        "loss": (
+            "mean over mapped pairs of [ MSE(h_s, h_t) + direction_weight * "
+            "(1 - mean cosine similarity(h_s, h_t)) ], on normalised hidden states"
+        ),
+        "direction_weight": config.training.layer_kd_direction_weight,
+        "loss_weight": (
+            "1.0 — pure layer KD. The logit KD divergence and the cross-entropy are "
+            "computed under no_grad as diagnostics and contribute no gradient, mirroring "
+            "Run 002's pure logit KD, where CE was likewise reported and not optimised"
+        ),
+        "topology_mismatch": (
+            f"{len(mapping.removed_teacher_layers)} teacher layers have no student anchor "
+            "and are not supervised. That is what conventional layer matching does with a "
+            "depth change, and it is the limitation this control exists to measure — not a "
+            "defect of the implementation"
+        ),
+    }
+
+
 def _distillation_summary(
-    config: ExperimentConfig, state: TrainingState, teacher: Any, alpha: float, tail: str
+    config: ExperimentConfig, state: TrainingState, teacher: Any, alpha: float, tail: str,
+    layer_map: Any = None,
 ) -> dict[str, Any] | None:
     """What the teacher contributed, or ``None`` when there was no teacher.
 
@@ -961,7 +1138,7 @@ def _distillation_summary(
         }
 
     describe = getattr(teacher, "describe", None)
-    return {
+    summary = {
         "objective": config.training.objective,
         "kd_alpha": alpha,
         "kd_temperature": config.training.kd_temperature,
@@ -975,6 +1152,16 @@ def _distillation_summary(
         "teacher_entropy": endpoints("teacher_entropy"),
         "teacher_tail_mass": endpoints("teacher_tail_mass"),
     }
+    if config.training.objective == "layer_kd":
+        summary["layer_kd_loss"] = endpoints("layer_kd_loss")
+        summary["layer_magnitude"] = endpoints("layer_magnitude")
+        summary["layer_direction"] = endpoints("layer_direction")
+        summary["layer_norm_ratio"] = endpoints("layer_norm_ratio")
+        summary["layer_kd_definition"] = (
+            _layer_kd_definition(config, layer_map) if layer_map is not None
+            else {"error": "no layer mapping was built — the run took no step"}
+        )
+    return summary
 
 
 def _write_summary(

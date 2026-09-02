@@ -92,9 +92,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     run.add_argument("--batch-size", type=int, default=1)
     run.add_argument("--gradient-accumulation-steps", type=int, default=1)
     run.add_argument("--learning-rate", type=float, default=2e-4)
-    run.add_argument("--objective", choices=("logit_kd", "mixed_kd"), default="logit_kd",
-                     help="'logit_kd' is pure KD and ignores --kd-weight; 'mixed_kd' is "
-                          "--kd-weight of KD and the remainder cross-entropy")
+    run.add_argument("--objective", choices=("logit_kd", "mixed_kd", "layer_kd"),
+                     default="logit_kd",
+                     help="'logit_kd' is pure KD over the output distribution and ignores "
+                          "--kd-weight; 'mixed_kd' is --kd-weight of KD and the remainder "
+                          "cross-entropy; 'layer_kd' is pure intermediate/layer matching "
+                          "(the KD divergence and CE are still reported, as diagnostics). "
+                          "'layer_kd' makes the teacher return its hidden states, which "
+                          "costs about a gigabyte at 1536 tokens")
+    run.add_argument("--layer-kd-direction-weight", type=float, default=1.0,
+                     help="weight on the (1 - cosine) direction term relative to the MSE "
+                          "magnitude term; both are always reported separately")
+    run.add_argument("--layer-kd-no-normalise", action="store_true",
+                     help="compare raw hidden states instead of per-token RMS-normalised "
+                          "ones. Off by default because unnormalised MSE is dominated by "
+                          "whichever mapped pairs sit deepest in the residual stream")
     run.add_argument("--kd-weight", type=float, default=0.5,
                      help="KD share of the loss under --objective mixed_kd; the rest is CE")
     run.add_argument("--kd-temperature", type=float, default=2.0)
@@ -188,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     config = ExperimentConfig(
         name=name,
         description=(
-            "real teacher-in-the-loop logit KD against "
+            f"real teacher-in-the-loop {args.objective} against "
             + ("the frozen canonical student" if args.student == "canonical"
                else "a same-family mechanism-check student")
         ),
@@ -220,6 +232,8 @@ def main(argv: list[str] | None = None) -> int:
             kd_weight=args.kd_weight,
             kd_temperature=args.kd_temperature,
             kd_top_k=args.kd_top_k,
+            layer_kd_direction_weight=args.layer_kd_direction_weight,
+            layer_kd_normalise=not args.layer_kd_no_normalise,
             seed=args.seed,
             eval_every=args.eval_every or max(1, args.steps // 4),
             save_every=args.save_every or max(1, args.steps // 2),
@@ -236,6 +250,8 @@ def main(argv: list[str] | None = None) -> int:
              "steps": args.steps, "sequence_length": args.sequence_length,
              "kd_top_k": args.kd_top_k, "kd_temperature": args.kd_temperature,
              "objective": args.objective, "kd_weight": args.kd_weight,
+             "layer_kd_direction_weight": args.layer_kd_direction_weight,
+             "layer_kd_normalise": not args.layer_kd_no_normalise,
              "strategy": args.strategy, "optimizer": args.optimizer,
              "log_every": args.log_every or max(1, args.steps // 20),
              "eval_every": args.eval_every or max(1, args.steps // 4),
@@ -261,7 +277,10 @@ def main(argv: list[str] | None = None) -> int:
     # taken at the capture temperature, and the trainer refuses a mismatch rather than
     # letting the tail term be computed against a distribution it does not describe.
     teacher = backend.signal_provider(
-        top_k=args.kd_top_k or None, temperature=args.kd_temperature
+        top_k=args.kd_top_k or None, temperature=args.kd_temperature,
+        # layer_kd matches intermediate representations, so the teacher must return them.
+        # One forward produces both; the trainer refuses the objective if this is off.
+        capture_hidden_states=args.objective == "layer_kd",
     )
     print(f"    teacher ready: {teacher.describe()}")
 

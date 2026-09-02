@@ -24,7 +24,7 @@ from .tokenized_data import DOCUMENT_SEPARATORS
 STRATEGIES = ("full", "lora", "qlora")
 OPTIMIZERS = ("adamw", "adamw_8bit", "adafactor", "sgd")
 PRECISIONS = ("bf16", "fp16", "fp32")
-OBJECTIVES = ("sft", "logit_kd", "mixed_kd")
+OBJECTIVES = ("sft", "logit_kd", "mixed_kd", "layer_kd")
 
 
 @dataclass
@@ -156,6 +156,21 @@ class TrainingConfig:
     #: Teacher truncation. ``null`` keeps the full distribution — exact, but it holds a
     #: (batch, positions, 248320) tensor beside the student's own.
     kd_top_k: int | None = 64
+
+    # --- layer_kd -----------------------------------------------------
+    #: Weight on the direction (1 - cosine) term relative to the magnitude (MSE) term in
+    #: the layer objective. Both are always reported separately: a student doing the right
+    #: thing at half strength and one pushing the residual stream the wrong way are
+    #: different failures, and one blended number hides which is happening.
+    layer_kd_direction_weight: float = 1.0
+    #: Scale each hidden state to unit RMS per token before comparing. Without it the
+    #: objective is dominated by whichever mapped pairs sit deepest in the residual
+    #: stream, because their activations are simply larger.
+    layer_kd_normalise: bool = True
+    #: How the 48 student layers are mapped onto the teacher's 64. ``group`` keeps whole
+    #: 4-layer hybrid groups so a student layer always lands on a teacher layer of its own
+    #: type; see architecture.moe_init.map_layers.
+    layer_kd_map_strategy: str = "group"
 
     seed: int = 0
     eval_every: int = 50
@@ -294,6 +309,15 @@ class ExperimentConfig:
                 "a text corpus carries no stored teacher logits; either set "
                 "objective.signal_source='online' or use a teacher-generated dataset"
             )
+        if self.training.objective == "layer_kd":
+            if self.training.layer_kd_direction_weight < 0:
+                errors.append("layer_kd_direction_weight must not be negative: a negative "
+                              "weight rewards pointing away from the teacher")
+            if self.training.layer_kd_map_strategy != "group":
+                errors.append(
+                    "layer_kd_map_strategy='importance' needs a measured per-teacher-group "
+                    "score that no experiment has produced; only 'group' can run today"
+                )
         if self.training.kd_tail not in ("bucket", "renormalize"):
             errors.append(
                 f"training.kd_tail must be 'bucket' or 'renormalize', "

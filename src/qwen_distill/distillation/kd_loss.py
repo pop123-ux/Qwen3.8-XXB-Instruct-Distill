@@ -79,6 +79,15 @@ class TeacherSignal:
     #: normaliser non-linearly, so a value captured at T=1 is wrong for any other T.
     logsumexp_temperature: float = 1.0
 
+    #: The teacher's ``output_hidden_states`` tuple, ``n_layers + 1`` tensors of
+    #: ``(batch, positions, hidden)``. Populated only when the objective supervises
+    #: intermediate representations (``layer_kd``); ``None`` otherwise, and never read by
+    #: :func:`kd_divergence`, which is a statement about the output distribution alone.
+    #: It lives here rather than on the provider so that one teacher forward serves both
+    #: the distribution and the intermediate signal — a second forward would double the
+    #: most expensive part of a KD step.
+    hidden_states: tuple[torch.Tensor, ...] | None = None
+
     #: Free-form provenance: which teacher, which revision, which k.
     metadata: dict[str, Any] | None = None
 

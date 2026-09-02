@@ -60,12 +60,18 @@ class OnlineTeacher:
     #: reproducible: the same repo id has served different weights over time.
     teacher_model: str | None = None
     teacher_revision: str | None = None
+    #: Return the teacher's ``hidden_states`` alongside the distribution. Required by
+    #: ``layer_kd``; off by default because the tuple is ``n_layers + 1`` tensors of
+    #: ``(batch, positions, hidden)`` — a gigabyte for the 27B teacher at 1536 tokens —
+    #: and an objective that does not read them should not pay for them.
+    capture_hidden_states: bool = False
 
     def signal_for(self, input_ids: torch.Tensor) -> TeacherSignal:
         import torch
 
         was_training = self.model.training
         self.model.eval()
+        hidden_states = None
         try:
             with torch.no_grad():
                 # Move the ids the way ``real_teacher.teacher_logits`` does. The trainer
@@ -76,8 +82,16 @@ class OnlineTeacher:
                 device = getattr(self.model, "device", None)
                 if device is not None:
                     input_ids = input_ids.to(device)
-                logits = self.model(input_ids=input_ids).logits
+                # One forward serves both signals. Running the teacher twice — once for
+                # the distribution and once for the hidden states — would double the most
+                # expensive part of a KD step for no information gained.
+                outputs = self.model(input_ids=input_ids,
+                                     output_hidden_states=self.capture_hidden_states)
+                logits = outputs.logits
+                if self.capture_hidden_states:
+                    hidden_states = tuple(outputs.hidden_states)
             signal = capture_signal(logits, top_k=self.top_k, temperature=self.temperature)
+            signal.hidden_states = hidden_states
         finally:
             if was_training:
                 self.model.train()
@@ -91,6 +105,7 @@ class OnlineTeacher:
             "temperature": self.temperature,
             "teacher_model": self.teacher_model,
             "teacher_revision": self.teacher_revision,
+            "hidden_states": self.capture_hidden_states,
         }
 
 
@@ -138,6 +153,7 @@ def build_provider(
     model: Any = None,
     top_k: int | None = 64,
     temperature: float = 1.0,
+    capture_hidden_states: bool = False,
     **metadata: Any,
 ) -> SignalProvider:
     """Construct a provider by name, failing loudly on the unimplemented one."""
@@ -148,6 +164,7 @@ def build_provider(
             model=model,
             top_k=top_k,
             temperature=temperature,
+            capture_hidden_states=capture_hidden_states,
             teacher_model=metadata.get("teacher_model"),
             teacher_revision=metadata.get("teacher_revision"),
         )
