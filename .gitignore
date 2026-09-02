@@ -67,3 +67,9 @@ vendor/qwen38-metadata/*
 data/level2r/
 data/*/train.txt
 data/*/validation.txt
+
+# Run output at the repository root. `experiments/**/runs/` above covers the
+# historical layout; the GPU workflow writes to ./runs, which holds checkpoints,
+# optimizer state and materialised students. Small JSON records worth keeping are
+# copied into evaluations/ by hand.
+/runs/

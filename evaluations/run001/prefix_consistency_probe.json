@@ -1,0 +1,19 @@
+{
+  "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+  "quantization": "4bit",
+  "n_tokens": 15,
+  "shared_positions": 7,
+  "max_abs_logit_diff": 0.125,
+  "mean_abs_logit_diff": 0.017384013161063194,
+  "logit_scale_max_abs": 19.125,
+  "relative_max_diff": 0.006535947788506746,
+  "argmax_agreement": 1.0,
+  "argmax_disagreements": 0,
+  "max_abs_prob_diff": 0.021580636501312256,
+  "max_total_variation": 0.021580619737505913,
+  "smoke_test_tolerance_atol": 0.01,
+  "passes_at_atol_1e-2": false,
+  "passes_at_atol_1e-1": false,
+  "passes_at_atol_5e-1": true,
+  "verdict": "numerical: the argmax is unchanged at every shared position, so positions are aligned and the difference is quantisation/kernel rounding"
+}

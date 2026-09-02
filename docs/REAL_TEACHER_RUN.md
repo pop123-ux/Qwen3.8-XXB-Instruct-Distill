@@ -10,7 +10,46 @@ and says nothing about the 16 GB student target — they are separate budgets.
 
 
 
-## The pin: `72a217a`, not yet resolved to 40 characters
+## The pin: `dbdc473dea0d6a9763042881cc33d6058d1742d2` — RESOLVED, and it is not `72a217a`
+
+**Closed on hardware, 2026-09-02.** Both halves of this turned out to matter, and the
+second one was not anticipated:
+
+```
+Qwen/Qwen3.8-27B @ dbdc473dea0d6a9763042881cc33d6058d1742d2      <- use this
+Qwen/Qwen3.8-27B @ 72a217afab8029b39e4af1c7273a829995a3dbaf      <- the upload commit; do NOT use
+```
+
+`72a217a` resolves to `72a217afab8029b39e4af1c7273a829995a3dbaf`, and it is the commit that
+uploaded the weights. It is still the wrong pin. Upstream replaced `tokenizer_config.json`,
+`chat_template.jinja` and `generation_config.json` about two hours after that upload, so the
+weights-upload commit carries **correct weights beside superseded metadata**.
+
+The weights are provably identical at the two revisions — all 18 safetensors shards have the
+same LFS object ids and no weight commit exists between them — so this costs nothing to fix
+and is not a re-download of the checkpoint.
+
+What pinning the upload commit actually does, observed rather than predicted:
+
+| | `72a217a` (upload) | `dbdc473` (adopted) |
+|---|---|---|
+| `chat_template.jinja` accepts | `low`, `high`, `xhigh` | `low`, `medium`, `xhigh` |
+| smoke-test check 3 | **FAILS** — `TemplateError: Unknown reasoning_effort: medium` | passes, four distinct renders |
+| tokenizer `model_max_length` | 131,072 | 262,144 |
+| metadata matches `vendor/qwen38-metadata` | no | **yes**, all four SHA-256 |
+
+`reasoning_modes.py` documents the *corrected* contract — `xhigh`/`medium`/`low`, with
+`high` raising, "the one that catches people out". That module and the upload commit's
+template contradict each other, so every reasoning-mode experiment run at `72a217a` would
+have been measuring a prompt the project's own model of the teacher says does not exist.
+
+The lesson generalises past this repo: **on the Hub, the commit that uploads the weights is
+not necessarily the commit you want to pin.** Verify the metadata hashes, not just the
+architecture — `config.json` is byte-identical at both revisions, so an architecture check
+alone passes and tells you nothing.
+
+<details>
+<summary>The original note, kept for the record</summary>
 
 The teacher's checkpoint-upload commit is known in abbreviated form:
 
@@ -36,6 +75,8 @@ EOF
 That is one request and it returns the full SHA. Use that value everywhere afterwards, and
 record it in the ledger alongside the run. The abbreviation is recorded here only so the
 next session does not have to rediscover which commit is meant.
+
+</details>
 
 ## The one-command start
 

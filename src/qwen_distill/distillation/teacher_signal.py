@@ -68,6 +68,14 @@ class OnlineTeacher:
         self.model.eval()
         try:
             with torch.no_grad():
+                # Move the ids the way ``real_teacher.teacher_logits`` does. The trainer
+                # already builds its batch on the training device, so this is a no-op
+                # there; a caller holding CPU ids — the smoke test does — would otherwise
+                # fail inside the embedding's index_select with a device mismatch, and the
+                # two routes to the same teacher must not disagree about whose job this is.
+                device = getattr(self.model, "device", None)
+                if device is not None:
+                    input_ids = input_ids.to(device)
                 logits = self.model(input_ids=input_ids).logits
             signal = capture_signal(logits, top_k=self.top_k, temperature=self.temperature)
         finally:

@@ -1,0 +1,494 @@
+{
+  "model": "Qwen/Qwen3.8-27B",
+  "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+  "downloaded_at": "2026-09-02T15:21:26Z",
+  "local_path": "/workspace/models/qwen3.8-27b-dbdc473",
+  "n_files": 96,
+  "total_bytes": 55586049591,
+  "huggingface_hub_version": "1.29.0",
+  "checksum_policy": "sha256 for files up to 67108864 bytes; larger files are recorded by size only, because hashing the full checkpoint costs more than fetching it",
+  "files": [
+    {
+      "path": ".cache/huggingface/.gitignore",
+      "bytes": 1,
+      "sha256": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1"
+    },
+    {
+      "path": ".cache/huggingface/CACHEDIR.TAG",
+      "bytes": 191,
+      "sha256": "f6572428f6d5e1575e73a1502895a8731f10757dfbb634909c6e154b849af91d"
+    },
+    {
+      "path": ".cache/huggingface/download/.gitattributes.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/.gitattributes.metadata",
+      "bytes": 101,
+      "sha256": "922120cb4f1a92985bb036bc90349432e7a796b25c084edb33b40bc936d96bcc"
+    },
+    {
+      "path": ".cache/huggingface/download/README.md.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/README.md.metadata",
+      "bytes": 101,
+      "sha256": "e5db4db74c2c2d1ea2f69bd75a5bd58330712a80f8862f0c76f459a7be723ba9"
+    },
+    {
+      "path": ".cache/huggingface/download/chat_template.jinja.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/chat_template.jinja.metadata",
+      "bytes": 101,
+      "sha256": "77952310838385c73b0732f1da5d062f55a61b2203061bc8c98e4b2c6987a5af"
+    },
+    {
+      "path": ".cache/huggingface/download/config.json.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/config.json.metadata",
+      "bytes": 101,
+      "sha256": "edd1bd26ac46873666c6c126e79f4ef133d3d0c24ba7e0d51ea75f9c2fc3c627"
+    },
+    {
+      "path": ".cache/huggingface/download/crc32.txt.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/crc32.txt.metadata",
+      "bytes": 100,
+      "sha256": "a2ab884e4be46aeabb810dd165fd7cbfad62c88262938cdbc60e252243a33aac"
+    },
+    {
+      "path": ".cache/huggingface/download/generation_config.json.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/generation_config.json.metadata",
+      "bytes": 100,
+      "sha256": "07b80f03311358641c9cc7ef6fb7c44d1761e8133e77a1b8063b3a4ebd158c8a"
+    },
+    {
+      "path": ".cache/huggingface/download/merges.txt.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/merges.txt.metadata",
+      "bytes": 101,
+      "sha256": "ce4cd6fead9878b114e916c5b30df890a56a63306e29717727aa4472c56fe1a5"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00001-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00001-of-00018.safetensors.metadata",
+      "bytes": 125,
+      "sha256": "9ed7fe6828f41a6a8664484a6fc77b51367da5390365b93eec5295d13a90a175"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00002-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00002-of-00018.safetensors.metadata",
+      "bytes": 125,
+      "sha256": "8ae7ca6510980e385c88a2aabf7a8645984cced543089f0252e24ce526c63518"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00003-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00003-of-00018.safetensors.metadata",
+      "bytes": 125,
+      "sha256": "b127827b4ff5393e7de5a70f0364c208ce4ae8e1aad17ecc4067e97ebaa6d116"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00004-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00004-of-00018.safetensors.metadata",
+      "bytes": 125,
+      "sha256": "98be6b5255b46ac25c501c1a72f4a638d2e7a92d3ea88231ad89015538d3100f"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00005-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00005-of-00018.safetensors.metadata",
+      "bytes": 124,
+      "sha256": "31ec0cd4dc68579d83b538cbc650acffd3d2d03e7b2b6717d2aabae6952dcb24"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00006-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00006-of-00018.safetensors.metadata",
+      "bytes": 125,
+      "sha256": "7c7d754cd744632747186e465e5277c94129639e08503a3a4514bd4b39a81d31"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00007-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00007-of-00018.safetensors.metadata",
+      "bytes": 125,
+      "sha256": "adf527da9d4209cf483b03e80c8741a29c426693f98346b0668cc39c7e88653c"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00008-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00008-of-00018.safetensors.metadata",
+      "bytes": 125,
+      "sha256": "61119e4ba101340c374383a5d0c37a17234351b9d95aacc22d81d5a786088f05"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00009-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00009-of-00018.safetensors.metadata",
+      "bytes": 125,
+      "sha256": "89a314ed342050d02c3dbddf0b8847bd774227a688fb0805ed1ae8308e43d549"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00010-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00010-of-00018.safetensors.metadata",
+      "bytes": 125,
+      "sha256": "75f8bbf1fb20f70a5af02276e8ceb11587cd86e064f417529f154784f58b2565"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00011-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00011-of-00018.safetensors.metadata",
+      "bytes": 125,
+      "sha256": "32f6cd2a6068eca50278e38249aca72d23e8a60148f640f5e72080096dd87504"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00012-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00012-of-00018.safetensors.metadata",
+      "bytes": 125,
+      "sha256": "716d8cd58fe118c8ced3ae00cc5025ec676b3658b16fee241d1d11370faae480"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00013-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00013-of-00018.safetensors.metadata",
+      "bytes": 125,
+      "sha256": "2104fe04f666ba6c4a8160698b21e280caeff8999864392cefb116885fed766e"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00014-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00014-of-00018.safetensors.metadata",
+      "bytes": 124,
+      "sha256": "fcce73311d235cf18323216033c619343f0cdd6e00ce697a498f6e8a5336d10a"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00015-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00015-of-00018.safetensors.metadata",
+      "bytes": 125,
+      "sha256": "abdd0e8ff07fa13693ef8768bc0399d39ca6761c46e67580fe9c5ea7ba304921"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00016-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00016-of-00018.safetensors.metadata",
+      "bytes": 125,
+      "sha256": "68ab08d39a8239abf0f5ed8f2a93a1baa77e0c0b0d96ecb00bf3fcf208667b37"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00017-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00017-of-00018.safetensors.metadata",
+      "bytes": 125,
+      "sha256": "18605a12675461d897537acf11f1a51063173b63e161aa406546822c37f5083d"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00018-of-00018.safetensors.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model-00018-of-00018.safetensors.metadata",
+      "bytes": 124,
+      "sha256": "296303afe75214ad1141ac89cbeff0348d8761a3ecc8df4183d1f28c15134027"
+    },
+    {
+      "path": ".cache/huggingface/download/model.safetensors.index.json.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/model.safetensors.index.json.metadata",
+      "bytes": 101,
+      "sha256": "cd1923ab22bb664f5d458f07d755b937a7ab59fa7fda827c8426b3544412c59e"
+    },
+    {
+      "path": ".cache/huggingface/download/preprocessor_config.json.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/preprocessor_config.json.metadata",
+      "bytes": 101,
+      "sha256": "b2ee2ae7afc54b772a2b9896fecb05d59d9ddf3194846d4c591e98c3aa47b577"
+    },
+    {
+      "path": ".cache/huggingface/download/tokenizer.json.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/tokenizer.json.metadata",
+      "bytes": 125,
+      "sha256": "a4f1543132d18a098068f7b119f8cacee7c10f3a5d0e0f2fe78365d3650a166d"
+    },
+    {
+      "path": ".cache/huggingface/download/tokenizer_config.json.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/tokenizer_config.json.metadata",
+      "bytes": 101,
+      "sha256": "6aa44c66919c8c463415c82b2bd92942bf93364bbe75e38f186afd7df9ae9c95"
+    },
+    {
+      "path": ".cache/huggingface/download/video_preprocessor_config.json.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/video_preprocessor_config.json.metadata",
+      "bytes": 101,
+      "sha256": "b1501d16981a6203cf912e17cc12aa4bd6099022a6d6ce549cf0971fbf1e4afd"
+    },
+    {
+      "path": ".cache/huggingface/download/vocab.json.lock",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".cache/huggingface/download/vocab.json.metadata",
+      "bytes": 101,
+      "sha256": "adb6b9ea1ed49944cb9304fa1f9c62294f02c57d285bec21fd1d640a2bf2bf4d"
+    },
+    {
+      "path": ".cache/huggingface/trees/dbdc473dea0d6a9763042881cc33d6058d1742d2.json",
+      "bytes": 7352,
+      "sha256": "ed5f0c030b641509f0fbdf70a0bc9c8d91c243716198948487e402161de01a18"
+    },
+    {
+      "path": ".gitattributes",
+      "bytes": 1570,
+      "sha256": "34448b82c17d60fec9b65b1f093c115ddbaadc04beb1b0140b6bfed2e012a930"
+    },
+    {
+      "path": "README.md",
+      "bytes": 158,
+      "sha256": "e83d0b3d6e69c69b667f09698f18847faa137d705f68c9bd148b8bb15c576302"
+    },
+    {
+      "path": "chat_template.jinja",
+      "bytes": 8952,
+      "sha256": "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041"
+    },
+    {
+      "path": "config.json",
+      "bytes": 4312,
+      "sha256": "191e0af232104ed8b65258cf3fb2b842e288008baca7633c11b82a1ac7203aab"
+    },
+    {
+      "path": "crc32.txt",
+      "bytes": 238,
+      "sha256": "b42dd291f5f98b05807e458f5b47849969a9b3326acbf0c97d28b05826740b83"
+    },
+    {
+      "path": "generation_config.json",
+      "bytes": 202,
+      "sha256": "e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e"
+    },
+    {
+      "path": "merges.txt",
+      "bytes": 3353259,
+      "sha256": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+    },
+    {
+      "path": "model-00001-of-00018.safetensors",
+      "bytes": 3966730552,
+      "sha256": null
+    },
+    {
+      "path": "model-00002-of-00018.safetensors",
+      "bytes": 3043080328,
+      "sha256": null
+    },
+    {
+      "path": "model-00003-of-00018.safetensors",
+      "bytes": 2542796952,
+      "sha256": null
+    },
+    {
+      "path": "model-00004-of-00018.safetensors",
+      "bytes": 3988973152,
+      "sha256": null
+    },
+    {
+      "path": "model-00005-of-00018.safetensors",
+      "bytes": 2099339864,
+      "sha256": null
+    },
+    {
+      "path": "model-00006-of-00018.safetensors",
+      "bytes": 3979553696,
+      "sha256": null
+    },
+    {
+      "path": "model-00007-of-00018.safetensors",
+      "bytes": 2108759344,
+      "sha256": null
+    },
+    {
+      "path": "model-00008-of-00018.safetensors",
+      "bytes": 3979553696,
+      "sha256": null
+    },
+    {
+      "path": "model-00009-of-00018.safetensors",
+      "bytes": 2108759344,
+      "sha256": null
+    },
+    {
+      "path": "model-00010-of-00018.safetensors",
+      "bytes": 3979553696,
+      "sha256": null
+    },
+    {
+      "path": "model-00011-of-00018.safetensors",
+      "bytes": 2108759344,
+      "sha256": null
+    },
+    {
+      "path": "model-00012-of-00018.safetensors",
+      "bytes": 3979553696,
+      "sha256": null
+    },
+    {
+      "path": "model-00013-of-00018.safetensors",
+      "bytes": 2108759344,
+      "sha256": null
+    },
+    {
+      "path": "model-00014-of-00018.safetensors",
+      "bytes": 3979553696,
+      "sha256": null
+    },
+    {
+      "path": "model-00015-of-00018.safetensors",
+      "bytes": 2108759344,
+      "sha256": null
+    },
+    {
+      "path": "model-00016-of-00018.safetensors",
+      "bytes": 3979564040,
+      "sha256": null
+    },
+    {
+      "path": "model-00017-of-00018.safetensors",
+      "bytes": 2108759344,
+      "sha256": null
+    },
+    {
+      "path": "model-00018-of-00018.safetensors",
+      "bytes": 3392197344,
+      "sha256": null
+    },
+    {
+      "path": "model.safetensors.index.json",
+      "bytes": 112216,
+      "sha256": "77042094076611b69791a610065f28b7013b8c621795fa86ddccc8bac7d1b9df"
+    },
+    {
+      "path": "preprocessor_config.json",
+      "bytes": 390,
+      "sha256": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516"
+    },
+    {
+      "path": "tokenizer.json",
+      "bytes": 12809320,
+      "sha256": "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "bytes": 17928,
+      "sha256": "b11349aafa7cdc6a320767cf7ceb29ed82f7eda5d65e8e0819e76f0ce947bf27"
+    },
+    {
+      "path": "video_preprocessor_config.json",
+      "bytes": 385,
+      "sha256": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13"
+    },
+    {
+      "path": "vocab.json",
+      "bytes": 6722759,
+      "sha256": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003"
+    }
+  ],
+  "verifies": "that the requested revision's files are present and non-empty",
+  "does_not_verify": "that the weights load as the intended teacher. Run scripts/teacher_smoke_test.py, whose missing-weight gate is the authoritative check: transformers returns a freshly-initialised model rather than raising when a checkpoint's keys do not match."
+}

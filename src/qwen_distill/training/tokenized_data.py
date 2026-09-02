@@ -58,6 +58,12 @@ PACKING_VERSION = "1.0"
 #: ``file``        the whole file is a single document. For one continuous text.
 DOCUMENT_SEPARATORS = ("blank_line", "line", "file")
 
+#: Embeddings are padded up to a hardware alignment boundary, so a tokenizer smaller than
+#: the embedding is normal rather than wrong: Qwen3.8-27B declares vocab_size 248,320
+#: (= 256 x 970) against a tokenizer holding 248,077, leaving 243 rows no id reaches.
+#: A gap at or above this bound is not padding — it is the wrong tokenizer, and stays fatal.
+VOCAB_ALIGNMENT = 256
+
 #: Files the tokenizer identity is hashed over, in this order. Absent files hash to None,
 #: which is recorded rather than treated as a match.
 TOKENIZER_FILES = (
@@ -407,15 +413,36 @@ def prepare_tokenized_corpus(
     # Checked before any tokenisation, so a mismatch costs a second rather than a corpus.
     # Loud on purpose: the alternative — resizing the student's embedding to fit — leaves
     # rows that were never trained and a checkpoint whose vocabulary nobody can account for.
+    #
+    # The direction matters, and only one of the two is dangerous. A tokenizer that can
+    # emit an id at or past the student's embedding produces an out-of-range index and a
+    # run that is wrong from its first batch, so that stays fatal. A tokenizer *smaller*
+    # than the embedding is the normal case for this teacher and not an error: Qwen3.8-27B
+    # declares vocab_size 248,320 = 128 x 1,940 while its tokenizer holds 248,077, because
+    # the embedding is padded to a multiple of 128 for kernel alignment. Demanding exact
+    # equality made this check unsatisfiable against the real teacher and blocked every KD
+    # run; the padding is reported instead of being tolerated silently.
     if expected_vocab_size is not None and vocab_size != expected_vocab_size:
-        raise CorpusError(
-            f"the tokenizer at {tokenizer_path} has a vocabulary of {vocab_size}, but the "
-            f"student expects {expected_vocab_size}.\n"
-            "  These must match exactly. Do not resize the student's embedding to close "
-            "the gap: that leaves rows the run never trains and a checkpoint whose "
-            "vocabulary cannot be accounted for.\n"
-            "  Check that tokenizer_path points at the teacher checkpoint this student "
-            "was derived from."
+        padding = expected_vocab_size - vocab_size
+        if not 0 < padding < VOCAB_ALIGNMENT:
+            raise CorpusError(
+                f"the tokenizer at {tokenizer_path} has a vocabulary of {vocab_size}, but "
+                f"the student expects {expected_vocab_size}.\n"
+                + ("  It can emit ids the student cannot index, so the run would be wrong "
+                   "from its first batch.\n" if padding < 0 else
+                   f"  The embedding is {padding} rows larger, which is too much to be "
+                   f"alignment padding (that is bounded by {VOCAB_ALIGNMENT}); this is a "
+                   "different tokenizer, not a padded one.\n")
+                + "  These must match. Do not resize the student's embedding to close the "
+                  "gap: that leaves rows the run never trains and a checkpoint whose "
+                  "vocabulary cannot be accounted for.\n"
+                  "  Check that tokenizer_path points at the teacher checkpoint this "
+                  "student was derived from."
+            )
+        print(
+            f"  tokenizer vocabulary {vocab_size:,} against a student embedding of "
+            f"{expected_vocab_size:,}: {padding} alignment padding row(s) that no token id "
+            "reaches. Carried, not trimmed — trimming would change the student's geometry."
         )
 
     eos_id = resolve_eos_id(loaded)
