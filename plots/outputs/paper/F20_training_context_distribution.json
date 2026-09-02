@@ -1,5 +1,5 @@
 {
-  "data_commit": "301e183c7739be99b9c7d32ca3d4a6eb6f7ec303",
+  "data_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
   "experiments": [],
   "extra": {
     "arms": {
@@ -45,7 +45,7 @@
     "stages.fraction"
   ],
   "note": "declared curricula; none has been trained",
-  "plotting_commit": "301e183c7739be99b9c7d32ca3d4a6eb6f7ec303",
+  "plotting_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
   "sources": [
     "qwen_distill.research.context:CURRICULA"
   ],

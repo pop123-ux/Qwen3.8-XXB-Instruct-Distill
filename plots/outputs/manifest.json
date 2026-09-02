@@ -478,8 +478,8 @@
       "title": "Quality, memory and throughput trade-off"
     }
   },
-  "generated_at": "2026-09-02T21:12:39.433001+00:00",
-  "plotting_commit": "301e183c7739be99b9c7d32ca3d4a6eb6f7ec303",
+  "generated_at": "2026-09-02T23:03:42.028794+00:00",
+  "plotting_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
   "profiles": [
     "paper",
     "readme"

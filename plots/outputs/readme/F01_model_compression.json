@@ -1,5 +1,5 @@
 {
-  "data_commit": "301e183c7739be99b9c7d32ca3d4a6eb6f7ec303",
+  "data_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
   "experiments": [],
   "extra": {
     "student_active_parameters_per_token": 9611119488,
@@ -18,7 +18,7 @@
     "intermediate_size"
   ],
   "note": "counted from the frozen specification at plot time; no measurement involved",
-  "plotting_commit": "301e183c7739be99b9c7d32ca3d4a6eb6f7ec303",
+  "plotting_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
   "sources": [
     "qwen_distill.architecture.moe_student:audit",
     "qwen_distill.architecture.presets:get_spec('teacher')",
