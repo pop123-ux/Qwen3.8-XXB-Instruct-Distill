@@ -39,6 +39,11 @@ experiments/**/runs/**
 # ...and nothing heavy, whatever directory it turns up in.
 experiments/**/*.pt
 experiments/**/*.safetensors
+
+# ... except a completed research run's trained adapters, which are its only irrecoverable
+# output and go through Git LFS (see .gitattributes). The optimizer/scheduler/scaler/RNG
+# state beside them stays excluded by the rules above: it exists to resume training.
+!experiments/**/adapters/**/adapter_model.safetensors
 experiments/**/*.bin
 experiments/**/metrics.jsonl
 # ...except in an archived run record, where the per-step metrics stream IS the evidence

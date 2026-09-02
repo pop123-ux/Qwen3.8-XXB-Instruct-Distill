@@ -1,0 +1,8 @@
+
+# Trained LoRA adapters. These are the *output* of a completed research run - the only
+# artifact of Run 002 that cannot be recovered from the repository - and they are binary
+# and ~92 MB each, so they go through LFS rather than into the object store directly.
+# Only adapter_model.safetensors is kept. The optimizer, scheduler, scaler and RNG state
+# beside it in each checkpoint are 184 MB per step and exist to *resume* training, which a
+# completed run does not need; they stay out, as docs and .gitignore have always said.
+experiments/**/adapter_model.safetensors filter=lfs diff=lfs merge=lfs -text
