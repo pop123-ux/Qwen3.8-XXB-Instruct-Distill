@@ -182,9 +182,11 @@ def _checks() -> list[tuple[str, str, object]]:
         ("research baselines", "dense h5120-L40 kept; 24-expert rejected recorded",
          lambda: ("dense_h5120_l40" in baselines()
                   and any(r["total_parameters"] == 22_072_134_528 for r in REJECTED))),
-        ("plotting infrastructure", "plots/ with provenance and no invented numbers",
+        ("plotting infrastructure", "registered figures, provenance, no invented numbers",
          lambda: ((ROOT / "plots/common.py").exists()
-                  and len(list((ROOT / "plots").glob("plot_*.py"))) >= 5)),
+                  and (ROOT / "plots/registry.py").exists()
+                  and (ROOT / "plots/REGISTRY.md").exists()
+                  and len(list((ROOT / "plots/figures").glob("*.py"))) >= 5)),
         ("teacher downloader", "pinned, verified, manifested",
          lambda: (ROOT / "scripts/download_teacher.py").exists()),
         ("README consistency", "states the exact count and the 16 GB baseline",

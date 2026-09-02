@@ -166,7 +166,8 @@ ruff check src/ tests/ scripts/ plots/
 
 python scripts/acceptance_gate.py        # every claim, checked by running it
 python scripts/student_report.py         # architecture, memory, context, ablations
-python plots/plot_architecture.py        # figures, each with a provenance footnote
+python plots/make_figures.py             # the paper figure set, paper + README profiles
+python plots/make_figures.py --list      # the figure register: id, status, question
 ```
 
 Every experiment is traceable through `experiments/ledger.jsonl` — append-only, with a
@@ -174,8 +175,12 @@ closed provenance set where an estimate must carry its method and a third-party 
 carry its source. Results are superseded by retraction, never edited.
 [EXPERIMENT_LEDGER.md](docs/EXPERIMENT_LEDGER.md)
 
-Figures live in `plots/`. A figure with no artifact behind it **fails rather than drawing a
-plausible curve**; schematics are stamped so they cannot be mistaken for results.
+Figures live in `plots/`, one scientific question per figure, indexed by
+[plots/REGISTRY.md](plots/REGISTRY.md) — figure id, question, research question, source
+experiments, source artifact paths, source metric fields, and whether the figure is backed
+by real data. A figure with no artifact behind it **exits 2 naming what would produce it
+rather than drawing a plausible curve**; schematics are stamped so they cannot be mistaken
+for results. Today 12 of the 27 registered figures are real.
 
 ## Known limitations
 
@@ -229,6 +234,7 @@ retained as a **rejected architecture** with the measurement that rejected it.
 | [TEACHER_INTERFACE.md](docs/TEACHER_INTERFACE.md) | The teacher and the guards around loading it |
 | [DISTILLATION_ROADMAP.md](docs/DISTILLATION_ROADMAP.md) | What happens next and what blocks it |
 | [plots/README.md](plots/README.md) | Figure generation and the rule about invented numbers |
+| [plots/REGISTRY.md](plots/REGISTRY.md) | Every figure: question, sources, metric fields, status |
 
 ## Reporting standards
 

@@ -1,0 +1,27 @@
+{
+  "data_commit": "f5dd3f75bf4e069c75442396bcf43f2f52d0471d",
+  "experiments": [
+    "run002_logit_kd"
+  ],
+  "extra": {
+    "entropy_final": 1.4058,
+    "entropy_first": 1.3413,
+    "kd_temperature": 2.0,
+    "kd_top_k": 64,
+    "tail_final": 0.7075,
+    "tail_first": 0.7046
+  },
+  "figure_id": "F07",
+  "metrics": [
+    "teacher_entropy",
+    "teacher_tail_mass",
+    "tokens_seen"
+  ],
+  "note": "",
+  "plotting_commit": "54ebb3201a4322a03070b6917cb699d65bbff6e4",
+  "sources": [
+    "experiments/run002_logit_kd/metrics.jsonl",
+    "experiments/run002_logit_kd/summary.json"
+  ],
+  "value_kind": "measured"
+}

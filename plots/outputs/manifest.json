@@ -1,0 +1,487 @@
+{
+  "figures": {
+    "F01": {
+      "builder": "figures.architecture:model_compression",
+      "declared_status": "real",
+      "profiles": {
+        "paper": {
+          "files": [
+            "plots/outputs/paper/F01_model_compression.pdf",
+            "plots/outputs/paper/F01_model_compression.json"
+          ],
+          "outcome": "rendered"
+        },
+        "readme": {
+          "files": [
+            "plots/outputs/readme/F01_model_compression.png",
+            "plots/outputs/readme/F01_model_compression.json"
+          ],
+          "outcome": "rendered"
+        }
+      },
+      "title": "Architecture and model compression"
+    },
+    "F02": {
+      "builder": "figures.architecture:parameter_counts",
+      "declared_status": "real",
+      "profiles": {
+        "paper": {
+          "files": [
+            "plots/outputs/paper/F02_parameter_counts.pdf",
+            "plots/outputs/paper/F02_parameter_counts.json"
+          ],
+          "outcome": "rendered"
+        },
+        "readme": {
+          "files": [
+            "plots/outputs/readme/F02_parameter_counts.png",
+            "plots/outputs/readme/F02_parameter_counts.json"
+          ],
+          "outcome": "rendered"
+        }
+      },
+      "title": "Parameter counts: teacher, student, student active per token"
+    },
+    "F03": {
+      "builder": "figures.run002:training_loss",
+      "declared_status": "real",
+      "profiles": {
+        "paper": {
+          "files": [
+            "plots/outputs/paper/F03_run002_training_loss.pdf",
+            "plots/outputs/paper/F03_run002_training_loss.json"
+          ],
+          "outcome": "rendered"
+        },
+        "readme": {
+          "files": [
+            "plots/outputs/readme/F03_run002_training_loss.png",
+            "plots/outputs/readme/F03_run002_training_loss.json"
+          ],
+          "outcome": "rendered"
+        }
+      },
+      "title": "Run 002 training loss"
+    },
+    "F04": {
+      "builder": "figures.run002:validation_loss",
+      "declared_status": "real",
+      "profiles": {
+        "paper": {
+          "files": [
+            "plots/outputs/paper/F04_run002_validation_loss.pdf",
+            "plots/outputs/paper/F04_run002_validation_loss.json"
+          ],
+          "outcome": "rendered"
+        },
+        "readme": {
+          "files": [
+            "plots/outputs/readme/F04_run002_validation_loss.png",
+            "plots/outputs/readme/F04_run002_validation_loss.json"
+          ],
+          "outcome": "rendered"
+        }
+      },
+      "title": "Run 002 validation loss"
+    },
+    "F05": {
+      "builder": "figures.run002:kd_loss",
+      "declared_status": "real",
+      "profiles": {
+        "paper": {
+          "files": [
+            "plots/outputs/paper/F05_run002_kd_loss.pdf",
+            "plots/outputs/paper/F05_run002_kd_loss.json"
+          ],
+          "outcome": "rendered"
+        },
+        "readme": {
+          "files": [
+            "plots/outputs/readme/F05_run002_kd_loss.png",
+            "plots/outputs/readme/F05_run002_kd_loss.json"
+          ],
+          "outcome": "rendered"
+        }
+      },
+      "title": "Run 002 KD loss"
+    },
+    "F06": {
+      "builder": "figures.run002:top1_agreement",
+      "declared_status": "real",
+      "profiles": {
+        "paper": {
+          "files": [
+            "plots/outputs/paper/F06_run002_top1_agreement.pdf",
+            "plots/outputs/paper/F06_run002_top1_agreement.json"
+          ],
+          "outcome": "rendered"
+        },
+        "readme": {
+          "files": [
+            "plots/outputs/readme/F06_run002_top1_agreement.png",
+            "plots/outputs/readme/F06_run002_top1_agreement.json"
+          ],
+          "outcome": "rendered"
+        }
+      },
+      "title": "Run 002 teacher/student top-1 agreement"
+    },
+    "F07": {
+      "builder": "figures.run002:teacher_diagnostics",
+      "declared_status": "real",
+      "profiles": {
+        "paper": {
+          "files": [
+            "plots/outputs/paper/F07_run002_teacher_diagnostics.pdf",
+            "plots/outputs/paper/F07_run002_teacher_diagnostics.json"
+          ],
+          "outcome": "rendered"
+        },
+        "readme": {
+          "files": [
+            "plots/outputs/readme/F07_run002_teacher_diagnostics.png",
+            "plots/outputs/readme/F07_run002_teacher_diagnostics.json"
+          ],
+          "outcome": "rendered"
+        }
+      },
+      "title": "Run 002 teacher signal diagnostics"
+    },
+    "F08": {
+      "builder": "figures.run002:training_memory",
+      "declared_status": "real",
+      "profiles": {
+        "paper": {
+          "files": [
+            "plots/outputs/paper/F08_run002_training_memory.pdf",
+            "plots/outputs/paper/F08_run002_training_memory.json"
+          ],
+          "outcome": "rendered"
+        },
+        "readme": {
+          "files": [
+            "plots/outputs/readme/F08_run002_training_memory.png",
+            "plots/outputs/readme/F08_run002_training_memory.json"
+          ],
+          "outcome": "rendered"
+        }
+      },
+      "title": "Run 002 training memory profile"
+    },
+    "F09": {
+      "builder": "figures.memory:context_memory_accounting",
+      "declared_status": "real",
+      "profiles": {
+        "paper": {
+          "files": [
+            "plots/outputs/paper/F09_context_memory_accounting.pdf",
+            "plots/outputs/paper/F09_context_memory_accounting.json"
+          ],
+          "outcome": "rendered"
+        },
+        "readme": {
+          "files": [
+            "plots/outputs/readme/F09_context_memory_accounting.png",
+            "plots/outputs/readme/F09_context_memory_accounting.json"
+          ],
+          "outcome": "rendered"
+        }
+      },
+      "title": "Context-length memory accounting"
+    },
+    "F10": {
+      "builder": "figures.comparison:matched_distillation_recovery",
+      "declared_status": "unavailable",
+      "profiles": {
+        "paper": {
+          "detail": "matched distillation recovery across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
+          "outcome": "missing-data"
+        },
+        "readme": {
+          "detail": "matched distillation recovery across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
+          "outcome": "missing-data"
+        }
+      },
+      "title": "Matched distillation recovery"
+    },
+    "F11": {
+      "builder": "figures.comparison:training_loss_by_objective",
+      "declared_status": "unavailable",
+      "profiles": {
+        "paper": {
+          "detail": "training-loss comparison across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
+          "outcome": "missing-data"
+        },
+        "readme": {
+          "detail": "training-loss comparison across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
+          "outcome": "missing-data"
+        }
+      },
+      "title": "Training loss by objective"
+    },
+    "F12": {
+      "builder": "figures.comparison:validation_loss_by_objective",
+      "declared_status": "unavailable",
+      "profiles": {
+        "paper": {
+          "detail": "validation-loss comparison across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
+          "outcome": "missing-data"
+        },
+        "readme": {
+          "detail": "validation-loss comparison across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
+          "outcome": "missing-data"
+        }
+      },
+      "title": "Validation loss by objective"
+    },
+    "F13": {
+      "builder": "figures.comparison:teacher_imitation_by_objective",
+      "declared_status": "unavailable",
+      "profiles": {
+        "paper": {
+          "detail": "teacher-imitation comparison across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
+          "outcome": "missing-data"
+        },
+        "readme": {
+          "detail": "teacher-imitation comparison across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
+          "outcome": "missing-data"
+        }
+      },
+      "title": "Teacher imitation by objective"
+    },
+    "F14": {
+      "builder": "figures.comparison:convergence_efficiency",
+      "declared_status": "unavailable",
+      "profiles": {
+        "paper": {
+          "detail": "convergence efficiency across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
+          "outcome": "missing-data"
+        },
+        "readme": {
+          "detail": "convergence efficiency across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
+          "outcome": "missing-data"
+        }
+      },
+      "title": "Convergence efficiency"
+    },
+    "F15": {
+      "builder": "figures.behavior:behavior_state_alignment",
+      "declared_status": "unavailable",
+      "profiles": {
+        "paper": {
+          "detail": "teacher/student behavioural alignment",
+          "outcome": "missing-data"
+        },
+        "readme": {
+          "detail": "teacher/student behavioural alignment",
+          "outcome": "missing-data"
+        }
+      },
+      "title": "Teacher/student behavioural alignment"
+    },
+    "F16": {
+      "builder": "figures.architecture:layer_mapping",
+      "declared_status": "real",
+      "profiles": {
+        "paper": {
+          "files": [
+            "plots/outputs/paper/F16_layer_mapping.pdf",
+            "plots/outputs/paper/F16_layer_mapping.json"
+          ],
+          "outcome": "rendered"
+        },
+        "readme": {
+          "files": [
+            "plots/outputs/readme/F16_layer_mapping.png",
+            "plots/outputs/readme/F16_layer_mapping.json"
+          ],
+          "outcome": "rendered"
+        }
+      },
+      "title": "Teacher to student layer mapping"
+    },
+    "F17": {
+      "builder": "figures.moe:expert_utilisation",
+      "declared_status": "unavailable",
+      "profiles": {
+        "paper": {
+          "detail": "MoE expert utilisation over training",
+          "outcome": "missing-data"
+        },
+        "readme": {
+          "detail": "MoE expert utilisation over training",
+          "outcome": "missing-data"
+        }
+      },
+      "title": "MoE expert utilisation"
+    },
+    "F18": {
+      "builder": "figures.moe:routing_entropy",
+      "declared_status": "unavailable",
+      "profiles": {
+        "paper": {
+          "detail": "MoE routing entropy over training",
+          "outcome": "missing-data"
+        },
+        "readme": {
+          "detail": "MoE routing entropy over training",
+          "outcome": "missing-data"
+        }
+      },
+      "title": "MoE routing entropy over training"
+    },
+    "F19": {
+      "builder": "figures.moe:dead_experts",
+      "declared_status": "unavailable",
+      "profiles": {
+        "paper": {
+          "detail": "dead and near-dead expert counts over training",
+          "outcome": "missing-data"
+        },
+        "readme": {
+          "detail": "dead and near-dead expert counts over training",
+          "outcome": "missing-data"
+        }
+      },
+      "title": "Dead and near-dead experts over training"
+    },
+    "F20": {
+      "builder": "figures.context:training_context_distribution",
+      "declared_status": "real",
+      "profiles": {
+        "paper": {
+          "files": [
+            "plots/outputs/paper/F20_training_context_distribution.pdf",
+            "plots/outputs/paper/F20_training_context_distribution.json"
+          ],
+          "outcome": "rendered"
+        },
+        "readme": {
+          "files": [
+            "plots/outputs/readme/F20_training_context_distribution.png",
+            "plots/outputs/readme/F20_training_context_distribution.json"
+          ],
+          "outcome": "rendered"
+        }
+      },
+      "title": "Training context distribution by curriculum"
+    },
+    "F21": {
+      "builder": "figures.context:capability_vs_context",
+      "declared_status": "unavailable",
+      "profiles": {
+        "paper": {
+          "detail": "context capability curves",
+          "outcome": "missing-data"
+        },
+        "readme": {
+          "detail": "context capability curves",
+          "outcome": "missing-data"
+        }
+      },
+      "title": "Evaluation capability against context length"
+    },
+    "F22": {
+      "builder": "figures.memory:context_vs_memory",
+      "declared_status": "real",
+      "profiles": {
+        "paper": {
+          "files": [
+            "plots/outputs/paper/F22_context_vs_memory.pdf",
+            "plots/outputs/paper/F22_context_vs_memory.json"
+          ],
+          "outcome": "rendered"
+        },
+        "readme": {
+          "files": [
+            "plots/outputs/readme/F22_context_vs_memory.png",
+            "plots/outputs/readme/F22_context_vs_memory.json"
+          ],
+          "outcome": "rendered"
+        }
+      },
+      "title": "Context length against peak VRAM"
+    },
+    "F23": {
+      "builder": "figures.context:context_efficiency",
+      "declared_status": "unavailable",
+      "profiles": {
+        "paper": {
+          "detail": "context efficiency (quality against memory/compute per context length)",
+          "outcome": "missing-data"
+        },
+        "readme": {
+          "detail": "context efficiency (quality against memory/compute per context length)",
+          "outcome": "missing-data"
+        }
+      },
+      "title": "Context efficiency"
+    },
+    "F24": {
+      "builder": "figures.systems:deployment_frontier_16gb",
+      "declared_status": "unavailable",
+      "profiles": {
+        "paper": {
+          "detail": "the 16 GB deployment frontier (no quality measurement exists)",
+          "outcome": "missing-data"
+        },
+        "readme": {
+          "detail": "the 16 GB deployment frontier (no quality measurement exists)",
+          "outcome": "missing-data"
+        }
+      },
+      "title": "16 GB deployment frontier"
+    },
+    "F25": {
+      "builder": "figures.systems:throughput_vs_context",
+      "declared_status": "unavailable",
+      "profiles": {
+        "paper": {
+          "detail": "inference throughput against context length",
+          "outcome": "missing-data"
+        },
+        "readme": {
+          "detail": "inference throughput against context length",
+          "outcome": "missing-data"
+        }
+      },
+      "title": "Inference throughput against context length"
+    },
+    "F26": {
+      "builder": "figures.systems:latency_vs_context",
+      "declared_status": "unavailable",
+      "profiles": {
+        "paper": {
+          "detail": "inference latency against context length",
+          "outcome": "missing-data"
+        },
+        "readme": {
+          "detail": "inference latency against context length",
+          "outcome": "missing-data"
+        }
+      },
+      "title": "Inference latency against context length"
+    },
+    "F27": {
+      "builder": "figures.systems:quality_memory_throughput",
+      "declared_status": "unavailable",
+      "profiles": {
+        "paper": {
+          "detail": "the quality/memory/throughput trade-off",
+          "outcome": "missing-data"
+        },
+        "readme": {
+          "detail": "the quality/memory/throughput trade-off",
+          "outcome": "missing-data"
+        }
+      },
+      "title": "Quality, memory and throughput trade-off"
+    }
+  },
+  "generated_at": "2026-09-02T20:24:51.364701+00:00",
+  "plotting_commit": "54ebb3201a4322a03070b6917cb699d65bbff6e4",
+  "profiles": [
+    "paper",
+    "readme"
+  ]
+}

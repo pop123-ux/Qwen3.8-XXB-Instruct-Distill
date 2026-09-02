@@ -1,0 +1,39 @@
+{
+  "data_commit": "54ebb3201a4322a03070b6917cb699d65bbff6e4",
+  "experiments": [],
+  "extra": {
+    "n_pairs": 48,
+    "removed_teacher_layers": [
+      8,
+      9,
+      10,
+      11,
+      24,
+      25,
+      26,
+      27,
+      36,
+      37,
+      38,
+      39,
+      52,
+      53,
+      54,
+      55
+    ]
+  },
+  "figure_id": "F16",
+  "metrics": [
+    "mapping",
+    "removed_teacher_layers",
+    "student_types",
+    "spans"
+  ],
+  "note": "strategy=group; type-consistency problems: 0",
+  "plotting_commit": "54ebb3201a4322a03070b6917cb699d65bbff6e4",
+  "sources": [
+    "qwen_distill.architecture.moe_init:map_layers",
+    "qwen_distill.distillation.behavioral:layer_spans"
+  ],
+  "value_kind": "design"
+}

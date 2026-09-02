@@ -1,0 +1,58 @@
+{
+  "data_commit": "54ebb3201a4322a03070b6917cb699d65bbff6e4",
+  "experiments": [
+    "kd_run_001",
+    "run002_calibration_1536",
+    "run002_logit_kd",
+    "run002_calibration"
+  ],
+  "extra": {
+    "analytical_quants": [
+      "q4_k_m",
+      "q5_k_m",
+      "q6_k"
+    ],
+    "measured": [
+      {
+        "experiment": "kd_run_001",
+        "peak_allocated_gib": 37.7883095741272,
+        "peak_reserved_gib": 38.3046875,
+        "sequence_length": 1024
+      },
+      {
+        "experiment": "run002_calibration_1536",
+        "peak_allocated_gib": 40.40099573135376,
+        "peak_reserved_gib": 40.9453125,
+        "sequence_length": 1536
+      },
+      {
+        "experiment": "run002_logit_kd",
+        "peak_allocated_gib": 40.58031702041626,
+        "peak_reserved_gib": 43.126953125,
+        "sequence_length": 1536
+      },
+      {
+        "experiment": "run002_calibration",
+        "peak_allocated_gib": 43.01368188858032,
+        "peak_reserved_gib": 43.541015625,
+        "sequence_length": 2048
+      }
+    ]
+  },
+  "figure_id": "F22",
+  "metrics": [
+    "total_gib",
+    "memory.peak_allocated_gib",
+    "memory.peak_reserved_gib"
+  ],
+  "note": "panel a is analytical inference memory; panel b is measured A40 training memory. They are not comparable and are never plotted on one axes.",
+  "plotting_commit": "54ebb3201a4322a03070b6917cb699d65bbff6e4",
+  "sources": [
+    "qwen_distill.research.memory:build_table",
+    "experiments/kd_run_001/summary.json",
+    "experiments/run002_calibration_1536/summary.json",
+    "experiments/run002_logit_kd/summary.json",
+    "experiments/run002_calibration/summary.json"
+  ],
+  "value_kind": "measured+analytical"
+}

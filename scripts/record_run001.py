@@ -20,7 +20,8 @@ SUPERSEDED = "72a217afab8029b39e4af1c7273a829995a3dbaf"
 
 def main() -> int:
     ledger = Ledger(Path("experiments/ledger.jsonl"))
-    summary = json.loads(Path("runs/kd_preflight/summary.json").read_text())
+    summary = json.loads(
+        Path("runs/kd_preflight/summary.json").read_text(encoding="utf-8"))
     dist = summary["distillation"]
 
     ledger.measured(

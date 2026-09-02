@@ -130,10 +130,13 @@ def pilot_payload(metrics_path: Path, checkpoint: Path | None) -> dict:
     comparing this entry against the smoke entry will notice the missing memory profile
     and should be told why.
     """
-    rows = [json.loads(line) for line in metrics_path.read_text().splitlines() if line.strip()]
+    rows = [json.loads(line)
+            for line in metrics_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()]
     steps = [r for r in rows if r.get("status") == "completed_step"]
     validations = [r for r in rows if r.get("status") == "validated"]
-    metadata = json.loads((checkpoint / "metadata.json").read_text()) if checkpoint else {}
+    metadata = (json.loads((checkpoint / "metadata.json").read_text(encoding="utf-8"))
+                if checkpoint else {})
 
     def series(key: str) -> dict:
         values = [r[key] for r in steps if r.get(key) is not None]
@@ -234,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
     ledger = Ledger(args.ledger)
     written = []
 
-    smoke = json.loads(args.smoke.read_text())
+    smoke = json.loads(args.smoke.read_text(encoding="utf-8"))
     written.append(ledger.measured(
         "canonical_kd",
         "Run 001 smoke: one real KD optimizer step on the frozen 13.01B canonical student",

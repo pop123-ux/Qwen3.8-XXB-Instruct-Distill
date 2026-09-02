@@ -109,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
     written = []
 
     if args.calibration and args.calibration.is_file():
-        summary = json.loads(args.calibration.read_text())
+        summary = json.loads(args.calibration.read_text(encoding="utf-8"))
         calibration_sequence = summary["config"]["data"]["max_sequence_length"]
         written.append(ledger.measured(
             "memory_measurement",
@@ -122,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
         ))
 
     if args.control and args.control.is_file():
-        summary = json.loads(args.control.read_text())
+        summary = json.loads(args.control.read_text(encoding="utf-8"))
         written.append(ledger.measured(
             "canonical_kd",
             f"Run 002: {summary['steps']} pure logit-KD steps on the frozen 13.01B "

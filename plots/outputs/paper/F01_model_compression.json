@@ -1,0 +1,28 @@
+{
+  "data_commit": "54ebb3201a4322a03070b6917cb699d65bbff6e4",
+  "experiments": [],
+  "extra": {
+    "student_active_parameters_per_token": 9611119488,
+    "student_total_parameters": 13008505728,
+    "teacher_total_parameters": 26895998464
+  },
+  "figure_id": "F01",
+  "metrics": [
+    "exact_parameter_count",
+    "active_parameters_per_token",
+    "num_hidden_layers",
+    "num_full_attention_layers",
+    "num_experts",
+    "num_experts_per_tok",
+    "moe_intermediate_size",
+    "intermediate_size"
+  ],
+  "note": "counted from the frozen specification at plot time; no measurement involved",
+  "plotting_commit": "54ebb3201a4322a03070b6917cb699d65bbff6e4",
+  "sources": [
+    "qwen_distill.architecture.moe_student:audit",
+    "qwen_distill.architecture.presets:get_spec('teacher')",
+    "qwen_distill.architecture.params:count_parameters"
+  ],
+  "value_kind": "audited"
+}

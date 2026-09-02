@@ -12,7 +12,8 @@ from qwen_distill.research.ledger import Ledger
 
 
 def main() -> int:
-    probe = json.loads(Path("runs/prefix_consistency_probe.json").read_text())
+    probe = json.loads(
+        Path("runs/prefix_consistency_probe.json").read_text(encoding="utf-8"))
     Ledger(Path("experiments/ledger.jsonl")).measured(
         "teacher_verification",
         "Smoke-test check 9's prefix assertion fails on 4-bit rounding, not misalignment",
