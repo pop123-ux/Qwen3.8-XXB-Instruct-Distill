@@ -36,7 +36,7 @@ every status claimed here is what the builder actually does.
 | F19 | [Dead and near-dead experts over training](#f19-moe-dead-experts) | unavailable | measured | RQ1 | — |
 | F20 | [Training context distribution by curriculum](#f20-training-context-distribution) | **real** | design | RQ2 | — |
 | F21 | [Evaluation capability against context length](#f21-capability-vs-context) | unavailable | measured | RQ2 | — |
-| F22 | [Context length against peak VRAM](#f22-context-vs-memory) | **real** | measured+analytical | RQ2, RQ4 | `run002_logit_kd`, `run002_calibration_1536`, `run002_calibration`, `kd_run_001` |
+| F22 | [Context length against peak VRAM](#f22-context-vs-memory) | **real** | measured+analytical | RQ2, RQ4 | `run002_logit_kd`, `run002_calibration_1536`, `run002_calibration`, `run003_calibration_1536`, `kd_run_001` |
 | F23 | [Context efficiency](#f23-context-efficiency) | unavailable | measured+analytical | RQ2, RQ4 | — |
 | F24 | [16 GB deployment frontier](#f24-deployment-frontier-16gb) | unavailable | measured+analytical | RQ4 | — |
 | F25 | [Inference throughput against context length](#f25-throughput-vs-context) | unavailable | measured | RQ4 | — |
@@ -367,13 +367,13 @@ One curve per curriculum. No context arm has been trained or evaluated.
 - **status**: **real**
 - **values**: measured+analytical
 - **research questions**: RQ2, RQ4
-- **experiments**: `run002_logit_kd`, `run002_calibration_1536`, `run002_calibration`, `kd_run_001`
-- **sources**: `qwen_distill.research.memory:build_table`, `experiments/run002_logit_kd/summary.json`, `experiments/run002_calibration_1536/summary.json`, `experiments/run002_calibration/summary.json`, `experiments/kd_run_001/summary.json`
+- **experiments**: `run002_logit_kd`, `run002_calibration_1536`, `run002_calibration`, `run003_calibration_1536`, `kd_run_001`
+- **sources**: `qwen_distill.research.memory:build_table`, `experiments/*/summary.json`, `experiments/run002_logit_kd/summary.json`
 - **source metric fields**: `total_gib`, `memory.peak_allocated_gib`
 - **script**: `plots/figures/memory.py` → `context_vs_memory()`
 - **outputs**: `plots/outputs/paper/F22_context_vs_memory.pdf`, `plots/outputs/paper/F22_context_vs_memory.json`, `plots/outputs/readme/F22_context_vs_memory.png`, `plots/outputs/readme/F22_context_vs_memory.json`
 
-Two panels that are deliberately not one. Left: analytical inference VRAM against context, per quantisation, with the 16 GB boundary. Right: the measured A40 training peaks at the sequence lengths actually run. They are different quantities on different hardware and are never drawn on one axis.
+Two panels that are deliberately not one. Left: analytical inference VRAM against context, per quantisation, with the 16 GB boundary. Right: every measured A40 training peak, ordered by sequence length and labelled by objective — three runs share 1536 tokens, and the layer-KD calibration costs 2.13 GiB more than the logit-KD one at the same length. The two panels are different quantities on different hardware and are never drawn on one axis.
 
 ### F23 — Context efficiency
 

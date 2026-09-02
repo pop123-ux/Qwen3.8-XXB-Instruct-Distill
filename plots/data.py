@@ -43,6 +43,15 @@ OBJECTIVE_LABELS: dict[str, str] = {
     "mixed_kd": "CE + logit KD",
 }
 
+#: Compact forms for axis ticks, where the full label does not fit.
+OBJECTIVE_SHORT: dict[str, str] = {
+    "sft": "CE",
+    "logit_kd": "logit KD",
+    "layer_kd": "layer KD",
+    "behavioral_kd": "behaviour KD",
+    "mixed_kd": "CE+logit KD",
+}
+
 #: The order objectives appear in every comparison figure, so colours stay stable as arms
 #: arrive. An objective absent from a figure leaves a gap rather than shifting the rest.
 OBJECTIVE_ORDER: tuple[str, ...] = ("sft", "logit_kd", "layer_kd", "behavioral_kd")
@@ -127,6 +136,10 @@ class RunArtifacts:
     @property
     def label(self) -> str:
         return OBJECTIVE_LABELS.get(self.objective, self.objective)
+
+    @property
+    def short_label(self) -> str:
+        return OBJECTIVE_SHORT.get(self.objective, self.objective)
 
     @property
     def sequence_length(self) -> int | None:

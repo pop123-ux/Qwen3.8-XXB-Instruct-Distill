@@ -1,0 +1,66 @@
+{
+  "run_id": "run003_calibration_1536",
+  "generated_at": "2026-09-02T21:07:17.886412+00:00",
+  "run_root": "/workspace/runs/run003_calibration_1536",
+  "copied": [
+    {
+      "name": "metrics.jsonl",
+      "bytes": 989,
+      "sha256": "e3fb83558fd5bb9f89e365ef7ceae2ed16ff621164dfa1080c00b69806c66c89",
+      "source": "/workspace/runs/run003_calibration_1536/metrics.jsonl"
+    },
+    {
+      "name": "summary.json",
+      "bytes": 11894,
+      "sha256": "13b50f94cce3625f1882e403ce2b95f84fa047e8b0ad48e2e207dff5d02ff454",
+      "source": "/workspace/runs/run003_calibration_1536/summary.json"
+    }
+  ],
+  "referenced_not_copied": [
+    {
+      "name": "checkpoints/step_000001",
+      "bytes": 276294100,
+      "source": "/workspace/runs/run003_calibration_1536/checkpoints/step_000001",
+      "complete": true,
+      "metadata": {
+        "step": 1,
+        "created_at": "2026-09-02T21:06:10.574893+00:00",
+        "complete": true,
+        "parameter_count": 13031508864,
+        "trainable_parameter_count": 23003136,
+        "strategy": "qlora",
+        "architecture_sha256": null,
+        "config_sha256": "8d0c6cf79bd94d031c6dfe92e29440ba5ca5cfc3cd624c2e964f4f29ab513166",
+        "git_commit": "301e183c7739be99b9c7d32ca3d4a6eb6f7ec303",
+        "precision": "bf16",
+        "optimizer": "adamw",
+        "sequence_length": 1536,
+        "batch_size": 1,
+        "effective_batch_size": 1,
+        "gradient_checkpointing": true,
+        "tokens_seen": 1536,
+        "training_loss": 1.4501354694366455,
+        "validation_loss": 9.78372352773493,
+        "validation_bits_per_byte": null,
+        "hostname": "4dfe18533fc6",
+        "platform": "Linux-6.8.0-52-generic-x86_64-with-glibc2.39",
+        "gpu_name": "NVIDIA A40",
+        "torch_version": "2.8.0+cu128",
+        "transformers_version": "5.15.1",
+        "contents": [
+          "adapter_model.safetensors",
+          "config.json",
+          "optimizer.pt",
+          "rng.pt",
+          "scaler.pt",
+          "scheduler.pt",
+          "training_state.json",
+          "metadata.json",
+          "checkpoint_manifest.json",
+          "COMPLETE"
+        ]
+      },
+      "reason": "binary checkpoint; not committed to Git"
+    }
+  ]
+}

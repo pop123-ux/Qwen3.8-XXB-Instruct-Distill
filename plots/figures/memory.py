@@ -22,15 +22,15 @@ from common import (
     save,
     style,
 )
-from data import load_run
+from data import discover_runs
 
 #: Where the deployment estimate is broken down. Chosen because it is the largest context
 #: on the ladder that the model fits at every release quantisation.
 BREAKDOWN_CONTEXT = 32_768
 
-#: Runs whose measured training peak is drawn beside the estimate.
-MEASURED_RUNS = ("kd_run_001", "run002_calibration_1536", "run002_logit_kd",
-                 "run002_calibration")
+#: Measured training peaks are discovered rather than listed. A new calibration or arm
+#: appears on this figure the moment its record lands, which is the point of keeping the
+#: run loader between the artifacts and the figure.
 
 _COMPONENTS = (
     ("weights", "weights"),
@@ -163,9 +163,11 @@ def context_vs_memory(profile: Profile) -> list:
                   marker=MARKERS[index], color=COLOURS[index],
                   label=model.QUANT_LABELS[quant])
     left.axhline(model.USABLE_GIB, color=COLOURS[1], linestyle="--", linewidth=1.2)
-    left.text(ladder[0], model.USABLE_GIB + 0.25,
+    # Below the rule, not above: above it lands in the legend, and the curves are all
+    # higher than the boundary so there is clear space underneath.
+    left.text(ladder[0], model.USABLE_GIB - 0.25,
               f"{model.USABLE_GIB:.2f} GiB usable on a 16 GB card",
-              fontsize=profile.font_size - 1.5, color=COLOURS[1], va="bottom")
+              fontsize=profile.font_size - 1.5, color=COLOURS[1], va="top")
     _context_ticks(left, ladder)
     left.set_ylabel("estimated peak VRAM (GiB)")
     left.set_title("a  Inference — ANALYTICAL, 16 GB target")
@@ -174,45 +176,56 @@ def context_vs_memory(profile: Profile) -> list:
 
     # (b) measured training
     measured = []
-    for experiment_id in MEASURED_RUNS:
-        try:
-            run = load_run(experiment_id)
-        except SystemExit:
-            continue
+    for run in discover_runs():
         if run.memory.get("peak_allocated_gib") and run.sequence_length:
+            role = "calibration" if run.run_class == "calibration" \
+                else f"{run.last_step} steps"
             measured.append((run.sequence_length, run.memory["peak_allocated_gib"],
                              run.memory["peak_reserved_gib"], run.experiment_id,
-                             run.run_class, run.memory.get("total_vram_gib")))
+                             run.run_class, run.memory.get("total_vram_gib"),
+                             f"{run.short_label}\n{role}"))
     if not measured:
         from common import MissingData
 
         raise MissingData("measured training memory",
                           "run scripts/kd_run.py; the summary carries the memory probe")
-    measured.sort()
-    right.plot([m[0] for m in measured], [m[1] for m in measured], marker="o",
-               linestyle="none", color=COLOURS[0], markersize=6, label="peak allocated")
-    right.plot([m[0] for m in measured], [m[2] for m in measured], marker="s",
-               linestyle="none", color=COLOURS[2], markersize=6, label="peak reserved")
+    # Categorical, ordered by sequence length. Three runs share 1536 tokens, so a numeric
+    # axis stacks them into one unreadable column; the ordered ticks keep the
+    # context relationship legible while separating the objectives.
+    measured.sort(key=lambda m: (m[0], m[1]))
+    positions = list(range(len(measured)))
+    width = 0.36
+    right.bar([p - width / 2 for p in positions], [m[1] for m in measured], width=width,
+              color=COLOURS[0], label="peak allocated")
+    right.bar([p + width / 2 for p in positions], [m[2] for m in measured], width=width,
+              color=COLOURS[2], label="peak reserved")
     capacity = next((m[5] for m in measured if m[5]), None)
+    for position, entry in zip(positions, measured, strict=True):
+        for offset, value in ((-width / 2, entry[1]), (width / 2, entry[2])):
+            right.text(position + offset, value - 0.8, f"{value:.2f}", ha="center",
+                       va="top", rotation=90, color="white",
+                       fontsize=profile.font_size - 1.5)
     if capacity:
         right.axhline(capacity, color=COLOURS[1], linestyle="-", linewidth=1.1)
-        right.text(measured[0][0], capacity + 0.3, f"A40 usable {capacity:.2f} GiB",
-                   fontsize=profile.font_size - 1.5, color=COLOURS[1], va="bottom")
-    # Two runs share the 1536 sequence length, so stack their labels instead of drawing
-    # them on top of each other.
-    seen: dict[int, int] = {}
-    for sequence_length, allocated, _reserved, experiment_id, _class, _cap in measured:
-        row = seen.get(sequence_length, 0)
-        seen[sequence_length] = row + 1
-        right.annotate(experiment_id, (sequence_length, allocated),
-                       textcoords="offset points", xytext=(0, -13 - 11 * row),
-                       ha="center", fontsize=profile.font_size - 2.5, color="#666666")
-    right.set_xlabel("training sequence length (tokens)")
+        twin = right.twinx()
+        twin.set_ylim(0, capacity * 1.18)
+        twin.set_yticks([capacity])
+        twin.set_yticklabels([f"{capacity:.2f} A40 usable"], color=COLOURS[1])
+        twin.tick_params(axis="y", length=0, labelsize=profile.font_size - 1.5)
+        for spine in twin.spines.values():
+            spine.set_visible(False)
+        twin.grid(False)
+    right.set_xticks(positions)
+    right.set_xticklabels([f"{m[0]}\n{m[6]}" for m in measured],
+                          fontsize=profile.font_size - 1.5)
+    right.set_xlabel("training sequence length (tokens) and objective")
     right.set_ylabel("measured peak VRAM (GiB)")
-    right.set_xlim(min(m[0] for m in measured) - 256, max(m[0] for m in measured) + 256)
-    right.set_ylim(0, (capacity or max(m[2] for m in measured)) * 1.16)
+    right.set_ylim(0, (capacity or max(m[2] for m in measured)) * 1.18)
     right.set_title("b  Training — MEASURED on an A40")
-    right.legend(loc="lower right")
+    # Below the axes: the bars reach the top of the panel, so every in-axes position
+    # would sit on data, and above the axes collides with the panel title.
+    right.legend(loc="upper center", bbox_to_anchor=(0.5, -0.40), ncol=2,
+                 fontsize=profile.font_size - 1.5, handlelength=1.2)
     grid(right, axis="y")
 
     fig.suptitle("Context against peak VRAM: an estimate and a measurement, "

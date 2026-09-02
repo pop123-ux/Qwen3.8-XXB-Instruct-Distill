@@ -1,9 +1,10 @@
 {
-  "data_commit": "54ebb3201a4322a03070b6917cb699d65bbff6e4",
+  "data_commit": "301e183c7739be99b9c7d32ca3d4a6eb6f7ec303",
   "experiments": [
     "kd_run_001",
     "run002_calibration_1536",
     "run002_logit_kd",
+    "run003_calibration_1536",
     "run002_calibration"
   ],
   "extra": {
@@ -32,6 +33,12 @@
         "sequence_length": 1536
       },
       {
+        "experiment": "run003_calibration_1536",
+        "peak_allocated_gib": 42.535388469696045,
+        "peak_reserved_gib": 44.099609375,
+        "sequence_length": 1536
+      },
+      {
         "experiment": "run002_calibration",
         "peak_allocated_gib": 43.01368188858032,
         "peak_reserved_gib": 43.541015625,
@@ -46,12 +53,13 @@
     "memory.peak_reserved_gib"
   ],
   "note": "panel a is analytical inference memory; panel b is measured A40 training memory. They are not comparable and are never plotted on one axes.",
-  "plotting_commit": "54ebb3201a4322a03070b6917cb699d65bbff6e4",
+  "plotting_commit": "301e183c7739be99b9c7d32ca3d4a6eb6f7ec303",
   "sources": [
     "qwen_distill.research.memory:build_table",
     "experiments/kd_run_001/summary.json",
     "experiments/run002_calibration_1536/summary.json",
     "experiments/run002_logit_kd/summary.json",
+    "experiments/run003_calibration_1536/summary.json",
     "experiments/run002_calibration/summary.json"
   ],
   "value_kind": "measured+analytical"

@@ -229,19 +229,24 @@ FIGURES: tuple[FigureSpec, ...] = (
         title="Context length against peak VRAM",
         question="Which deployment context lengths fit inside 16 GB, and at which "
                  "quantisation?",
-        research_questions=("RQ2", "RQ4"), experiments=(RUN002, "run002_calibration_1536",
-                                                        "run002_calibration", "kd_run_001"),
-        sources=("qwen_distill.research.memory:build_table", RUN002_SUMMARY,
-                 "experiments/run002_calibration_1536/summary.json",
-                 "experiments/run002_calibration/summary.json",
-                 "experiments/kd_run_001/summary.json"),
+        research_questions=("RQ2", "RQ4"),
+        # The builder discovers every run carrying a memory profile; this list is what it
+        # finds today and the sidecar carries the live set. A new arm appears on the
+        # figure the moment its record lands, without an edit here.
+        experiments=(RUN002, "run002_calibration_1536", "run002_calibration",
+                     "run003_calibration_1536", "kd_run_001"),
+        sources=("qwen_distill.research.memory:build_table",
+                 "experiments/*/summary.json", RUN002_SUMMARY),
         metrics=("total_gib", "memory.peak_allocated_gib"),
         builder="figures.memory:context_vs_memory",
         status=REAL, value_kind=MIXED,
         notes="Two panels that are deliberately not one. Left: analytical inference VRAM "
-              "against context, per quantisation, with the 16 GB boundary. Right: the "
-              "measured A40 training peaks at the sequence lengths actually run. They are "
-              "different quantities on different hardware and are never drawn on one axis.",
+              "against context, per quantisation, with the 16 GB boundary. Right: every "
+              "measured A40 training peak, ordered by sequence length and labelled by "
+              "objective — three runs share 1536 tokens, and the layer-KD calibration "
+              "costs 2.13 GiB more than the logit-KD one at the same length. The two "
+              "panels are different quantities on different hardware and are never drawn "
+              "on one axis.",
     ),
     FigureSpec(
         id="F20", slug="training_context_distribution",

@@ -1,5 +1,5 @@
 {
-  "data_commit": "54ebb3201a4322a03070b6917cb699d65bbff6e4",
+  "data_commit": "301e183c7739be99b9c7d32ca3d4a6eb6f7ec303",
   "experiments": [],
   "extra": {
     "n_pairs": 48,
@@ -30,7 +30,7 @@
     "spans"
   ],
   "note": "strategy=group; type-consistency problems: 0",
-  "plotting_commit": "54ebb3201a4322a03070b6917cb699d65bbff6e4",
+  "plotting_commit": "301e183c7739be99b9c7d32ca3d4a6eb6f7ec303",
   "sources": [
     "qwen_distill.architecture.moe_init:map_layers",
     "qwen_distill.distillation.behavioral:layer_spans"
