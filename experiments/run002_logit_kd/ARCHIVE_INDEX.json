@@ -1,0 +1,183 @@
+{
+  "run_id": "run002_logit_kd",
+  "generated_at": "2026-09-02T19:31:04.520810+00:00",
+  "run_root": "/workspace/runs/run002_logit_kd",
+  "copied": [
+    {
+      "name": "README.md",
+      "bytes": 3159,
+      "sha256": "5f3c9d15ec0e62dc7943fd115329b2bae873d56e421eb3db8b9b84fef96d34b4",
+      "source": "/workspace/runs/run002_logit_kd/README.md"
+    },
+    {
+      "name": "manifest.json",
+      "bytes": 17383,
+      "sha256": "2f131e2b8664858c5e3dec7894caccf95ea1230e1b008ef4abcf298f7bec1d7a",
+      "source": "/workspace/runs/run002_logit_kd/manifest.json"
+    },
+    {
+      "name": "command.txt",
+      "bytes": 709,
+      "sha256": "da2c58cc63893138385c334cd054546dcb5888bc8c99d5631f6bfe46ec873f47",
+      "source": "/workspace/runs/run002_logit_kd/command.txt"
+    },
+    {
+      "name": "environment.txt",
+      "bytes": 5265,
+      "sha256": "c45d1871231b7b4165b0de9206c7122bd9e091dc76ec276274325459b85e41f6",
+      "source": "/workspace/runs/run002_logit_kd/environment.txt"
+    },
+    {
+      "name": "hardware.txt",
+      "bytes": 2356,
+      "sha256": "2dbda5a0ad7544782749ce17b0afadd400b3f6266af764c6a82a47303587f8c6",
+      "source": "/workspace/runs/run002_logit_kd/hardware.txt"
+    },
+    {
+      "name": "git.txt",
+      "bytes": 474,
+      "sha256": "64a06bf01b4b59083490b522fe65c23f18f31b8da791139d599e610e50475ced",
+      "source": "/workspace/runs/run002_logit_kd/git.txt"
+    },
+    {
+      "name": "teacher_provenance.json",
+      "bytes": 1348,
+      "sha256": "048fb2a0c4dcf264e6d07319606c1f910b8ea11875fd0ffb454f3c65d93f93bb",
+      "source": "/workspace/runs/run002_logit_kd/teacher_provenance.json"
+    },
+    {
+      "name": "tokenizer_provenance.json",
+      "bytes": 996,
+      "sha256": "4f33cd655c81ed7467b5c46e16fe5d7f5056d0aa510b3876f38f5fc1408f25b2",
+      "source": "/workspace/runs/run002_logit_kd/tokenizer_provenance.json"
+    },
+    {
+      "name": "dataset_provenance.json",
+      "bytes": 1230,
+      "sha256": "8ffeceeb1c5b7e72dc9ce8f79ba395d8120c6d1a47b142bf4700ae0132edd810",
+      "source": "/workspace/runs/run002_logit_kd/dataset_provenance.json"
+    },
+    {
+      "name": "metrics.jsonl",
+      "bytes": 78610,
+      "sha256": "85718ebd18a65c866bb868bd1dce8b28b920a3b1ffe952fb8cfc6266ac1cb9c6",
+      "source": "/workspace/runs/run002_logit_kd/metrics.jsonl"
+    },
+    {
+      "name": "training.log",
+      "bytes": 16341,
+      "sha256": "83750713ac591a829ee9d2cc6934a05a2c1e08aa7768697e6df371950e1c85f9",
+      "source": "/workspace/runs/run002_logit_kd/training.log"
+    },
+    {
+      "name": "CHECKSUMS.txt",
+      "bytes": 3933,
+      "sha256": "ab321e83196e2261ee26096ca5ad778e11112cf42fda31a3d86d9445ad494043",
+      "source": "/workspace/runs/run002_logit_kd/CHECKSUMS.txt"
+    },
+    {
+      "name": "summary.json",
+      "bytes": 8724,
+      "sha256": "a1b5ed49b13456f0624a0c9a1a5fbf8f03e87078cf72ba3f7fd9380cdf16d0ef",
+      "source": "/workspace/runs/run002_logit_kd/summary.json"
+    },
+    {
+      "name": "termination.json",
+      "bytes": 300,
+      "sha256": "347e693b300c6fec7a789d65dbf00b97d3d9d92ef90f0284a8d6bf8aeffb8adc",
+      "source": "/workspace/runs/run002_logit_kd/termination.json"
+    }
+  ],
+  "referenced_not_copied": [
+    {
+      "name": "checkpoints/step_000064",
+      "bytes": 276321949,
+      "source": "/workspace/runs/run002_logit_kd/checkpoints/step_000064",
+      "complete": true,
+      "metadata": {
+        "step": 64,
+        "created_at": "2026-09-02T19:17:46.756583+00:00",
+        "complete": true,
+        "parameter_count": 13031508864,
+        "trainable_parameter_count": 23003136,
+        "strategy": "qlora",
+        "architecture_sha256": null,
+        "config_sha256": "ad126882e6a7206228ff09daac7a51b692af93b168c0b0f8f4ed0fc66b21499f",
+        "git_commit": "f5dd3f75bf4e069c75442396bcf43f2f52d0471d",
+        "precision": "bf16",
+        "optimizer": "adamw",
+        "sequence_length": 1536,
+        "batch_size": 1,
+        "effective_batch_size": 1,
+        "gradient_checkpointing": true,
+        "tokens_seen": 98304,
+        "training_loss": 1.599420428276062,
+        "validation_loss": 5.349859887903387,
+        "validation_bits_per_byte": null,
+        "hostname": "4dfe18533fc6",
+        "platform": "Linux-6.8.0-52-generic-x86_64-with-glibc2.39",
+        "gpu_name": "NVIDIA A40",
+        "torch_version": "2.8.0+cu128",
+        "transformers_version": "5.15.1",
+        "contents": [
+          "adapter_model.safetensors",
+          "config.json",
+          "optimizer.pt",
+          "rng.pt",
+          "scaler.pt",
+          "scheduler.pt",
+          "training_state.json",
+          "metadata.json",
+          "checkpoint_manifest.json",
+          "COMPLETE"
+        ]
+      },
+      "reason": "binary checkpoint; not committed to Git"
+    },
+    {
+      "name": "checkpoints/step_000128",
+      "bytes": 276350401,
+      "source": "/workspace/runs/run002_logit_kd/checkpoints/step_000128",
+      "complete": true,
+      "metadata": {
+        "step": 128,
+        "created_at": "2026-09-02T19:28:28.768893+00:00",
+        "complete": true,
+        "parameter_count": 13031508864,
+        "trainable_parameter_count": 23003136,
+        "strategy": "qlora",
+        "architecture_sha256": null,
+        "config_sha256": "ad126882e6a7206228ff09daac7a51b692af93b168c0b0f8f4ed0fc66b21499f",
+        "git_commit": "f5dd3f75bf4e069c75442396bcf43f2f52d0471d",
+        "precision": "bf16",
+        "optimizer": "adamw",
+        "sequence_length": 1536,
+        "batch_size": 1,
+        "effective_batch_size": 1,
+        "gradient_checkpointing": true,
+        "tokens_seen": 196608,
+        "training_loss": 1.4100674390792847,
+        "validation_loss": 5.033405477350408,
+        "validation_bits_per_byte": null,
+        "hostname": "4dfe18533fc6",
+        "platform": "Linux-6.8.0-52-generic-x86_64-with-glibc2.39",
+        "gpu_name": "NVIDIA A40",
+        "torch_version": "2.8.0+cu128",
+        "transformers_version": "5.15.1",
+        "contents": [
+          "adapter_model.safetensors",
+          "config.json",
+          "optimizer.pt",
+          "rng.pt",
+          "scaler.pt",
+          "scheduler.pt",
+          "training_state.json",
+          "metadata.json",
+          "checkpoint_manifest.json",
+          "COMPLETE"
+        ]
+      },
+      "reason": "binary checkpoint; not committed to Git"
+    }
+  ]
+}

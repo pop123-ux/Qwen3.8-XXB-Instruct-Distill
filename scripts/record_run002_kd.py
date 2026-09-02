@@ -3,9 +3,9 @@
 
 Run 002 is a *control arm*, not a follow-on improvement to Run 001. Run 001 established
 that the canonical KD mechanism executes at all (mixed_kd, alpha 0.5, sequence 1024);
-Run 002 establishes a conventional pure-logit-KD reference point (alpha 1.0, sequence
-2048) that later layer-KD and computational-behaviour/state-KD arms can be matched
-against. The two are not a before/after pair and this recorder does not present them as
+Run 002 establishes a conventional pure-logit-KD reference point (alpha 1.0, at the
+sequence length its own calibration cleared the 42 GiB gate at) that later layer-KD and
+computational-behaviour/state-KD arms can be matched against. The two are not a before/after pair and this recorder does not present them as
 one: no delta between the runs is computed here, because they differ in objective,
 sequence length and step count simultaneously, and a difference across three axes at once
 attributes to none of them.
@@ -50,14 +50,15 @@ def calibration_payload(summary: dict, run_dir: str, *, gate_gib: float) -> dict
     """The memory calibration and the gate decision it produced."""
     memory = summary["memory"]
     peak_allocated = memory["peak_allocated_gib"]
+    sequence_length = summary["config"]["data"]["max_sequence_length"]
     return {
         "run_directory": run_dir,
         "purpose": (
-            "one 2048-token optimizer step, run to measure peak VRAM before committing "
-            "to 128 steps at a sequence length never previously exercised"
+            f"one {sequence_length}-token optimizer step, run to measure peak VRAM before "
+            "committing to 128 steps at a sequence length never previously exercised"
         ),
         "outcome": summary["outcome"],
-        "sequence_length": summary["config"]["data"]["max_sequence_length"],
+        "sequence_length": sequence_length,
         "peak_allocated_gib": peak_allocated,
         "peak_reserved_gib": memory["peak_reserved_gib"],
         "total_vram_gib": memory["total_vram_gib"],
@@ -109,10 +110,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.calibration and args.calibration.is_file():
         summary = json.loads(args.calibration.read_text())
+        calibration_sequence = summary["config"]["data"]["max_sequence_length"]
         written.append(ledger.measured(
             "memory_measurement",
-            "Run 002 calibration: peak VRAM for one 2048-token KD step on the canonical "
-            "student",
+            f"Run 002 calibration: peak VRAM for one {calibration_sequence}-token KD step "
+            "on the canonical student",
             calibration_payload(summary, str(args.calibration.parent),
                                 gate_gib=PEAK_ALLOCATED_GATE_GIB),
             arm="run002_memory_calibration",
@@ -124,7 +126,8 @@ def main(argv: list[str] | None = None) -> int:
         written.append(ledger.measured(
             "canonical_kd",
             f"Run 002: {summary['steps']} pure logit-KD steps on the frozen 13.01B "
-            "canonical student at sequence 2048",
+            f"canonical student at sequence "
+            f"{summary['config']['data']['max_sequence_length']}",
             control_payload(summary, str(args.control.parent),
                             [str(c) for c in args.checkpoint]),
             arm="run002_logit_kd_control",

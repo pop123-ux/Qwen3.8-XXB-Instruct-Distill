@@ -1,0 +1,32 @@
+# Run run002_calibration_1536 artefact checksums
+# generated: 2026-09-02T19:31:26.166284+00:00
+# root: /workspace/runs/run002_calibration_1536
+#
+# sha256  bytes  relative-path  external-location
+
+89bba2e28408640d470bbb1976e9baaad1f3e14f621111ad5a6f21e5ebdf6211  3165  README.md  -
+34413a0a556ca70e2781d8f6c88c38f8617a3de5a36c07c1d86e0d98cef9a15c  166  checkpoints/latest.json  -
+afee6f754ae883f62f21fff2a0cf9e7ee2a081f5f5468577dc174031fab80ea9  48  checkpoints/step_000001/COMPLETE  -
+5de18638486f4d86f2f55948f24ad97c3224dc4425bc5e377d05702fe6985e49  92045704  checkpoints/step_000001/adapter_model.safetensors  -
+820cc911c39d04dbde10adced297197782f273aa4496d495ccbf1f0a6cb22151  1220  checkpoints/step_000001/checkpoint_manifest.json  -
+e4f59442802952ef4071ee213881309b709721a992cf40a0b4ffa98af463327e  1869  checkpoints/step_000001/config.json  -
+5e62609a65d8d87e740f286727414e387c35dd79a360fbd86e2b169c8c22d490  1085  checkpoints/step_000001/metadata.json  -
+81a11ae0eb395ba520a1d58d7b1e6d8bae6feb934ab0b17e3018ecb4aaada6dd  184225823  checkpoints/step_000001/optimizer.pt  -
+a77335b78b28134aaa5f7bef7770d3f82ac88cf47af6deac6253aaafc9a8295c  14629  checkpoints/step_000001/rng.pt  -
+07c7431cf6005e7d8f367d79e995f63e2f9b981a37e3437b795d058f9af4308b  1261  checkpoints/step_000001/scaler.pt  -
+fc46147f29462579918d1c15056abb759a5ab61823f46a3c22c86ed49d125e25  1389  checkpoints/step_000001/scheduler.pt  -
+49f7eb676c47e9f5facd5002b8dc8fd1c706a20d524f99e42555488ceac63745  787  checkpoints/step_000001/training_state.json  -
+aef2aa3657d90858f2b05ef23faee0caec5071fce3b501a972d1840a5cab74e5  691  command.txt  -
+b6e55d53624944f99cd362263c6ab08e001e818b7116b23cb07f3366df23dd7d  1230  dataset_provenance.json  -
+b0a9044a1f9220e9f930a7b4d38643002c5ce794570135bda50decb523ae8a89  5265  environment.txt  -
+70057f6453cc49dba19ce4826a2f55edb150c884280904a6da2c1ae75acdca08  504  git.txt  -
+dca668e59130a5f73b6a4815f6eb55b855e40af38ae2b3c2860f3497afcc53d9  41  git_commit.txt  -
+d397d7a52b9dd1555ac6678166331d1dd20ca28fe39e40f967592c9066981a83  1134  hardware.json  -
+0463ae3bd05acd6f9b3f7a8d23fd19e3ab5230574e518b31eac703bccf564d57  2355  hardware.txt  -
+f0e684b980f17d517f972ecaa0dba8e2952bc61e58c118e5b474da2c05ab94e8  17149  manifest.json  -
+da0bd34443e2451418ce3d303ade08cff62196e8115d275a261d7d1bf1d70e24  842  metrics.jsonl  -
+67daa9bab5bd65c8d2deb93f72f788e599cd955d17eae611eb1013a60706510a  278  progress/latest.json  -
+d79f3b8b981ea2224c0507ef1f4f6515ed148c0eee840de339776d3bc2b9b7aa  8707  summary.json  -
+04c04ead4b10b4c6bf06eb4313da55a2b5cb7da19482effcff6527f2138e93ff  1348  teacher_provenance.json  -
+ef88623f35f12a395a50900aa5ce97cdbb91bc505672885dd4cedbdc4f398220  996  tokenizer_provenance.json  -
+4162298dd38555c13c93c413b54e5992227da59c7d6952e751fb0adfc1f0bb0f  2359  training.log  -

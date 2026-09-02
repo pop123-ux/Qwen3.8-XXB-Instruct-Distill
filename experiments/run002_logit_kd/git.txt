@@ -1,0 +1,8 @@
+repository   : git@github.com:pop123-ux/Qwen3.8-XXB-Instruct-Distill.git
+branch       : claude/qwen38-16gb-distill-t6d0gy
+commit       : f5dd3f75bf4e069c75442396bcf43f2f52d0471d
+subject      : Stop Run 002 at its memory gate and record the measurement
+commit date  : 2026-09-02T18:25:13+00:00
+state        : DIRTY
+modified     : xperiments/ledger.jsonl, scripts/record_run002_kd.py, .claude/skills/, CLAUDE_CLI_RUNS/Run001.md
+captured at  : 2026-09-02T19:30:44.145075+00:00

@@ -1,0 +1,8 @@
+{
+  "run_id": "run002_logit_kd",
+  "status": "completed",
+  "reason": "All 128 optimizer steps completed, exit code 0, 196,608 tokens seen. No OOM. Peak allocated 40.5803 GiB against the 42.0 GiB gate.",
+  "exit_code": null,
+  "last_step": null,
+  "recorded_at": "2026-09-02T19:30:58.284093+00:00"
+}
