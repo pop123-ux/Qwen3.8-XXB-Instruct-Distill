@@ -1,0 +1,71 @@
+{
+  "name": "run001_canonical_kd_pilot",
+  "description": "real teacher-in-the-loop logit KD against the frozen canonical student",
+  "level": "",
+  "objective": {
+    "signal_source": "online"
+  },
+  "teacher": {
+    "model": "Qwen/Qwen3.8-27B",
+    "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2"
+  },
+  "model": {
+    "spec_path": null,
+    "pretrained": "/workspace/runs/pilot001/transferred",
+    "architecture": {},
+    "trust_remote_code": false
+  },
+  "data": {
+    "train_path": null,
+    "validation_path": null,
+    "synthetic": false,
+    "synthetic_examples": 256,
+    "text_corpus": false,
+    "text_path": "/workspace/corpora/gutenberg/train.txt",
+    "procedural_bytes": 2000000,
+    "validation_fraction": 0.05,
+    "max_corpus_bytes": null,
+    "max_sequence_length": 1024,
+    "streaming": false,
+    "shuffle_seed": 0,
+    "tokenized_text": true,
+    "tokenizer_path": "/workspace/models/qwen3.8-27b-dbdc473",
+    "expected_vocab_size": 248320,
+    "document_separator": "blank_line",
+    "max_documents": null,
+    "max_tokens": 200000
+  },
+  "training": {
+    "strategy": "qlora",
+    "optimizer": "adamw",
+    "precision": "bf16",
+    "objective": "mixed_kd",
+    "learning_rate": 0.0002,
+    "weight_decay": 0.0,
+    "warmup_steps": 10,
+    "max_steps": 50,
+    "scheduler": "cosine",
+    "batch_size": 1,
+    "gradient_accumulation_steps": 1,
+    "gradient_checkpointing": true,
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "kd_weight": 0.5,
+    "kd_temperature": 2.0,
+    "kd_tail": "bucket",
+    "kd_top_k": 64,
+    "seed": 0,
+    "eval_every": 12,
+    "save_every": 25,
+    "log_every": 2,
+    "progress_every": null,
+    "persistent_backup": null
+  },
+  "runtime": {
+    "output_dir": "/workspace/runs/run001_kd_pilot",
+    "device": "auto",
+    "resume_from": null,
+    "reserved_vram_gib": 1.0
+  }
+}

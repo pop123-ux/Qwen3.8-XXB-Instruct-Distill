@@ -1,4 +1,4 @@
-captured at        : 2026-09-02T15:28:31.850697+00:00
+captured at        : 2026-09-02T17:17:30.900780+00:00
 hostname           : 4dfe18533fc6
 platform           : Linux-6.8.0-52-generic-x86_64-with-glibc2.39
 python             : 3.12.3  (/usr/local/bin/python)
@@ -108,6 +108,7 @@ oauthlib==3.2.2
 packaging==25.0
 pandocfilters==1.5.1
 parso==0.8.5
+peft==0.20.0
 pexpect==4.9.0
 pillow==11.0.0
 platformdirs==4.5.0
@@ -242,6 +243,7 @@ PIP_CACHE_DIR
 PIP_ROOT_USER_ACTION
 PUBLIC_KEY
 PWD
+PYTHONPATH
 PYTHONUNBUFFERED
 RP_WORKSPACE
 RUNPOD_API_KEY

@@ -1,28 +1,28 @@
 {
   "run_id": "kd_run_001",
   "schema_version": 1,
-  "created_at": "2026-09-02T15:28:31.184212+00:00",
+  "created_at": "2026-09-02T17:17:26.251937+00:00",
   "started_at": null,
-  "finished_at": null,
-  "status": "initialised",
+  "finished_at": "2026-09-02T17:36:33.995807+00:00",
+  "status": "completed",
   "git": {
-    "repository": "https://github.com/pop123-ux/Qwen3.8-XXB-Instruct-Distill.git",
+    "repository": "git@github.com:pop123-ux/Qwen3.8-XXB-Instruct-Distill.git",
     "branch": "claude/qwen38-16gb-distill-t6d0gy",
-    "commit": "a0c2c391e53e953024acaf1347d9be3c67937399",
-    "commit_subject": "Add a tokenizer-backed data path for the canonical student",
-    "commit_date": "2026-09-01T21:16:20+00:00",
+    "commit": "258b00bf73a43d4a98b6168895cecd64f3a8f25e",
+    "commit_subject": "Integrate real teacher KD pilot and Run 001 infrastructure",
+    "commit_date": "2026-09-02T16:31:03+00:00",
     "dirty": true,
     "modified_paths": [
-      ".claude/",
-      "scripts/launch_kd_run.sh",
-      "scripts/run_record.py",
-      "src/qwen_distill/training/run_record.py",
-      "tests/test_run_record.py"
+      "cripts/kd_run.py",
+      "src/qwen_distill/training/checkpoint_validation.py",
+      "src/qwen_distill/training/checkpoints.py",
+      "src/qwen_distill/training/trainer.py",
+      "src/qwen_distill/training/peft_support.py"
     ],
-    "captured_at": "2026-09-02T15:28:31.850631+00:00"
+    "captured_at": "2026-09-02T17:17:30.900742+00:00"
   },
   "environment": {
-    "captured_at": "2026-09-02T15:28:31.850697+00:00",
+    "captured_at": "2026-09-02T17:17:30.900780+00:00",
     "python_version": "3.12.3",
     "python_executable": "/usr/local/bin/python",
     "platform": "Linux-6.8.0-52-generic-x86_64-with-glibc2.39",
@@ -132,6 +132,7 @@
       "packaging==25.0",
       "pandocfilters==1.5.1",
       "parso==0.8.5",
+      "peft==0.20.0",
       "pexpect==4.9.0",
       "pillow==11.0.0",
       "platformdirs==4.5.0",
@@ -266,6 +267,7 @@
       "PIP_ROOT_USER_ACTION",
       "PUBLIC_KEY",
       "PWD",
+      "PYTHONPATH",
       "PYTHONUNBUFFERED",
       "RP_WORKSPACE",
       "RUNPOD_API_KEY",
@@ -288,8 +290,8 @@
     ]
   },
   "hardware": {
-    "captured_at": "2026-09-02T15:28:35.398250+00:00",
-    "nvidia_smi": "Wed Sep  2 15:28:35 2026       \n+-----------------------------------------------------------------------------------------+\n| NVIDIA-SMI 570.195.03             Driver Version: 570.195.03     CUDA Version: 12.8     |\n|-----------------------------------------+------------------------+----------------------+\n| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |\n| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |\n|                                         |                        |               MIG M. |\n|=========================================+========================+======================|\n|   0  NVIDIA A40                     On  |   00000000:D1:00.0 Off |                    0 |\n|  0%   46C    P0            106W /  300W |   16735MiB /  46068MiB |      4%      Default |\n|                                         |                        |                  N/A |\n+-----------------------------------------+------------------------+----------------------+\n                                                                                         \n+-----------------------------------------------------------------------------------------+\n| Processes:                                                                              |\n|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |\n|        ID   ID                                                               Usage      |\n|=========================================================================================|\n|    0   N/A  N/A          100806      C   python                                16728MiB |\n+-----------------------------------------------------------------------------------------+",
+    "captured_at": "2026-09-02T17:17:36.831210+00:00",
+    "nvidia_smi": "Wed Sep  2 17:17:36 2026       \n+-----------------------------------------------------------------------------------------+\n| NVIDIA-SMI 570.195.03             Driver Version: 570.195.03     CUDA Version: 12.8     |\n|-----------------------------------------+------------------------+----------------------+\n| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |\n| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |\n|                                         |                        |               MIG M. |\n|=========================================+========================+======================|\n|   0  NVIDIA A40                     On  |   00000000:D1:00.0 Off |                    0 |\n|  0%   50C    P0            119W /  300W |   16845MiB /  46068MiB |      3%      Default |\n|                                         |                        |                  N/A |\n+-----------------------------------------+------------------------+----------------------+\n                                                                                         \n+-----------------------------------------------------------------------------------------+\n| Processes:                                                                              |\n|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |\n|        ID   ID                                                               Usage      |\n|=========================================================================================|\n|    0   N/A  N/A          274392      C   python                                16838MiB |\n+-----------------------------------------------------------------------------------------+",
     "gpus": [
       {
         "name": "NVIDIA A40",
@@ -309,20 +311,20 @@
       {
         "mount": "/workspace",
         "total_gib": 987864.07,
-        "used_gib": 776003.69,
-        "free_gib": 211860.39
+        "used_gib": 776727.68,
+        "free_gib": 211136.39
       },
       {
         "mount": "/",
         "total_gib": 50.0,
-        "used_gib": 0.95,
-        "free_gib": 49.05
+        "used_gib": 1.64,
+        "free_gib": 48.36
       },
       {
         "mount": "/root",
         "total_gib": 50.0,
-        "used_gib": 0.95,
-        "free_gib": 49.05
+        "used_gib": 1.64,
+        "free_gib": 48.36
       }
     ]
   },
@@ -331,7 +333,7 @@
     "parameters": {}
   },
   "teacher": {
-    "captured_at": "2026-09-02T15:28:35.644764+00:00",
+    "captured_at": "2026-09-02T17:17:37.093442+00:00",
     "local_path": "/workspace/models/qwen3.8-27b-dbdc473",
     "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
     "model": "Qwen/Qwen3.8-27B",
@@ -365,7 +367,7 @@
     "weights_not_archived": "The teacher checkpoint is ~55 GB and is never committed or uploaded. It is re-obtainable from its pinned revision; that revision is the archived artefact."
   },
   "tokenizer": {
-    "captured_at": "2026-09-02T15:28:35.679513+00:00",
+    "captured_at": "2026-09-02T17:17:37.197983+00:00",
     "path": "/workspace/models/qwen3.8-27b-dbdc473",
     "files_sha256": {
       "tokenizer.json": {
@@ -396,7 +398,7 @@
     "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2"
   },
   "dataset": {
-    "captured_at": "2026-09-02T15:28:36.190522+00:00",
+    "captured_at": "2026-09-02T17:17:37.789149+00:00",
     "manifest_path": "/workspace/corpora/gutenberg/corpus_manifest.json",
     "name": "level2r_public_domain_english",
     "preparation_version": "1.0",
@@ -457,11 +459,11 @@
     "max_steps": null,
     "note": "The run stops at max_steps, on an unrecoverable exception, or when stopped by hand. A CUDA OOM is caught and recorded as a result: the summary is written and the last complete checkpoint stays valid."
   },
-  "command": null,
+  "command": "PYTHONPATH=src PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True python -u scripts/kd_run.py --teacher /workspace/models/qwen3.8-27b-dbdc473 --revision dbdc473dea0d6a9763042881cc33d6058d1742d2 --quantization 4bit --student canonical --pretrained /workspace/runs/pilot001/transferred --text-path /workspace/corpora/gutenberg/train.txt --sequence-length 1024 --max-tokens 200000 --steps 50 --batch-size 1 --objective mixed_kd --kd-weight 0.5 --kd-temperature 2.0 --kd-top-k 64 --strategy qlora --optimizer adamw --lora-rank 16 --lora-alpha 32 --precision bf16 --seed 0 --output /workspace/runs/run001_kd_pilot --name run001_canonical_kd_pilot",
   "notes": [
-    "Run 001 config not yet chosen by the MAIN AGENT at record-init time; re-run 'run_record.py init --config <yaml>' before launch to populate the training/KD sections. Idempotent.",
-    "TWO teacher revisions are on this Pod: /workspace/models/qwen3.8-27b @ 72a217afab8029b39e4af1c7273a829995a3dbaf (55,586,048,961 bytes) and /workspace/models/qwen3.8-27b-dbdc473 @ dbdc473dea0d6a9763042881cc33d6058d1742d2 (55,586,049,591 bytes). This record pins the latter. teacher_smoke.json was produced against the FORMER. Run 001 must use one of them explicitly.",
-    "External backup: rclone remote 'gdrive-primary:' exists but its OAuth token is empty and it cannot be used without an interactive reconnect. No HF token is present. GitHub is therefore the only working external archive, so the record is deliberately text-only and small.",
+    "First controlled canonical KD experiment: real Qwen3.8-27B teacher (4-bit) -> frozen 13,008,505,728-parameter student qwen38_19b_h5120_l48_moe, QLoRA r=16 on all 48 layers (23,003,136 trainable, 0.1765%).",
+    "Full-parameter AdamW on the canonical student is impossible on this A40: 24.23 GiB bf16 weights + gradients + fp32 moments, with a 17 GiB resident teacher, against 44.43 GiB. QLoRA is the path that makes the intended experiment executable; the architecture is unchanged and every base weight is frozen.",
+    "Preceded by a 1-step smoke at /workspace/runs/run001_kd_smoke (exit 0, checkpoint validated at load level).",
     "No experiment config was supplied at init time, so the training and KD sections of this manifest are unpopulated. Re-run `run_record.py init` with --config before the run starts; it is idempotent."
   ]
 }

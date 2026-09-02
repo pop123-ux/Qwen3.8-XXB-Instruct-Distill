@@ -92,10 +92,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     run.add_argument("--batch-size", type=int, default=1)
     run.add_argument("--gradient-accumulation-steps", type=int, default=1)
     run.add_argument("--learning-rate", type=float, default=2e-4)
-    run.add_argument("--kd-weight", type=float, default=0.5)
+    run.add_argument("--objective", choices=("logit_kd", "mixed_kd"), default="logit_kd",
+                     help="'logit_kd' is pure KD and ignores --kd-weight; 'mixed_kd' is "
+                          "--kd-weight of KD and the remainder cross-entropy")
+    run.add_argument("--kd-weight", type=float, default=0.5,
+                     help="KD share of the loss under --objective mixed_kd; the rest is CE")
     run.add_argument("--kd-temperature", type=float, default=2.0)
     run.add_argument("--kd-top-k", type=int, default=64,
                      help="teacher shortlist; the tail is kept exact via logsumexp")
+    run.add_argument("--strategy", choices=("full", "lora", "qlora"), default="qlora",
+                     help="'qlora' (default) quantises the frozen base to NF4 and trains "
+                          "LoRA adapters; 'lora' keeps the base in --precision; 'full' "
+                          "trains every parameter and does not fit the canonical student "
+                          "on one 48 GB card")
+    run.add_argument("--optimizer", choices=("adamw", "adamw_8bit", "adafactor", "sgd"),
+                     default="adamw")
+    run.add_argument("--lora-rank", type=int, default=16)
+    run.add_argument("--lora-alpha", type=int, default=32)
     run.add_argument("--precision", choices=("bf16", "fp16", "fp32"), default="bf16")
     run.add_argument("--seed", type=int, default=0)
     run.add_argument("--output", type=Path, default=Path("runs/kd_run"))
@@ -184,8 +197,11 @@ def main(argv: list[str] | None = None) -> int:
             max_tokens=args.max_tokens,
         ),
         training=TrainingConfig(
-            strategy="full",          # the trainer implements no other strategy
-            objective="logit_kd",
+            strategy=args.strategy,
+            optimizer=args.optimizer,
+            lora_rank=args.lora_rank,
+            lora_alpha=args.lora_alpha,
+            objective=args.objective,
             precision=args.precision,
             learning_rate=args.learning_rate,
             max_steps=args.steps,
@@ -210,6 +226,9 @@ def main(argv: list[str] | None = None) -> int:
              "teacher": str(args.teacher), "revision": args.revision,
              "steps": args.steps, "sequence_length": args.sequence_length,
              "kd_top_k": args.kd_top_k, "kd_temperature": args.kd_temperature,
+             "objective": args.objective, "kd_weight": args.kd_weight,
+             "strategy": args.strategy, "optimizer": args.optimizer,
+             "lora_rank": args.lora_rank, "lora_alpha": args.lora_alpha,
              "expected_vocab_size": FROZEN_STUDENT.vocab_size},
             indent=2))
         print("\n  dry run: nothing was loaded and nothing was trained.")

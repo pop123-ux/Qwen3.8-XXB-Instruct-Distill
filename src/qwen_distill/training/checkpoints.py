@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any
 
 from .checkpoint_validation import (
+    ADAPTER_WEIGHTS,
     COMPLETE_MARKER,
     LOAD,
     MANIFEST,
@@ -166,6 +167,11 @@ class CheckpointMetadata:
     created_at: str = field(default_factory=_utc_now)
     complete: bool = False
     parameter_count: int | None = None
+    #: How many of those actually receive gradients. Equal to ``parameter_count`` for a
+    #: full run; a fraction of a percent of it under LoRA, where it is also what sizes
+    #: the adapter file and the optimizer state.
+    trainable_parameter_count: int | None = None
+    strategy: str | None = None
     architecture_sha256: str | None = None
     config_sha256: str | None = None
     git_commit: str | None = None
@@ -360,9 +366,25 @@ def save_checkpoint(
         # names pointing at one storage. save_model drops the duplicate and load_model
         # restores it from the module's own tie — writing the tensor twice would work
         # but would inflate every checkpoint by a whole embedding table.
-        save_model(model, str(staging / "model.safetensors"),
-                   metadata={"step": str(step), "format": "pt"})
-        written.append("model.safetensors")
+        if hasattr(model, "peft_config"):
+            # A parameter-efficient run's checkpoint is the adapter. Writing the whole
+            # model would serialise a frozen 13B base on every save -- 25 GB per
+            # checkpoint that is byte-identical to the materialised student already on
+            # disk -- and for a 4-bit base it would write packed uint8 blobs that no
+            # longer reconstruct the weights once separated from their quant_state.
+            # `adapter_model.safetensors` is the whole of what training changed.
+            from safetensors.torch import save_file
+
+            from .peft_support import adapter_state_dict
+
+            adapter = {k: v.detach().cpu().contiguous() for k, v in adapter_state_dict(model).items()}
+            save_file(adapter, str(staging / "adapter_model.safetensors"),
+                      metadata={"step": str(step), "format": "pt"})
+            written.append("adapter_model.safetensors")
+        else:
+            save_model(model, str(staging / "model.safetensors"),
+                       metadata={"step": str(step), "format": "pt"})
+            written.append("model.safetensors")
 
         if optimizer is not None:
             dump("optimizer.pt", optimizer.state_dict())
@@ -398,15 +420,28 @@ def save_checkpoint(
             record.config_sha256 = config_sha256(config)
         if record.parameter_count is None:
             # `parameters()` yields each storage once, so a tied lm_head is counted with
-            # its embedding rather than twice — matching what `save_model` writes.
+            # its embedding rather than twice — matching what `save_model` writes. The
+            # report also unpacks bitsandbytes' 4-bit tensors, which store two
+            # parameters per element and would otherwise halve the recorded student.
             try:
-                record.parameter_count = sum(p.numel() for p in model.parameters())
+                from .peft_support import trainable_parameter_report
+
+                counts = trainable_parameter_report(model)
+                record.parameter_count = counts["total_parameters"]
+                record.trainable_parameter_count = counts["trainable_parameters"]
             except (AttributeError, TypeError):
                 record.parameter_count = None
         record.complete = True
         atomic_write_json(staging / "metadata.json", record.to_dict())
 
-        missing = [name for name in REQUIRED_FILES if not (staging / name).is_file()]
+        # A parameter-efficient run satisfies the weights requirement with the adapter,
+        # so the required set follows what was actually written rather than assuming
+        # full-training filenames.
+        required = [
+            name for name in REQUIRED_FILES
+            if not (name == "model.safetensors" and ADAPTER_WEIGHTS in written)
+        ]
+        missing = [name for name in required if not (staging / name).is_file()]
         if missing:
             raise OSError(f"checkpoint is missing required files: {missing}")
 
@@ -492,7 +527,22 @@ def load_checkpoint(
         )
 
     restored: list[str] = []
-    if model is not None:
+    if model is not None and (directory / ADAPTER_WEIGHTS).is_file():
+        # A parameter-efficient checkpoint restores the adapter onto the frozen base
+        # the caller already built. The base is not in the file and does not need to
+        # be: it is the materialised student, unchanged by training.
+        from safetensors.torch import load_file
+
+        from .peft_support import require_peft
+
+        peft = require_peft()
+        adapter = load_file(str(directory / ADAPTER_WEIGHTS), device=map_location)
+        outcome = peft.set_peft_model_state_dict(model, adapter)
+        unexpected = list(getattr(outcome, "unexpected_keys", []) or [])
+        if strict and unexpected:
+            raise ValueError(f"adapter has tensors this model does not: {unexpected[:5]}")
+        restored.append("adapter")
+    elif model is not None:
         from safetensors.torch import load_model
 
         # strict=False tolerates the tied duplicate that save_model omitted; the module

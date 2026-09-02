@@ -5,12 +5,17 @@ a real forward/backward/optimizer loop with checkpointing, resume, validation an
 logging, on the hybrid architecture. That is what Levels 0–2 require, and what must
 work before any larger run is worth attempting.
 
-The distillation objectives (`logit_kd`, `mixed_kd`) and PEFT strategies are declared in
-the config schema and validated, but their implementations are deliberately staged: a
-KD loss without a measured SFT baseline to compare against is not an experiment, and
-this phase's instruction was to get `--dry-run` correct rather than to start training.
-Where a path is not implemented, it raises with a clear message rather than silently
-doing something else.
+The distillation objectives `logit_kd` and `mixed_kd` are implemented, as are the
+`lora` and `qlora` strategies (see :mod:`qwen_distill.training.peft_support`) and the
+four members of `OPTIMIZERS`. `strategy` and `optimizer` were previously declared in the
+config schema, validated, written into every run summary — and ignored by this module,
+which raised for any strategy but `full` and always built `torch.optim.AdamW`. Both are
+now honoured, because the canonical 13.01B student cannot be trained with
+full-parameter AdamW on one 48 GB card and a run summary should name the optimizer that
+actually ran.
+
+Where a path is still not implemented it raises with a clear message rather than
+silently doing something else.
 """
 
 from __future__ import annotations
@@ -49,6 +54,13 @@ from .memory_probe import (
     record_oom,
     reset_peak,
     take,
+)
+from .peft_support import (
+    PEFT_STRATEGIES,
+    apply_peft,
+    build_quantization_config,
+    require_peft,
+    trainable_parameter_report,
 )
 from .progress import ProgressWriter
 from .resume_compat import (
@@ -123,6 +135,57 @@ def load_examples(config: ExperimentConfig) -> tuple[list[DistillationExample], 
     return train, validation
 
 
+def _is_quantized(model: Any) -> bool:
+    """True when bitsandbytes placed and quantised this model during construction."""
+    return bool(
+        getattr(model, "is_loaded_in_4bit", False)
+        or getattr(model, "is_loaded_in_8bit", False)
+        or getattr(getattr(model, "base_model", None), "is_loaded_in_4bit", False)
+        or getattr(getattr(model, "base_model", None), "is_loaded_in_8bit", False)
+    )
+
+
+def build_optimizer(config: ExperimentConfig, trainable: list[Any]) -> Any:
+    """Construct the optimizer the config actually names.
+
+    ``training.optimizer`` has been part of the schema, validated against
+    ``OPTIMIZERS`` and written into every run summary since the first experiment, while
+    the trainer unconditionally built ``torch.optim.AdamW``. Any run recording
+    ``adamw_8bit`` was therefore reporting an optimizer it did not use, and its memory
+    figures could not be compared against the estimator's, which does branch on this
+    field. Honouring it is what makes those records true.
+    """
+    import torch
+
+    name = config.training.optimizer
+    lr = config.training.learning_rate
+    decay = config.training.weight_decay
+
+    if name == "adamw":
+        return torch.optim.AdamW(trainable, lr=lr, weight_decay=decay)
+    if name == "adamw_8bit":
+        try:
+            import bitsandbytes as bnb
+        except ImportError as exc:  # pragma: no cover - depends on the environment
+            raise NotImplementedError(
+                "optimizer 'adamw_8bit' needs `bitsandbytes`, which is not installed. "
+                "Install it, or set training.optimizer to 'adamw'."
+            ) from exc
+        return bnb.optim.AdamW8bit(trainable, lr=lr, weight_decay=decay)
+    if name == "adafactor":
+        # Adafactor's factored second moment is the point of choosing it, so betas must
+        # stay off; transformers' implementation is the one the estimator models.
+        from transformers.optimization import Adafactor
+
+        return Adafactor(
+            trainable, lr=lr, weight_decay=decay,
+            scale_parameter=False, relative_step=False, warmup_init=False,
+        )
+    if name == "sgd":
+        return torch.optim.SGD(trainable, lr=lr, weight_decay=decay, momentum=0.9)
+    raise NotImplementedError(f"optimizer {name!r} is not implemented in the trainer.")
+
+
 def build_model(config: ExperimentConfig, spec: HybridArchSpec | None):
     """Instantiate the student from a spec or a pretrained checkpoint."""
     import torch
@@ -134,11 +197,23 @@ def build_model(config: ExperimentConfig, spec: HybridArchSpec | None):
         dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[
             config.training.precision
         ]
-        return AutoModelForCausalLM.from_pretrained(
+        strategy = config.training.strategy
+        quantization = build_quantization_config(strategy, dtype)
+        extra: dict[str, Any] = {}
+        if quantization is not None:
+            # A quantised model is built directly on the target device: bitsandbytes
+            # quantises during placement, and a 4-bit module cannot be `.to()`d
+            # afterwards. `train()` skips its own move for exactly this reason.
+            extra = {"quantization_config": quantization, "device_map": {"": 0}}
+        model = AutoModelForCausalLM.from_pretrained(
             config.model.pretrained,
             trust_remote_code=config.model.trust_remote_code,
             dtype=dtype,
+            **extra,
         )
+        if strategy in PEFT_STRATEGIES:
+            model = apply_peft(model, config)
+        return model
     if spec is None:
         raise ValueError("no architecture: set model.spec_path, model.architecture, or model.pretrained")
 
@@ -170,11 +245,19 @@ def _require_supported(config: ExperimentConfig, teacher: Any = None) -> None:
             "qwen_distill.distillation.teacher_signal.build_provider. Without one this "
             "would silently be SFT."
         )
-    if config.training.strategy != "full":
+    if config.training.strategy in PEFT_STRATEGIES:
+        # Raises with an actionable message if `peft` is absent, before anything loads.
+        require_peft()
+        if not config.model.pretrained:
+            raise ValueError(
+                f"strategy {config.training.strategy!r} adapts an existing checkpoint, "
+                "but model.pretrained is unset. LoRA on a freshly initialised model "
+                "would train ~0.2% of random weights and mean nothing."
+            )
+    elif config.training.strategy != "full":
         raise NotImplementedError(
-            f"strategy {config.training.strategy!r} needs `peft` and is not yet wired in. "
-            "Full training of a small student is implemented and is what the Level 1 "
-            "prototype uses."
+            f"strategy {config.training.strategy!r} is in the config schema but is not "
+            "implemented in the trainer."
         )
 
 
@@ -321,7 +404,10 @@ def train(
 
     model = build_model(config, spec)
     take(profile, "after_model_creation")
-    model = model.to(device)
+    # A bitsandbytes-quantised model was placed by `device_map` during construction and
+    # raises if moved; everything else still needs the explicit move.
+    if not _is_quantized(model):
+        model = model.to(device)
     if config.training.gradient_checkpointing and hasattr(model, "gradient_checkpointing_enable"):
         # Non-reentrant checkpointing composes correctly with autocast and does not
         # require the inputs to have requires_grad, unlike the legacy reentrant path.
@@ -333,9 +419,15 @@ def train(
     take(profile, "after_model_to_device")
 
     trainable = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.AdamW(
-        trainable, lr=config.training.learning_rate, weight_decay=config.training.weight_decay
-    )
+    optimizer = build_optimizer(config, trainable)
+    param_report = trainable_parameter_report(model)
+    print(f"  strategy: {config.training.strategy}"
+          + (f" (r={config.training.lora_rank}, alpha={config.training.lora_alpha})"
+             if config.training.strategy in PEFT_STRATEGIES else ""))
+    print(f"  optimizer: {config.training.optimizer}")
+    print(f"  parameters: {param_report['total_parameters']:,} total, "
+          f"{param_report['trainable_parameters']:,} trainable "
+          f"({param_report['trainable_fraction'] * 100:.4f}%)")
     scheduler = make_schedule(
         optimizer, total_steps=config.training.max_steps,
         max_lr=config.training.learning_rate,
@@ -489,6 +581,9 @@ def train(
             config_sha256=config_digest,
             precision=precision,
             optimizer=config.training.optimizer,
+            # Without this a reader cannot tell an adapter checkpoint from a full one
+            # except by which weights file happens to be present.
+            strategy=config.training.strategy,
             sequence_length=config.data.max_sequence_length,
             batch_size=config.training.batch_size,
             effective_batch_size=config.training.effective_batch_size,
@@ -752,6 +847,7 @@ def train(
         effective_precision=precision, precision_note=precision_note, oom=oom,
         persisted=persisted, persistent_destination=config.training.persistent_backup,
         distillation=_distillation_summary(config, state, teacher, kd_alpha, kd_tail),
+        parameter_counts=param_report,
     )
     if oom is not None:
         print(f"  wrote {output / 'summary.json'} recording the OOM.")
@@ -901,6 +997,7 @@ def _write_summary(
     persisted: dict[str, list[str]] | None = None,
     persistent_destination: str | None = None,
     distillation: dict[str, Any] | None = None,
+    parameter_counts: dict[str, Any] | None = None,
 ) -> None:
     """Write the full artifact set: summary, hardware, git commit, resolved config.
 
@@ -971,6 +1068,13 @@ def _write_summary(
             else _sft_label(text_mode, data_mode)
         ),
         "parameters": count_parameters(spec).as_dict() if spec else None,
+        # Counted off the live model rather than derived from a spec, so it is available
+        # for a `pretrained` run (where `spec` is None) and so it states how many
+        # parameters actually received gradients. Under LoRA the difference between
+        # these two numbers is the whole character of the run.
+        "parameter_counts": parameter_counts,
+        "strategy": config.training.strategy,
+        "optimizer": config.training.optimizer,
         "steps": state.step,
         "runtime_s": round(elapsed, 2),
         "tokens_seen": tokens_seen,

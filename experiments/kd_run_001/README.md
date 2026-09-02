@@ -1,7 +1,7 @@
 # Run 001 — knowledge distillation
 
 Run ID: `kd_run_001`
-Created: 2026-09-02T15:28:31.184212+00:00
+Created: 2026-09-02T17:17:26.251937+00:00
 Status: see `manifest.json` -> `status`
 
 This directory, not any terminal scrollback or chat transcript, is the record of Run 001.
@@ -41,7 +41,7 @@ complete checkpoint and `termination.json`, and resume with
 
 ## Reproducing
 
-    git clone https://github.com/pop123-ux/Qwen3.8-XXB-Instruct-Distill.git
-    git checkout a0c2c391e53e953024acaf1347d9be3c67937399
+    git clone git@github.com:pop123-ux/Qwen3.8-XXB-Instruct-Distill.git
+    git checkout 258b00bf73a43d4a98b6168895cecd64f3a8f25e
     # teacher: Qwen/Qwen3.8-27B @ dbdc473dea0d6a9763042881cc33d6058d1742d2
-    <command>
+    PYTHONPATH=src PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True python -u scripts/kd_run.py --teacher /workspace/models/qwen3.8-27b-dbdc473 --revision dbdc473dea0d6a9763042881cc33d6058d1742d2 --quantization 4bit --student canonical --pretrained /workspace/runs/pilot001/transferred --text-path /workspace/corpora/gutenberg/train.txt --sequence-length 1024 --max-tokens 200000 --steps 50 --batch-size 1 --objective mixed_kd --kd-weight 0.5 --kd-temperature 2.0 --kd-top-k 64 --strategy qlora --optimizer adamw --lora-rank 16 --lora-alpha 32 --precision bf16 --seed 0 --output /workspace/runs/run001_kd_pilot --name run001_canonical_kd_pilot
