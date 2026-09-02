@@ -107,6 +107,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                      help="compare raw hidden states instead of per-token RMS-normalised "
                           "ones. Off by default because unnormalised MSE is dominated by "
                           "whichever mapped pairs sit deepest in the residual stream")
+    run.add_argument("--layer-kd-chunk-pairs", type=int, default=4,
+                     help="how many mapped pairs' loss terms are built before their "
+                          "gradient is taken. The objective is identical for any value: "
+                          "same pairs, same positions, same reduction. 0 holds every pair "
+                          "live to one backward, which is the unchunked reference path and "
+                          "costs ~4 GiB more at 48 pairs and 1536 positions")
     run.add_argument("--kd-weight", type=float, default=0.5,
                      help="KD share of the loss under --objective mixed_kd; the rest is CE")
     run.add_argument("--kd-temperature", type=float, default=2.0)
@@ -166,36 +172,16 @@ def build_preflight_student(destination: Path, *, sequence_length: int) -> Path:
     return destination
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    started = time.time()
+def build_config(args, pretrained) -> ExperimentConfig:
+    """The experiment configuration this script runs, built in one place.
 
-    if args.student == "canonical" and args.pretrained is None:
-        print("  REFUSED: --student canonical needs --pretrained, the checkpoint written "
-              "by scripts/distill_pilot.py. The frozen student is never built from "
-              "scratch here: an untransferred 13B student would train, fall, and mean "
-              "nothing.", file=sys.stderr)
-        return 2
-    if not args.text_path.is_file():
-        print(f"  REFUSED: no corpus at {args.text_path}", file=sys.stderr)
-        return 2
-    if not (args.teacher / "config.json").is_file():
-        print(f"  REFUSED: no checkpoint at {args.teacher}", file=sys.stderr)
-        return 2
-
+    Extracted from :func:`main` so that anything which has to reproduce a run's exact
+    configuration — the chunking-equivalence harness reproducing Run 003's calibration
+    batch, for one — builds it from *this* function rather than from a second copy that
+    could drift from it. A verification whose configuration differs from the run it
+    verifies verifies nothing.
+    """
     name = args.name or f"kd_{args.student}"
-    args.output.mkdir(parents=True, exist_ok=True)
-
-    # -- the student -----------------------------------------------------------------
-    if args.student == "canonical":
-        pretrained = args.pretrained
-        print(f"  canonical student : {FROZEN_STUDENT.name}")
-        print(f"                      loaded from {pretrained}")
-    else:
-        pretrained = build_preflight_student(
-            args.output / "preflight_student", sequence_length=args.sequence_length
-        )
-
     # -- the configuration -----------------------------------------------------------
     config = ExperimentConfig(
         name=name,
@@ -234,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
             kd_top_k=args.kd_top_k,
             layer_kd_direction_weight=args.layer_kd_direction_weight,
             layer_kd_normalise=not args.layer_kd_no_normalise,
+            layer_kd_chunk_pairs=args.layer_kd_chunk_pairs or None,
             seed=args.seed,
             eval_every=args.eval_every or max(1, args.steps // 4),
             save_every=args.save_every or max(1, args.steps // 2),
@@ -242,6 +229,39 @@ def main(argv: list[str] | None = None) -> int:
         runtime=RuntimeConfig(output_dir=str(args.output)),
     )
     config.validate()
+    return config
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    started = time.time()
+
+    if args.student == "canonical" and args.pretrained is None:
+        print("  REFUSED: --student canonical needs --pretrained, the checkpoint written "
+              "by scripts/distill_pilot.py. The frozen student is never built from "
+              "scratch here: an untransferred 13B student would train, fall, and mean "
+              "nothing.", file=sys.stderr)
+        return 2
+    if not args.text_path.is_file():
+        print(f"  REFUSED: no corpus at {args.text_path}", file=sys.stderr)
+        return 2
+    if not (args.teacher / "config.json").is_file():
+        print(f"  REFUSED: no checkpoint at {args.teacher}", file=sys.stderr)
+        return 2
+
+    args.output.mkdir(parents=True, exist_ok=True)
+
+    # -- the student -----------------------------------------------------------------
+    if args.student == "canonical":
+        pretrained = args.pretrained
+        print(f"  canonical student : {FROZEN_STUDENT.name}")
+        print(f"                      loaded from {pretrained}")
+    else:
+        pretrained = build_preflight_student(
+            args.output / "preflight_student", sequence_length=args.sequence_length
+        )
+
+    config = build_config(args, pretrained)
 
     if args.dry_run:
         print(json.dumps(
@@ -252,6 +272,7 @@ def main(argv: list[str] | None = None) -> int:
              "objective": args.objective, "kd_weight": args.kd_weight,
              "layer_kd_direction_weight": args.layer_kd_direction_weight,
              "layer_kd_normalise": not args.layer_kd_no_normalise,
+             "layer_kd_chunk_pairs": args.layer_kd_chunk_pairs or None,
              "strategy": args.strategy, "optimizer": args.optimizer,
              "log_every": args.log_every or max(1, args.steps // 20),
              "eval_every": args.eval_every or max(1, args.steps // 4),

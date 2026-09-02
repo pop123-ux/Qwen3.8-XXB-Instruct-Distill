@@ -136,6 +136,72 @@ def _normalise(x: Tensor) -> Tensor:
     return x / (x.float().pow(2).mean(-1, keepdim=True).sqrt() + 1e-6)
 
 
+def _plan_pairs(
+    student_hidden, teacher_hidden, mapping: dict[int, int], mode: str,
+    teacher_layers: int | None,
+):
+    """Resolve which pairs are supervised, and the teacher spans, before any arithmetic.
+
+    Shared by the whole-batch and the chunked objective so that both supervise exactly the
+    same set of pairs. The chunked form needs the pair count up front — it divides each
+    chunk's terms by it — and deriving that count twice, in two places, is precisely how
+    the two forms would come to disagree.
+    """
+    if len(student_hidden) < 2:
+        raise ValueError("need at least one student layer's worth of hidden states")
+    n_teacher = teacher_layers if teacher_layers is not None else len(teacher_hidden) - 1
+    if len(teacher_hidden) != n_teacher + 1:
+        raise ValueError(
+            f"teacher_hidden has {len(teacher_hidden)} entries; expected {n_teacher + 1} "
+            f"for {n_teacher} layers (pass output_hidden_states=True)"
+        )
+    spans = layer_spans(mapping, n_teacher) if mode == "delta" else {}
+    pairs = tuple(
+        s for s in sorted(mapping)
+        if not (mode == "delta" and s + 1 >= len(student_hidden))
+    )
+    if not pairs:
+        raise ValueError("no student/teacher pairs were produced by the mapping")
+    return pairs, spans
+
+
+def _pair_tensors(student_hidden, teacher_hidden, mapping, spans, mode, s):
+    """The two tensors one supervised pair compares."""
+    if mode == "delta":
+        start, end = spans[s]
+        return (student_hidden[s + 1] - student_hidden[s],
+                teacher_hidden[end] - teacher_hidden[start])
+    return student_hidden[s + 1], teacher_hidden[mapping[s] + 1]
+
+
+def _pair_term(student, teacher, s: int, *, normalise: bool, mask):
+    """One pair's magnitude and direction terms, and the norms reported beside them.
+
+    Both :func:`behavioral_loss` and :func:`behavioral_loss_chunked` call *this*, so the
+    two cannot drift into computing different things. They differ only in when the terms
+    are summed and when the gradient is taken — never in what a pair's term is.
+    """
+    import torch.nn.functional as F
+
+    def reduce(x: Tensor) -> Tensor:
+        if mask is None:
+            return x.reshape(-1, x.shape[-1])
+        return x[mask.bool()]
+
+    a, b = reduce(student).float(), reduce(teacher).float()
+    if a.shape != b.shape:
+        raise ValueError(
+            f"student layer {s}: shape {tuple(a.shape)} against teacher "
+            f"{tuple(b.shape)} — widths must match (this student does not reduce width)"
+        )
+    s_norm, t_norm = float(a.detach().norm()), float(b.detach().norm())
+    if normalise:
+        a, b = _normalise(a), _normalise(b)
+    magnitude = F.mse_loss(a, b)
+    direction = 1.0 - F.cosine_similarity(a, b, dim=-1).mean()
+    return magnitude, direction, s_norm, t_norm
+
+
 def behavioral_loss(
     student_hidden: tuple[Tensor, ...] | list[Tensor],
     teacher_hidden: tuple[Tensor, ...] | list[Tensor],
@@ -155,56 +221,29 @@ def behavioral_loss(
     ``mode="pointwise"`` is conventional layer matching. ``mode="delta"`` is the behavioural
     objective: student layer ``l``'s contribution against the summed contribution of the
     teacher span it replaced.
+
+    Every pair's loss tensors are held live until the caller's ``backward()``, which is
+    what makes the peak memory scale with the number of pairs.
+    :func:`behavioral_loss_chunked` computes the same objective without that; this
+    function remains the reference the chunked form is validated against.
     """
     import torch
-    import torch.nn.functional as F
 
-    if len(student_hidden) < 2:
-        raise ValueError("need at least one student layer's worth of hidden states")
-    n_teacher = teacher_layers if teacher_layers is not None else len(teacher_hidden) - 1
-    if len(teacher_hidden) != n_teacher + 1:
-        raise ValueError(
-            f"teacher_hidden has {len(teacher_hidden)} entries; expected {n_teacher + 1} "
-            f"for {n_teacher} layers (pass output_hidden_states=True)"
-        )
-    spans = layer_spans(mapping, n_teacher) if mode == "delta" else {}
-
-    def reduce(x: Tensor) -> Tensor:
-        if mask is None:
-            return x.reshape(-1, x.shape[-1])
-        return x[mask.bool()]
+    pairs, spans = _plan_pairs(student_hidden, teacher_hidden, mapping, mode, teacher_layers)
 
     mags, dirs, per_layer = [], [], {}
     s_norms, t_norms = [], []
-    for s in sorted(mapping):
-        if mode == "delta":
-            if s + 1 >= len(student_hidden):
-                continue
-            student = student_hidden[s + 1] - student_hidden[s]
-            start, end = spans[s]
-            teacher = teacher_hidden[end] - teacher_hidden[start]
-        else:
-            student = student_hidden[s + 1]
-            teacher = teacher_hidden[mapping[s] + 1]
-
-        a, b = reduce(student).float(), reduce(teacher).float()
-        if a.shape != b.shape:
-            raise ValueError(
-                f"student layer {s}: shape {tuple(a.shape)} against teacher "
-                f"{tuple(b.shape)} — widths must match (this student does not reduce width)"
-            )
-        s_norms.append(float(a.detach().norm()))
-        t_norms.append(float(b.detach().norm()))
-        if normalise:
-            a, b = _normalise(a), _normalise(b)
-        magnitude = F.mse_loss(a, b)
-        direction = 1.0 - F.cosine_similarity(a, b, dim=-1).mean()
+    for s in pairs:
+        student, teacher = _pair_tensors(
+            student_hidden, teacher_hidden, mapping, spans, mode, s)
+        magnitude, direction, s_norm, t_norm = _pair_term(
+            student, teacher, s, normalise=normalise, mask=mask)
+        s_norms.append(s_norm)
+        t_norms.append(t_norm)
         mags.append(magnitude)
         dirs.append(direction)
         per_layer[s] = float(magnitude.detach())
 
-    if not mags:
-        raise ValueError("no student/teacher pairs were produced by the mapping")
     magnitude = torch.stack(mags).mean()
     direction = torch.stack(dirs).mean()
     return BehavioralLossOutput(
@@ -212,6 +251,156 @@ def behavioral_loss(
         magnitude=magnitude, direction=direction, mode=mode, n_pairs=len(mags),
         per_layer=per_layer,
         student_norm=sum(s_norms) / len(s_norms), teacher_norm=sum(t_norms) / len(t_norms),
+    )
+
+
+@dataclass
+class ChunkedBehavioralLoss:
+    """What :func:`behavioral_loss_chunked` produced: the terms, and the gradient it holds.
+
+    The gradient with respect to the student's hidden states has already been computed and
+    is sitting in :attr:`grads`; nothing has yet been propagated into the student. Calling
+    :meth:`backward` does that, in one traversal of the student's graph.
+    """
+
+    output: BehavioralLossOutput
+    #: The student hidden-state tensors the gradient belongs to, in layer order.
+    sources: list[Any] = field(default_factory=list)
+    #: ``d(objective)/d(source)``, already scaled by ``loss_scale``.
+    grads: list[Any] = field(default_factory=list)
+    n_chunks: int = 0
+    chunk_pairs: int = 0
+
+    def backward(self) -> None:
+        """Propagate the held gradient into the student, once."""
+        import torch
+
+        live = [(t, g) for t, g in zip(self.sources, self.grads, strict=True) if t.requires_grad]
+        if not live:
+            return
+        torch.autograd.backward([t for t, _ in live], [g for _, g in live])
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.output.to_dict() | {
+            "n_chunks": self.n_chunks, "chunk_pairs": self.chunk_pairs,
+        }
+
+
+def behavioral_loss_chunked(
+    student_hidden: tuple[Tensor, ...] | list[Tensor],
+    teacher_hidden: tuple[Tensor, ...] | list[Tensor],
+    mapping: dict[int, int],
+    *,
+    mode: MatchMode = "delta",
+    teacher_layers: int | None = None,
+    direction_weight: float = 1.0,
+    normalise: bool = True,
+    mask: Tensor | None = None,
+    chunk_pairs: int = 4,
+    loss_scale: float = 1.0,
+    backward: Any = None,
+) -> ChunkedBehavioralLoss:
+    """The same objective as :func:`behavioral_loss`, without holding every pair at once.
+
+    **The objective is unchanged.** The same pairs are supervised over the same positions
+    with the same normalisation, the same per-pair terms and the same reduction. What
+    changes is *when* the gradient is taken.
+
+    :func:`behavioral_loss` builds all ``n`` pairs' loss tensors and returns a scalar whose
+    ``backward()`` needs every one of them still live. ``mse_loss`` saves both of its
+    normalised fp32 inputs, so the peak scales with ``n`` — at 48 pairs and 1536 positions
+    that is roughly 4 GiB, and it is what put Run 003 over its memory gate.
+
+    Here the objective is written as a sum over pairs, which it already was::
+
+        L = (1/n) * sum_s [ magnitude_s + direction_weight * direction_s ]
+
+    Sums split. A chunk of pairs contributes ``(1/n) * sum over that chunk``, and because
+    every term carries the *same* ``1/n`` — not a per-chunk average, which would weight a
+    ragged final chunk wrongly — the chunk losses sum to exactly ``L`` and each pair's
+    gradient carries exactly the coefficient it has in ``L``. Each chunk's gradient is
+    taken as soon as the chunk is built, so only ``chunk_pairs`` pairs' tensors are ever
+    live at once.
+
+    The gradient lands on detached stand-ins for the student hidden states rather than
+    flowing straight into the student, so the student's own graph is traversed **once**,
+    by :meth:`ChunkedBehavioralLoss.backward`, and not once per chunk. ``detach()`` shares
+    storage, so the stand-ins cost nothing; what is held between the chunks and that final
+    traversal is one gradient tensor per supervised layer, in the hidden states' own dtype.
+
+    ``loss_scale`` multiplies every chunk — gradient accumulation's ``1/steps``, and a
+    ``GradScaler`` factor when one is enabled. ``backward`` is the callable that takes a
+    chunk's scalar loss, defaulting to ``Tensor.backward``; a scaled run passes
+    ``lambda t: scaler.scale(t).backward()``.
+
+    ``per_layer``, ``student_norm`` and ``teacher_norm`` are reported exactly as the
+    unchunked form reports them.
+    """
+    import torch
+
+    if chunk_pairs < 1:
+        raise ValueError(f"chunk_pairs must be at least 1, got {chunk_pairs}")
+    pairs, spans = _plan_pairs(student_hidden, teacher_hidden, mapping, mode, teacher_layers)
+    n_pairs = len(pairs)
+    if backward is None:
+        def backward(tensor):  # noqa: E306 - the documented default
+            tensor.backward()
+
+    # Detached stand-ins. `detach()` shares storage with the student's own tensor, so this
+    # allocates nothing; it only redirects where the loss's gradient lands.
+    touched = set()
+    for s in pairs:
+        touched.add(s + 1)
+        if mode == "delta":
+            touched.add(s)
+    order = sorted(touched)
+    view = list(student_hidden)
+    for i in order:
+        leaf = student_hidden[i].detach()
+        leaf.requires_grad_(True)
+        view[i] = leaf
+
+    mag_sum = dir_sum = 0.0
+    per_layer, s_norms, t_norms = {}, [], []
+    n_chunks = 0
+    for start in range(0, n_pairs, chunk_pairs):
+        terms = []
+        for s in pairs[start:start + chunk_pairs]:
+            student, teacher = _pair_tensors(view, teacher_hidden, mapping, spans, mode, s)
+            magnitude, direction, s_norm, t_norm = _pair_term(
+                student, teacher, s, normalise=normalise, mask=mask)
+            terms.append(magnitude + direction_weight * direction)
+            mag_sum += float(magnitude.detach())
+            dir_sum += float(direction.detach())
+            per_layer[s] = float(magnitude.detach())
+            s_norms.append(s_norm)
+            t_norms.append(t_norm)
+        # 1/n_pairs, never 1/len(chunk): the divisor is the objective's, not the chunk's.
+        chunk_loss = torch.stack(terms).sum() / n_pairs
+        if loss_scale != 1.0:
+            chunk_loss = chunk_loss * loss_scale
+        backward(chunk_loss)
+        n_chunks += 1
+        # Drop this chunk's graph before the next one allocates its own. Without this the
+        # chunking saves nothing: Python would hold the tensors until the loop rebinds.
+        del terms, chunk_loss, student, teacher, magnitude, direction
+
+    magnitude = mag_sum / n_pairs
+    direction = dir_sum / n_pairs
+    output = BehavioralLossOutput(
+        total=magnitude + direction_weight * direction,
+        magnitude=magnitude, direction=direction, mode=mode, n_pairs=n_pairs,
+        per_layer=per_layer,
+        student_norm=sum(s_norms) / len(s_norms), teacher_norm=sum(t_norms) / len(t_norms),
+    )
+    sources, grads = [], []
+    for i in order:
+        leaf = view[i]
+        sources.append(student_hidden[i])
+        grads.append(leaf.grad if leaf.grad is not None else torch.zeros_like(leaf))
+    return ChunkedBehavioralLoss(
+        output=output, sources=sources, grads=grads,
+        n_chunks=n_chunks, chunk_pairs=chunk_pairs,
     )
 
 

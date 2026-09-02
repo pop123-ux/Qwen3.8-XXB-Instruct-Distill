@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from ..architecture.spec import HybridArchSpec
-from ..distillation.behavioral import behavioral_loss
+from ..distillation.behavioral import behavioral_loss, behavioral_loss_chunked
 from ..distillation.kd_loss import distillation_loss
 from .checkpoints import (
     CheckpointMetadata,
@@ -319,6 +319,11 @@ def train(
     kd_temperature = config.training.kd_temperature
     kd_tail = config.training.kd_tail
     layer_kd = config.training.objective == "layer_kd"
+    #: How many mapped pairs' loss terms are built before their gradient is taken. ``None``
+    #: holds every pair live to one backward — the reference path, and the one whose peak
+    #: memory scales with the pair count. The objective is the same either way; see
+    #: behavioral.behavioral_loss_chunked.
+    layer_chunk_pairs = config.training.layer_kd_chunk_pairs if layer_kd else None
     # Pure objectives report alpha 1.0: logit_kd optimises the KD divergence alone, and
     # layer_kd optimises the layer term alone with the divergence kept as a diagnostic.
     kd_alpha = 1.0 if config.training.objective in ("logit_kd", "layer_kd") \
@@ -344,6 +349,10 @@ def train(
                   f"'{config.training.layer_kd_map_strategy}', direction weight "
                   f"{config.training.layer_kd_direction_weight}, "
                   f"normalise {config.training.layer_kd_normalise}")
+            print(f"  layer loss evaluated in chunks of "
+                  f"{layer_chunk_pairs} pair(s), same objective"
+                  if layer_chunk_pairs else
+                  "  layer loss: all pairs held to one backward (unchunked reference)")
             if not getattr(teacher, "capture_hidden_states", False):
                 # The failure this prevents: a teacher that returns only logits would make
                 # behavioral_loss raise a thousand tokens in, or — worse, if anything ever
@@ -687,6 +696,9 @@ def train(
                         config.training.batch_size, config.data.max_sequence_length,
                         vocab, generator,
                     ).to(device)
+                # Set by the chunked layer objective, which computes the loss's own
+                # gradient during the loss phase and leaves the student's traversal here.
+                layer_backward = None
                 phase[0] = "input allocation"
                 if first_step:
                     take(profile, "after_input_allocation")
@@ -728,12 +740,34 @@ def train(
                                 print(f"  layer map: {len(layer_map.mapping)} pairs, "
                                       f"{len(layer_map.removed_teacher_layers)} teacher "
                                       f"layers unsupervised")
-                            layer_output = behavioral_loss(
-                                outputs.hidden_states, teacher_signal.hidden_states,
-                                layer_map.mapping, mode="pointwise",
-                                direction_weight=config.training.layer_kd_direction_weight,
-                                normalise=config.training.layer_kd_normalise,
-                            )
+                            if layer_chunk_pairs is None:
+                                layer_output = behavioral_loss(
+                                    outputs.hidden_states, teacher_signal.hidden_states,
+                                    layer_map.mapping, mode="pointwise",
+                                    direction_weight=(
+                                        config.training.layer_kd_direction_weight),
+                                    normalise=config.training.layer_kd_normalise,
+                                )
+                            else:
+                                # Same objective, same pairs, same positions. The gradient
+                                # with respect to the student's hidden states is taken here
+                                # instead, a chunk at a time, so the loss never holds all
+                                # 48 pairs' saved fp32 inputs at once. The student's own
+                                # graph is not touched until the backward phase below,
+                                # which still traverses it exactly once.
+                                layer_backward = behavioral_loss_chunked(
+                                    outputs.hidden_states, teacher_signal.hidden_states,
+                                    layer_map.mapping, mode="pointwise",
+                                    direction_weight=(
+                                        config.training.layer_kd_direction_weight),
+                                    normalise=config.training.layer_kd_normalise,
+                                    chunk_pairs=layer_chunk_pairs,
+                                    loss_scale=(
+                                        1.0
+                                        / config.training.gradient_accumulation_steps),
+                                    backward=lambda t: scaler.scale(t).backward(),
+                                )
+                                layer_output = layer_backward.output
                             # The raw teacher tuple is ~1 GiB at this sequence length and
                             # nothing needs it now: the graph holds the normalised copies
                             # of the mapped pairs, and the unmapped entries are dead.
@@ -765,8 +799,17 @@ def train(
                     # own stage rather than being folded into the forward pass.
                     take(profile, "after_loss")
                 phase[0] = "backward pass"
-                scaler.scale(loss).backward()
-                accumulated += float(loss.item())
+                if layer_backward is not None:
+                    # The loss gradient already exists; this propagates it into the student
+                    # in one traversal. `loss` is a float here, not a graph tensor.
+                    layer_backward.backward()
+                    accumulated += float(loss)
+                    # Releases the held per-layer gradient tensors before the next
+                    # micro-batch's forward allocates.
+                    layer_backward = None
+                else:
+                    scaler.scale(loss).backward()
+                    accumulated += float(loss.item())
                 throughput.add_tokens(batch.numel())
                 state.tokens_seen += batch.numel()
                 if first_step:
@@ -1099,6 +1142,43 @@ def _layer_kd_definition(config: ExperimentConfig, mapping) -> dict[str, Any]:
             "(1 - mean cosine similarity(h_s, h_t)) ], on normalised hidden states"
         ),
         "direction_weight": config.training.layer_kd_direction_weight,
+        "evaluation": (
+            {
+                "form": "chunked",
+                "chunk_pairs": config.training.layer_kd_chunk_pairs,
+                "implementation": (
+                    "qwen_distill.distillation.behavioral.behavioral_loss_chunked"
+                ),
+                "note": (
+                    "an evaluation strategy, not a change to the objective. The same "
+                    f"{len(mapping.mapping)} pairs are supervised over the whole sequence "
+                    "with the same normalisation, the same per-pair terms and the same "
+                    "1/n reduction; only the point at which the gradient is taken moves, "
+                    "so no more than chunk_pairs pairs' saved fp32 loss inputs are live "
+                    "at once. The gradient lands on detached stand-ins for the student's "
+                    "hidden states and is propagated into the student in a single "
+                    "traversal, so the student's graph is walked exactly once per "
+                    "micro-batch, as in the unchunked form"
+                ),
+                "equivalence": (
+                    "validated against the unchunked reference on this run's own "
+                    "calibration batch; see docs/LAYER_KD_CHUNKING.md and "
+                    "experiments/run003_chunking_equivalence/"
+                ),
+            }
+            if config.training.layer_kd_chunk_pairs is not None else
+            {
+                "form": "unchunked",
+                "chunk_pairs": None,
+                "implementation": (
+                    "qwen_distill.distillation.behavioral.behavioral_loss"
+                ),
+                "note": (
+                    "every pair's loss tensors are held live to a single backward; peak "
+                    "memory scales with the pair count"
+                ),
+            }
+        ),
         "loss_weight": (
             "1.0 — pure layer KD. The logit KD divergence and the cross-entropy are "
             "computed under no_grad as diagnostics and contribute no gradient, mirroring "

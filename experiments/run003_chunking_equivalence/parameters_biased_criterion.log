@@ -1,0 +1,34 @@
+  LAYER-KD CHUNKING EQUIVALENCE  stage 'parameters'  device cuda
+  objective : layer_kd, pointwise, direction weight 1.0, normalise True
+  tokenizer vocabulary 248,077 against a student embedding of 248,320: 243 alignment padding row(s) that no token id reaches. Carried, not trimmed — trimming would change the student's geometry.
+  corpus  : 5,519,074 bytes, sha256 e11ca38bb099fc89, 455 sequences of 1536
+  batch   : (1, 1536), first ids [279, 51811, 78830, 13, 248046, 2278, 264, 6321]
+  student : 10,065,554,304 parameters, 23,003,136 trainable
+  unchunked pass 1 of 3
+[transformers] `use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.
+    layer term 1.450158   step peak 42.1117 GiB allocated
+  unchunked pass 2 of 3
+    layer term 1.450158   step peak 42.1197 GiB allocated
+  unchunked pass 3 of 3
+    layer term 1.450158   step peak 42.1197 GiB allocated
+  chunked pass 1 of 3  (4 pair(s) per gradient)
+    layer term 1.450158   step peak 37.3305 GiB allocated
+  chunked pass 2 of 3  (4 pair(s) per gradient)
+    layer term 1.450158   step peak 37.3305 GiB allocated
+  chunked pass 3 of 3  (4 pair(s) per gradient)
+    layer term 1.450158   step peak 37.3305 GiB allocated
+  gradient: 240 LoRA parameters, 123 identical in every pass
+    within unchunked (3 runs)  1.068115e-03 absolute, 6.889764e-02 relative
+    within chunked   (3 runs)  3.509521e-04 absolute, 4.166667e-02 relative
+    between forms                        4.167557e-04 absolute, 6.179299e-02 relative
+    parameters where the between-form difference exceeds both forms' own spread: 38 of 117
+      base_model.model.model.layers.8.linear_attn.in_proj_qkv.lora_B.default.weight  between 8.545e-04 > floor 6.104e-04
+      base_model.model.model.layers.3.self_attn.k_proj.lora_B.default.weight  between 5.493e-04 > floor 3.662e-04
+      base_model.model.model.layers.14.linear_attn.in_proj_qkv.lora_B.default.weight  between 4.168e-04 > floor 2.747e-04
+      base_model.model.model.layers.0.linear_attn.in_proj_qkv.lora_B.default.weight  between 2.594e-04 > floor 2.136e-04
+      base_model.model.model.layers.20.linear_attn.in_proj_qkv.lora_B.default.weight  between 1.221e-04 > floor 8.392e-05
+  value   : layer term spread 6.424e-08 relative over all 6 passes
+  memory  : 42.1117 -> 37.3305 GiB allocated (-4.7813)
+  verdict : value ok, 38 parameter(s) differ by more than either form's own spread
+  wrote experiments/run003_chunking_equivalence/parameters.json
+  NOT EQUIVALENT: a difference exceeded the declared tolerance. The chunked form must not be used for Run 003.

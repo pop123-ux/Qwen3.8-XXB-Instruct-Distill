@@ -103,6 +103,46 @@ pure logit KD the whole objective and CE was likewise reported and not optimised
 two arms are pure single-objective controls, and the five shared diagnostics put them on
 the same axes.
 
+## How it is evaluated
+
+The definition above says *what* is optimised. It does not say when the gradient is taken,
+and that is a free choice which does not enter the objective.
+
+`behavioral_loss` builds all 48 pairs' loss tensors and returns one scalar. `mse_loss`
+saves both of its normalised fp32 inputs for backward, so nothing can be released until
+that scalar's `backward()` runs: 48 x 2 x (1536 x 5120 x 4 bytes) is about 3 GiB, and with
+the pre-normalisation copies it is the ~4 GiB that put Run 003's first calibration over its
+memory gate at 42.5354 GiB.
+
+`behavioral_loss_chunked` takes the gradient a few pairs at a time. The objective is a mean
+over pairs, so it splits exactly:
+
+```
+L = (1/n) * sum_s [ magnitude_s + direction_weight * direction_s ]
+```
+
+A chunk of pairs contributes `(1/n) * sum over that chunk`. Every term carries the same
+`1/n` — the objective's divisor, never a per-chunk average, which would overweight a
+ragged final chunk — so the chunk losses sum to `L` and each pair's gradient carries
+exactly the coefficient it has in `L`. Each chunk's gradient is taken as soon as the chunk
+is built, so only `layer_kd_chunk_pairs` pairs' saved inputs are ever live.
+
+The gradient lands on detached stand-ins for the student's hidden states rather than
+flowing straight into the student, so the student's own graph is still traversed **once**
+per micro-batch and not once per chunk. What is held in between is one gradient tensor per
+supervised layer, in the hidden states' own dtype.
+
+**Same pairs, same positions, same normalisation, same per-pair terms, same reduction.**
+Both forms call the same `_pair_term`, so they cannot drift into computing different
+things. Equivalence is asserted in `tests/test_layer_kd_chunking.py` — value, gradient,
+per-layer diagnostics, every chunk width including ragged ones, both matching modes, and
+end-to-end through the trainer's own recorded losses — and measured on Run 003's real
+1536-token calibration batch in [LAYER_KD_CHUNKING.md](LAYER_KD_CHUNKING.md).
+
+`training.layer_kd_chunk_pairs` selects the width. `null` keeps every pair live at once;
+that is the reference path, not a different objective, and every run record says which form
+evaluated it under `distillation.layer_kd_definition.evaluation`.
+
 ## Why it cannot silently become logit KD
 
 Three separate guards, because this is the failure that would void the comparison:

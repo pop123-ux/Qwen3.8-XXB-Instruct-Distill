@@ -171,6 +171,14 @@ class TrainingConfig:
     #: 4-layer hybrid groups so a student layer always lands on a teacher layer of its own
     #: type; see architecture.moe_init.map_layers.
     layer_kd_map_strategy: str = "group"
+    #: How many mapped pairs' loss terms are built before their gradient is taken. The
+    #: objective is unchanged either way — the pairs, positions, normalisation, per-pair
+    #: terms and 1/n reduction are identical, and equivalence is asserted against the
+    #: unchunked form in tests/test_layer_kd.py. What changes is peak memory: `mse_loss`
+    #: saves both normalised fp32 inputs, so holding all 48 pairs at 1536 positions costs
+    #: ~4 GiB, which is what put Run 003's first calibration over its gate. ``null`` keeps
+    #: every pair live at once, which is the reference path, not a faster one.
+    layer_kd_chunk_pairs: int | None = 4
 
     seed: int = 0
     eval_every: int = 50
@@ -313,6 +321,12 @@ class ExperimentConfig:
             if self.training.layer_kd_direction_weight < 0:
                 errors.append("layer_kd_direction_weight must not be negative: a negative "
                               "weight rewards pointing away from the teacher")
+            if (self.training.layer_kd_chunk_pairs is not None
+                    and self.training.layer_kd_chunk_pairs < 1):
+                errors.append(
+                    "layer_kd_chunk_pairs must be >= 1, or null to hold every pair at "
+                    "once; it selects how the objective is evaluated, not what it is"
+                )
             if self.training.layer_kd_map_strategy != "group":
                 errors.append(
                     "layer_kd_map_strategy='importance' needs a measured per-teacher-group "

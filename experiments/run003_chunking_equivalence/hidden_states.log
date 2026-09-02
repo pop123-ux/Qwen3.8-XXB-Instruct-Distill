@@ -1,0 +1,20 @@
+  LAYER-KD CHUNKING EQUIVALENCE  stage 'hidden'  device cuda
+  objective : layer_kd, pointwise, direction weight 1.0, normalise True
+  tokenizer vocabulary 248,077 against a student embedding of 248,320: 243 alignment padding row(s) that no token id reaches. Carried, not trimmed — trimming would change the student's geometry.
+  corpus  : 5,519,074 bytes, sha256 e11ca38bb099fc89, 455 sequences of 1536
+  batch   : (1, 1536), first ids [279, 51811, 78830, 13, 248046, 2278, 264, 6321]
+  student : 10,065,554,304 parameters, 23,003,136 trainable
+  forwards (both under no_grad: only the hidden states are wanted)
+[transformers] `use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.
+  mapping : 48 pairs, 16 teacher layers unsupervised
+  states  : student (1, 1536, 5120) torch.bfloat16, teacher (1, 1536, 5120) torch.bfloat16
+  reference: behavioral_loss, all pairs held to one backward
+    total 1.450158  magnitude 0.966771  direction 0.483386   peak +28.8645 GiB
+  chunked: behavioral_loss_chunked, 4 pair(s) per gradient
+    total 1.450158  magnitude 0.966771  direction 0.483386   peak +23.8829 GiB  (12 chunks)
+  gradient: 48 supervised hidden states compared
+    worst absolute difference  0.000000e+00  (hidden state None)
+    worst relative difference  0.000000e+00
+  value   : total 6.424e-08 relative, per-layer worst 0.000e+00 absolute
+  wrote experiments/run003_chunking_equivalence/hidden_states.json
+  EQUIVALENT within the declared tolerance.

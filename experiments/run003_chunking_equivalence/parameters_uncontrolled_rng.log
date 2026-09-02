@@ -1,0 +1,18 @@
+  LAYER-KD CHUNKING EQUIVALENCE  stage 'parameters'  device cuda
+  objective : layer_kd, pointwise, direction weight 1.0, normalise True
+  tokenizer vocabulary 248,077 against a student embedding of 248,320: 243 alignment padding row(s) that no token id reaches. Carried, not trimmed — trimming would change the student's geometry.
+  corpus  : 5,519,074 bytes, sha256 e11ca38bb099fc89, 455 sequences of 1536
+  batch   : (1, 1536), first ids [279, 51811, 78830, 13, 248046, 2278, 264, 6321]
+  student : 10,065,554,304 parameters, 23,003,136 trainable
+  pass 1: unchunked reference
+[transformers] `use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.
+    layer term 1.450158   step peak 42.1117 GiB allocated
+  pass 2: chunked, 4 pair(s) per gradient
+    layer term 1.450158   step peak 37.3305 GiB allocated
+  gradient: 240 LoRA parameters compared (120 identically zero in both)
+    worst absolute difference  3.509521e-03  (base_model.model.model.layers.23.self_attn.k_proj.lora_B.default.weight)
+    worst relative difference  5.424528e-01
+  value   : layer term 6.424e-08 relative
+  memory  : 42.1117 -> 37.3305 GiB allocated (-4.7813)
+  wrote experiments/run003_chunking_equivalence/parameters.json
+  NOT EQUIVALENT: a difference exceeded the declared tolerance. The chunked form must not be used for Run 003.
