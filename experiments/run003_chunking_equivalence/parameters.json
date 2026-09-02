@@ -1,0 +1,107 @@
+{
+  "stage": "parameters",
+  "chunk_pairs": 4,
+  "repeats_per_form": 4,
+  "sequence_length": 1536,
+  "corpus_sha256": "e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d",
+  "lora_dropout": 0.05,
+  "rng_state_restored_before_each_pass": true,
+  "method": "the student's backward is not bit-reproducible on this hardware \u2014 a 13B MoE with DeltaNet kernels and gradient checkpointing accumulates through order-dependent atomics and routing scatters \u2014 so a single unchunked pass is not a fixed reference and 'between forms' cannot be compared against 'within a form' directly, the between set having three times the pairs. Instead all six passes are split 3/3 every possible way and the true split's separation is ranked among them. A typical rank means the form label explains nothing the hardware does not already explain.",
+  "layer_term": {
+    "unchunked": [
+      1.450157642364502,
+      1.450157642364502,
+      1.450157642364502,
+      1.450157642364502
+    ],
+    "chunked": [
+      1.4501575492031407,
+      1.4501575492031407,
+      1.4501575492031407,
+      1.4501575492031407
+    ]
+  },
+  "value_relative_spread": 6.42422303413191e-08,
+  "n_parameters": 240,
+  "n_parameters_identical_in_all_passes": 123,
+  "within_unchunked": {
+    "max": 0.009765625,
+    "mean": 0.00024032626205529922
+  },
+  "within_chunked": {
+    "max": 0.0087890625,
+    "mean": 0.00021148850329411335
+  },
+  "true_split": {
+    "max": 0.0107421875,
+    "mean": 0.0002641229707206416
+  },
+  "n_splits": 35,
+  "rank_of_true_split_by_max": 1,
+  "rank_of_true_split_by_mean": 10,
+  "p_max": 0.5714285714285714,
+  "p_mean": 0.2857142857142857,
+  "indistinguishable": true,
+  "all_split_statistics": [
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.0107421875,
+    0.009765625,
+    0.009765625,
+    0.009765625,
+    0.009765625,
+    0.009765625,
+    0.009765625,
+    0.009765625,
+    0.009765625,
+    0.009765625,
+    0.009765625,
+    0.009765625,
+    0.009765625,
+    0.0087890625,
+    0.0087890625,
+    0.0078125
+  ],
+  "step_peak_allocated_gib": {
+    "unchunked": [
+      42.11172151565552,
+      42.11965608596802,
+      42.11965608596802,
+      42.11965608596802
+    ],
+    "chunked": [
+      37.330469608306885,
+      37.330469608306885,
+      37.330469608306885,
+      37.330469608306885
+    ]
+  },
+  "tolerance": {
+    "value_relative": 1e-06
+  },
+  "elapsed_s": 473.0,
+  "equivalent": true,
+  "teacher": {
+    "model": "Qwen/Qwen3.8-27B",
+    "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+    "quantization": "4bit"
+  },
+  "student_checkpoint": "/workspace/runs/pilot001/transferred"
+}

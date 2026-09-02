@@ -1,0 +1,49 @@
+{
+  "data_commit": "f5dd3f75bf4e069c75442396bcf43f2f52d0471d",
+  "experiments": [
+    "run002_logit_kd",
+    "run002_calibration_1536",
+    "run002_calibration"
+  ],
+  "extra": {
+    "device": "NVIDIA A40",
+    "peaks": [
+      {
+        "experiment": "run002_calibration_1536",
+        "peak_allocated_gib": 40.40099573135376,
+        "peak_reserved_gib": 40.9453125,
+        "sequence_length": 1536
+      },
+      {
+        "experiment": "run002_logit_kd",
+        "peak_allocated_gib": 40.58031702041626,
+        "peak_reserved_gib": 43.126953125,
+        "sequence_length": 1536
+      },
+      {
+        "experiment": "run002_calibration",
+        "peak_allocated_gib": 43.01368188858032,
+        "peak_reserved_gib": 43.541015625,
+        "sequence_length": 2048
+      }
+    ],
+    "safety_gate_gib": 42.0,
+    "usable_gib": 44.431640625
+  },
+  "figure_id": "F08",
+  "metrics": [
+    "memory.snapshots.max_allocated_gib",
+    "memory.snapshots.max_reserved_gib",
+    "memory.peak_allocated_gib",
+    "memory.peak_reserved_gib",
+    "memory.total_vram_gib"
+  ],
+  "note": "training memory on an A40; the 42.0 GiB safety gate is the project's predefined launch condition",
+  "plotting_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
+  "sources": [
+    "experiments/run002_logit_kd/summary.json",
+    "experiments/run002_calibration_1536/summary.json",
+    "experiments/run002_calibration/summary.json"
+  ],
+  "value_kind": "measured"
+}

@@ -1,191 +1,250 @@
 # Qwen3.8-XXB-Instruct-Distill
 
-Distilling **Qwen3.8-27B** into a hybrid sparse-MoE student that runs on a **single 16 GB
-consumer GPU**, keeps a genuinely large context window, and is studied carefully enough to
-publish.
+Distilling **Qwen/Qwen3.8-27B** into a hybrid sparse-MoE student that runs on a **single
+16 GB consumer GPU**, and studying *how* the distillation should work when teacher and
+student have materially different computational topologies.
 
-Two goals, held at the same time — see [PROJECT_DIRECTION.md](docs/PROJECT_DIRECTION.md):
+> **Status: architecture frozen, audited and shown to fit. Nothing has been distilled.**
+> No student has been trained. No benchmark has been run. No GPU or external compute has
+> been used — everything here was produced in a browser session, so every number is either
+> an audit of a locally constructed model, an analytical estimate labelled as one, or a
+> third-party figure with a source.
 
-- **a paper** — *Beyond Layer Matching: Distilling Computational Behavior in Hybrid
-  Language Models*, plus a second component on context-length specialisation, with a
-  falsifier written down for every claim before the run;
-- **a release** — the strongest deployable model under a strict 16 GB end-to-end VRAM
-  constraint.
+## What is DEMONSTRATED / CURRENTLY TESTING / FUTURE WORK
 
-> **Status: architecture frozen, audited, corrected, and shown to fit. Nothing trained.**
-> No student has been distilled from the real teacher. No benchmark has been run. No
-> external compute has been used — everything here was produced in a browser session with
-> no GPU, so every number is either an audit of a locally constructed model, an analytical
-> estimate labelled as one, or a third-party figure with a source.
+The distinction is load-bearing and appears throughout the repository.
+
+| | |
+|---|---|
+| **DEMONSTRATED** | Exact parameter accounting (two independent derivations agreeing on every component). Structural validity of the architecture, including cached decoding matching a single-pass forward. Analytical 16 GB feasibility at Q4/Q5/Q6 across 4K–262K. Initialisation behaviour: the FFN decomposition beats random init on the real MoE block; exactly-uniform router logits leave 6 of 8 experts dead. Teacher-path safety: a mismatched checkpoint cannot masquerade as the teacher; an unpinned revision is refused before download. |
+| **CURRENTLY TESTING** | Nothing yet — the first GPU session has not happened. The experiment sequence is defined and ordered in [RESEARCH.md](docs/RESEARCH.md). |
+| **FUTURE WORK** | Both research hypotheses. Every benchmark number. Whether the analytical memory model matches measured peak VRAM. Large-scale distillation, reasoning distillation, RL, competitor benchmarking. See [Further Questions](docs/RESEARCH.md#further-questions-and-future-work). |
+
+No SOTA claim is made. No "#1" claim is made. The student has not been distilled, and no
+262K/16 GB deployment is claimed — that needs measured accuracy *and* measured VRAM.
+
+## Motivation
+
+Qwen3.8-27B is a strong open-weight hybrid model that does not fit a 16 GB card by a wide
+margin. Compressing it is not only an engineering problem: the teacher is 64 layers of
+DeltaNet-plus-attention with a dense FFN, and any student small enough to deploy has a
+**different computational topology**. That makes *how* to transfer behaviour a research
+question rather than a matter of copying tensors.
+
+## The teacher
+
+`Qwen/Qwen3.8-27B`, 26,895,998,464 parameters, loaded from its **actual pretrained
+checkpoint** through `AutoModelForCausalLM.from_pretrained`. The production path never
+represents the teacher with a freshly-initialised `from_config` model.
+
+Safety properties, all enforced in code and pinned by tests:
+
+- an exact commit SHA is **required** for a Hub load, checked before anything downloads;
+- `main`, `master`, `latest`, `HEAD`, branch refs and tags are refused;
+- there is no fallback to another revision and no implicit fallback to the mock;
+- **missing or mismatched weights are fatal** — `transformers` returns a freshly-initialised
+  model and merely prints a report, so without this gate a 27B teacher can "load" with
+  random weights and generate fluent nonsense;
+- the tokenizer comes from the teacher checkpoint itself;
+- provenance records the exact revision.
 
 ## The student
 
-One frozen target, `qwen38_19b_h5120_l48_moe`. Not a ladder, not a search space.
+One frozen target, `qwen38_19b_h5120_l48_moe`. The name is historical; the architecture is
+13.01B, not 19B, and the label is not chased in either direction.
 
 ```
+total parameters   13,008,505,728
+active per token    9,611,119,488     (73.9% — and active never reduces VRAM)
+
 48 layers = 36 Gated DeltaNet + 12 full attention     [D, D, D, A] x 12
-hidden 5120,  vocab 248,320,  context 262,144,  untied embeddings
-attention   24 query heads, 2 KV heads, head_dim 256, output gate, rotary dim 64
-DeltaNet    16 key heads, 48 value heads, head dim 128, conv kernel 4
-MoE         8 routed experts (top-2) + 1 shared expert, expert width 768
-
-total       13,008,505,728        active per token  9,611,119,488  (73.9%)
+hidden 5120,  vocab 248,320,  max context 262,144,  untied embeddings, RMSNorm eps 1e-6
+attention   24 query heads, 2 KV heads, head_dim 256, output gate (swish), no bias,
+            partial rotary 0.25 -> rotary dim 64, rope theta 10,000,000
+DeltaNet    16 key heads, 48 value heads, head dim 128, conv kernel 4, fp32 state
+MoE         8 routed experts x 768 (top-2) + 1 shared expert x 768,
+            router aux loss 0.001, no jitter
+MTP         1 layer declared; the runtime builds none — see below
 ```
 
-Compression from the teacher is depth-only plus sparsity: 64 → 48 layers, dense
-17408-wide FFN → 8 experts of 768, 4 KV heads → 2. Width, vocabulary, head dimensions and
-the hybrid pattern are unchanged, which is what makes each reduction attributable. The
-student is **48% of the 26,895,998,464-parameter teacher**. Full specification:
-[STUDENT_ARCHITECTURE.md](docs/STUDENT_ARCHITECTURE.md).
+48% of the teacher. Width, vocabulary, head dimensions and the hybrid pattern are
+unchanged, which is what makes each reduction attributable.
+[STUDENT_ARCHITECTURE.md](docs/STUDENT_ARCHITECTURE.md)
 
-## It fits 16 GB
+## The 16 GB baseline — permanent
 
-End to end, fully GPU-resident, against 13.56 GiB usable on a real 16 GB card. Weights, a 3%
-quantisation-overhead allowance, KV cache, DeltaNet recurrent state, activations and 0.9 GiB
-of runtime — all of it, with 0.5 GiB held in reserve:
+The constraint is **end-to-end and fully GPU-resident**:
 
-| precision | weights | longest context | at 32K |
+```
+weights + quantisation overhead + KV cache + DeltaNet state + runtime/workspace  <=  16 GB
+```
+
+A configuration needing CPU offload does **not** count. A nominal bits-per-parameter figure
+is a file size, not VRAM. And **total parameters are not active parameters**: all 13.01B are
+resident whether or not a token routes to them, so no MoE may be sized against its active
+count. That mistake is exactly what produced the rejected 22.07B architecture.
+
+Analytical, against 13.56 GiB usable on a real 16 GB card (which reports 14.56 GiB), with
+0.5 GiB held in reserve:
+
+| precision | weights | longest context | total @ 32K |
 |---|---:|---:|---:|
 | **Q4** | 7.42 GiB | **131,072** | 10.21 GiB |
 | **Q5** | 8.63 GiB | **65,536** | 11.21 GiB |
 | **Q6** | 9.99 GiB | **32,768** | 12.34 GiB |
 
-The full 262,144-token window needs an 8-bit KV cache — fp16 KV alone is 6.00 GiB there —
-which costs retrieval accuracy and is reported as its own row rather than folded into the
-headline.
+The full 262,144 window needs an 8-bit KV cache (fp16 KV alone is 6.00 GiB there), which
+costs retrieval accuracy and is reported separately, never folded into the headline.
 
-**Inactive experts are not free.** 9.61B of 13.01B parameters are active per token; all
-13.01B are resident. Active parameters govern compute and latency and never reduce VRAM.
-Every figure above counts all of them.
-[PARETO_EVALUATION.md](docs/PARETO_EVALUATION.md).
+**These are estimates, not measurements.** No GPU has run this model.
+[PARETO_EVALUATION.md](docs/PARETO_EVALUATION.md)
 
-## The correction that got it there
+## The research questions
 
-The first implementation of this specification used **24** routed experts and weighed
-**22,072,134,528** parameters — 61.6% of them routed experts, 82% of the teacher. It did not
-fit a 16 GB card at any release precision or any context length: the best all-Q4
-configuration needed 13.93 GiB at 2,048 tokens against 13.56 GiB usable.
+**A — Beyond layer matching.** When topologies differ this much, is forcing correspondence
+through layer matching the right abstraction? Removing 16 of 64 layers removes *work*, and
+pointwise matching never says who took it over. Residual contributions telescope, so a
+student layer can instead be trained to reproduce the combined contribution of every
+teacher layer it replaced. Four distinguishable objectives — CE only, CE + logit KD,
+CE + layer KD, CE + behaviour KD — as arms A0, A2, A1, A3.
 
-`num_experts` 24 → 8 is the whole fix.
+**B — Context-length specialisation.** Does the distribution of lengths seen during
+distillation move where the context-performance curve breaks? Six mixtures (B0–B5) over
+4K–262K, where B2 and B3 share a token budget exactly so ordering separates from exposure.
 
-| | rejected | corrected |
-|---|---:|---:|
-| total parameters | 22,072,134,528 | **13,008,505,728** |
-| active per token | 9,615,051,648 | **9,611,119,488** |
-| routed-expert share | 61.57% | **34.82%** |
-| Q4 / Q5 / Q6 longest context | none — did not fit | **131,072 / 65,536 / 32,768** |
-
-Per-token capacity is unchanged to within 0.04%, all of it the smaller router: a token was
-only ever using two experts, so the other sixteen cost VRAM and contributed nothing. The
-arithmetic that settles it, verified against the instantiated model:
-
-```
-total  = BASE + 3.H.L.(E.W + S) + H.L.E + H.L      depends on the product E x W
-active = BASE + 3.H.L.(K.W + S) + H.L.E + H.L      depends on K x W
-```
-
-Splitting a fixed expert budget between count and width is free for memory and **not** free
-for per-token capacity — 24×256 costs the same VRAM as 8×768 and 751M fewer active
-parameters. That is why the correction cut the count and kept the width.
-
-**What it cost:** the FFN decomposition now holds 6,912 of the teacher's 17,408 channels —
-39.7%, down from 100%. The rest must be learned rather than transferred. Active width per
-token is unchanged at 2,304. Three evaluated alternatives are kept in `REJECTED` with the
-measurement that rejected each, and `PARAMETER_BUDGET = 15,000,000,000` is a hard ceiling
-with a test behind it.
-
-## The research
-
-**Behavioural distillation** — [BEHAVIORAL_DISTILLATION.md](docs/BEHAVIORAL_DISTILLATION.md).
-Conventional layer matching asks the student to visit the teacher's intermediate hidden
-states. But removing 16 of 64 layers removes *work*, and pointwise matching never says who
-took over. Residual contributions telescope — the total work of a teacher span `[a, b)` is
-exactly `h_b - h_a` — so each student layer can instead be trained to reproduce the combined
-contribution of every teacher layer it replaced, removed ones included, at no extra cost.
-
-**Context specialisation** — [CONTEXT_SPECIALIZATION.md](docs/CONTEXT_SPECIALIZATION.md).
-`max_position_embeddings = 262144` is a config field and is free. What is measurable is the
-context-performance curve and where its knee sits. In a hybrid model the 12 attention layers
-can look back arbitrarily far and pay linearly; the 36 DeltaNet layers keep a fixed state and
-cannot. What that state learns to carry comes from the lengths in the training data — the
-mechanism by which a training-time choice moves a deployment-time capability.
-
-**The ablation matrix** — `research/ablations.py`. Family A is a 2×2 factorial over
-{pointwise matching} × {behavioural delta}; family B is four sequence-length curricula where
-B2 and B3 share a token budget exactly, isolating ordering from exposure. Every arm carries
-a `falsified_if` written before the run, and `no_measurable_effect` is a reachable, tested
-verdict.
-
-```bash
-python scripts/student_report.py                 # architecture, memory, context, ablations
-python scripts/student_report.py --json out.json --ledger
-```
+Neither hypothesis is established. Both carry a `falsified_if` written before any run.
+[RESEARCH.md](docs/RESEARCH.md)
 
 ## The canonical path
 
-One route, and nothing else reachable by accident — the mock teacher is never selected
-implicitly, an unpinned Hub revision is refused before the download starts, and the pilot
-exposes no architecture arguments at all.
+One route. Nothing else is reachable by accident — the mock is never selected implicitly,
+an unpinned revision is refused before download, and the pilot has no architecture flags.
 
 ```text
-Qwen/Qwen3.8-27B  --revision <EXACT COMMIT SHA>   refused without the pin
-      -> TeacherLoadPlan.validate()               before any bytes are fetched
-      -> load_verified_teacher()                  missing weights are fatal
-      -> FROZEN_STUDENT (qwen38_19b_h5120_l48_moe)
-      -> materialise_student()                    copy | KV-merge 4->2 | FFN -> 8 experts
-      -> checkpoint -> distillation
+Qwen/Qwen3.8-27B  --revision <EXACT COMMIT SHA>
+      -> TeacherLoadPlan.validate()      before any bytes are fetched
+      -> load_verified_teacher()         missing weights are fatal
+      -> teacher outputs
+      -> FROZEN_STUDENT                  qwen38_19b_h5120_l48_moe, not configurable
+      -> 64 -> 48 layer mapping          block types preserved
+      -> KV 4 -> 2 merge                 method explicit and measured
+      -> dense FFN -> 8 experts          coverage reported, partial transfer refused
+      -> student checkpoint -> distillation
 ```
 
 ```bash
-# the plan, the audit and the 16 GB verdict, loading nothing
-python scripts/distill_pilot.py --revision <EXACT_QWEN_COMMIT_SHA> --dry-run
+# 1. fetch the pinned checkpoint (one command, resumable, writes a manifest)
+python scripts/download_teacher.py \
+    --revision <EXACT_QWEN3.8-27B_COMMIT_SHA> \
+    --output /data/models/qwen3.8-27b
 
-# the real transfer, from a downloaded checkpoint
-python scripts/distill_pilot.py --teacher ./qwen3.8-27b \
-    --revision <EXACT_QWEN_COMMIT_SHA> --output runs/pilot1
+# 2. verify the weights actually load — this is the authoritative check
+python scripts/teacher_smoke_test.py \
+    --local-path /data/models/qwen3.8-27b \
+    --revision <EXACT_QWEN3.8-27B_COMMIT_SHA> \
+    --quantization 4bit --json runs/teacher_smoke.json
+
+# 3. materialise the canonical student
+python scripts/distill_pilot.py \
+    --teacher /data/models/qwen3.8-27b \
+    --revision <EXACT_QWEN3.8-27B_COMMIT_SHA> --output runs/pilot1
 ```
 
-`scripts/chain_selftest.py` is the separate developer harness for the KD mechanism. It
-drives a small dense student and keeps geometry flags because varying geometry is its job;
-it is not a research run.
+The revision SHA is the research pin; the manifest records the download; **the smoke test
+performs the actual pretrained-weight verification.** The downloader proves files arrived,
+nothing more.
+
+`scripts/chain_selftest.py` is the separate developer harness for the KD mechanism — a small
+dense student, geometry flags on purpose, not a research run.
+
+## Reproducibility
+
+```bash
+pip install -e ".[dev,plots]"
+pytest                                   # no GPU, no downloads
+ruff check src/ tests/ scripts/ plots/
+
+python scripts/acceptance_gate.py        # every claim, checked by running it
+python scripts/student_report.py         # architecture, memory, context, ablations
+python plots/make_figures.py             # the paper figure set, paper + README profiles
+python plots/make_figures.py --list      # the figure register: id, status, question
+```
+
+Every experiment is traceable through `experiments/ledger.jsonl` — append-only, with a
+closed provenance set where an estimate must carry its method and a third-party number must
+carry its source. Results are superseded by retraction, never edited.
+[EXPERIMENT_LEDGER.md](docs/EXPERIMENT_LEDGER.md)
+
+Figures live in `plots/`, one scientific question per figure, indexed by
+[plots/REGISTRY.md](plots/REGISTRY.md) — figure id, question, research question, source
+experiments, source artifact paths, source metric fields, and whether the figure is backed
+by real data. A figure with no artifact behind it **exits 2 naming what would produce it
+rather than drawing a plausible curve**; schematics are stamped so they cannot be mistaken
+for results. Today 12 of the 27 registered figures are real.
+
+## Known limitations
+
+- **MTP is declared and not built.** The runtime constructs no MTP head for this
+  architecture and the teacher's `mtp.*` tensors are discarded on load. The field is kept as
+  the extension point; any MTP result reported today would be fabricated.
+- **DeltaNet state matching is unavailable.** Student and teacher states are different
+  shapes; the behaviour term measures the same layers at the hidden-size interface instead.
+  Requesting the state term raises rather than substituting a proxy.
+- **The FFN decomposition transfers 39.7% of the teacher's channels.** The expert budget
+  that fits 16 GB cannot hold more. The rest must be learned. What that costs is unmeasured.
+- **Seed variance is unmeasured**, so no ablation margin can yet be called significant.
+- **Every memory figure is analytical.** None has been checked against a real card.
 
 ## Where the project has been
 
-Every rung is a real record under [`experiments/`](experiments/) or [`docs/`](docs/), kept
-rather than rewritten. Nothing below is deleted when it is superseded.
+Every rung is a record under [`experiments/`](experiments/) or [`docs/`](docs/), kept rather
+than rewritten.
 
-| # | stage | what it established | status |
+| # | stage | established | status |
 |---|---|---|---|
-| **1** | 4.03M prototype, synthetic tokens | the hybrid DeltaNet/attention stack instantiates, trains and checkpoints on a real T4 | **complete** — mechanism only, no language claim |
-| **2** | 94.48M, procedural byte text | the full stack runs 2000 steps without OOM; BPB 1.270 and generation collapsed to `"and and and"` | **complete** — the control that made 2R interpretable |
-| **2R** | 94.48M, 44.1 MB real English | first real-language result: **1.797 BPB**, 4.45× compression, 12.4% 3-gram repetition against Level 2's 83% | **complete** — undertrained at 0.826 epochs, kept as a baseline |
-| **3** | 236.24M, width-scaled | one variable changes (hidden 640 → 1024), all 23 training fields identical; pre-registered stopping rule | **configured, not run** |
-| **4A** | real Qwen3.8-27B teacher wiring | `TransformersTeacher` with a fatal missing-keys gate — `transformers` returns random weights instead of raising on a mismatched checkpoint | **complete** — teacher not downloaded here |
-| **4B** | first real KD pilot | logit KD with exact tail mass, transfer materialisation, end-to-end on fixtures | **complete** — runs on fixtures, never on the real teacher |
-| **5** | direction reset → sparse-MoE student | frozen 48-layer MoE target; behavioural distillation, context specialisation, ablation matrix, ledger, 16 GB accounting | **complete** — nothing trained |
-| **6** | architecture audit and correction | 22.07B → **13.01B**; the model now fits 16 GB at Q4/Q5/Q6 | **complete — current** |
-| **7** | first distillation | A1–A4 and B1–B4 against the real teacher | **next — needs a rented GPU** |
+| **1** | 4.03M prototype, synthetic tokens | the hybrid stack trains and checkpoints on a T4 | complete — mechanism only |
+| **2** | 94.48M, procedural byte text | the stack runs 2000 steps; generation collapsed | complete — the control |
+| **2R** | 94.48M, 44.1 MB real English | 1.797 BPB, 4.45x compression, 12.4% repetition | complete — undertrained, kept as baseline |
+| **3** | 236.24M, width-scaled | pre-registered; one variable changes | configured, not run |
+| **4A** | real teacher wiring | the missing-keys gate | complete — teacher not downloaded here |
+| **4B** | first KD pilot | logit KD with exact tail mass, end to end on fixtures | complete — never on the real teacher |
+| **5** | direction reset → sparse-MoE student | frozen target, behavioural + context research, ledger, 16 GB accounting | complete |
+| **6** | architecture audit and correction | 22.07B → **13.01B**; fits 16 GB at Q4/Q5/Q6 | complete |
+| **7** | pre-GPU protocol pass | pinned downloader, acceptance gate, plots, research protocol | **complete — current** |
+| **8** | first GPU session | teacher reproduction → materialisation → one-step KD | **next** |
 
-The from-scratch ladder (1 → 3) is **closed**: it validated the training mechanism and its
-records stand, but nothing further is built on it and no Level 4 exists. The dense `h5120
-L40` 17.76B candidate from the architecture search is retained as the **control** for the
-first scientific comparison — 17.76B dense against 13.01B sparse-MoE, same teacher, same
-width, same objective. See [DISTILLATION_ROADMAP.md](docs/DISTILLATION_ROADMAP.md).
+The from-scratch ladder (1–3) is closed. The dense `h5120 L40` 17.76B candidate is retained
+as the control for the first scientific comparison; the 24-expert 22.07B configuration is
+retained as a **rejected architecture** with the measurement that rejected it.
+[DISTILLATION_ROADMAP.md](docs/DISTILLATION_ROADMAP.md)
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [RESEARCH.md](docs/RESEARCH.md) | **The research protocol, the experiment sequence, and Further Questions / future compute** |
+| [PROJECT_DIRECTION.md](docs/PROJECT_DIRECTION.md) | The two goals, the measured findings, the ground rules |
+| [STUDENT_ARCHITECTURE.md](docs/STUDENT_ARCHITECTURE.md) | The frozen 13.01B student and the correction that got it there |
+| [INITIALIZATION_METHOD.md](docs/INITIALIZATION_METHOD.md) | Teacher → student, with the measured error of each reduction |
+| [BEHAVIORAL_DISTILLATION.md](docs/BEHAVIORAL_DISTILLATION.md) | Matching contributions rather than positions |
+| [CONTEXT_SPECIALIZATION.md](docs/CONTEXT_SPECIALIZATION.md) | Regimes, mixtures, and the context-performance curve |
+| [PARETO_EVALUATION.md](docs/PARETO_EVALUATION.md) | The 16 GB accounting, Q4/Q5/Q6 across 4K–262K |
+| [EXPERIMENT_LEDGER.md](docs/EXPERIMENT_LEDGER.md) | How results are recorded, and how one is retracted |
+| [REAL_TEACHER_RUN.md](docs/REAL_TEACHER_RUN.md) | The first GPU session, step by step |
+| [TEACHER_INTERFACE.md](docs/TEACHER_INTERFACE.md) | The teacher and the guards around loading it |
+| [DISTILLATION_ROADMAP.md](docs/DISTILLATION_ROADMAP.md) | What happens next and what blocks it |
+| [plots/README.md](plots/README.md) | Figure generation and the rule about invented numbers |
+| [plots/REGISTRY.md](plots/REGISTRY.md) | Every figure: question, sources, metric fields, status |
 
 ## Reporting standards
 
-1. **Never call an estimate a measurement.** The ledger enforces a closed provenance set —
-   `measured_here`, `reported_by_third_party`, `estimated` — where an estimate must carry its
-   method and a third-party number must carry its source.
-   [EXPERIMENT_LEDGER.md](docs/EXPERIMENT_LEDGER.md)
+1. **Never call an estimate a measurement.** Enforced by the ledger's closed provenance set.
 2. **Never claim a benchmark before running it.** Qwen3.5-9B's published figures are the
-   target, not evidence about us. This project holds no benchmark results of its own.
-3. **A negative result is a result.** If the central claim fails, it is reported as failed.
-4. **16 GB is end-to-end and GPU-resident.** CPU offload is a different product and never
-   counts as compliance, and a nominal bits-per-parameter figure is a file size, not VRAM.
+   target, not evidence about us.
+3. **A negative result is a result.** Every arm has a falsifier written before the run.
+4. **16 GB is end-to-end and GPU-resident.** Offload is a different product.
 5. **Nothing degrades silently.** Unavailable objectives raise with the reason; a mismatched
-   checkpoint is fatal, not a warning. MTP is declared by the specification and **not built**
-   by the runtime, so no MTP result is claimed and the loss term refuses to run.
+   checkpoint is fatal.
 
 ---
 
@@ -318,6 +377,15 @@ model is a better one. Full loop:
 Byte-level tokenization is the deliberate choice here: no tokenizer to download or
 version, any text file works unchanged, and the loss is directly comparable across runs
 because it does not depend on a tokenizer's compression rate.
+
+**It is also why this path is legacy for the canonical student.** `qwen38_19b_h5120_l48_moe`
+has a 248,320-entry embedding; a byte stream indexes only the first 256 rows of it. Every
+result through Level 2R used the byte-level path and remains reproducible on it, but
+training the canonical student requires the teacher's own tokenizer — `data.tokenized_text`,
+pointed at the pinned teacher checkout. See
+[REAL_TEACHER_RUN.md § E2](docs/REAL_TEACHER_RUN.md) and
+`src/qwen_distill/training/tokenized_data.py`. Loading that tokenizer reads tokenizer files
+only; the 27B weights are never opened.
 
 **Level 2 is complete: 2000/2000 steps, no OOM, 2,089.2 tok/s run-wide, final checkpoint
 validated bit-for-bit.** Validation BPB 1.270 against an 8.0 uniform-byte baseline — and

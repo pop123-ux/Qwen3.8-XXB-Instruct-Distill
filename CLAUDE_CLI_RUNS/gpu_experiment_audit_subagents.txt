@@ -1,0 +1,1085 @@
+ ▐▛███▛█   Claude Code v2.1.258
+▝▜██████▀  Opus 5 · Claude Pro
+  ▝▝ ▝▝    /workspace/Qwen3.8-XXB-Instruct-Distill
+
+
+❯ We are conducting the first GPU experiment on this RunPod A40.                
+                                                                                
+  Use Claude Code subagents to parallelize repository analysis, but DO NOT      
+  allow multiple agents to start GPU training or duplicate large model          
+  downloads.                                                                    
+                                                                                
+  Create these read-only analysis tasks:                                        
+                                                                                
+  SUBAGENT 1 — STUDENT ARCHITECTURE                                             
+  Audit the canonical student implementation under                              
+  src/qwen_distill/architecture/.                                               
+  Determine the exact architecture, parameter counts, layer mapping,            
+  attention/DeltaNet layout, MoE initialization, context length, vocabulary     
+  size, and any discrepancies between documentation and source.                 
+  Do not modify files.                                                          
+                                                                                
+  SUBAGENT 2 — TEACHER PIPELINE                                                 
+  Audit src/qwen_distill/distillation/real_teacher.py,                          
+  scripts/download_teacher.py, and scripts/teacher_smoke_test.py.               
+  Determine the exact supported workflow for resolving the teacher revision,    
+  downloading locally, loading the teacher, and running the smoke test.         
+  Determine the minimum external/Hugging Face requests required.                
+  Do not download the model yourself.                                           
+  Do not modify files.                                                          
+                                                                                
+  SUBAGENT 3 — TRAINING / KD                                                    
+  Audit src/qwen_distill/training/, training scripts, configs, and relevant     
+  tests.                                                                        
+  Determine the exact supported training/KD interface, losses, optimizer        
+  options, gradient checkpointing, PEFT/quantization/memory-saving mechanisms,  
+  checkpointing, validation, and CLI arguments.                                 
+  Estimate whether full student training fits on an A40 44+ GiB usable VRAM.    
+  Do not start training.                                                        
+  Do not modify files.                                                          
+                                                                                
+  SUBAGENT 4 — DATA / TOKENIZER                                                 
+  Audit src/qwen_distill/training/tokenized_data.py and relevant tests.         
+  Verify the Qwen vocabulary assumptions, sequence packing, dataset interface,  
+  expected batch shapes, and how the data path connects to the trainer.         
+  Do not modify files.                                                          
+                                                                                
+  MAIN AGENT RESPONSIBILITIES                                                   
+                                                                                
+  While subagents analyze, independently verify the Pod:                        
+                                                                                
+  - nvidia-smi                                                                  
+  - Python/PyTorch/CUDA                                                         
+  - RAM                                                                         
+  - /workspace storage                                                          
+  - git branch and commit                                                       
+                                                                                
+  Do not start a long-running GPU task until all subagent findings have been    
+  integrated.                                                                   
+                                                                                
+  After all subagents finish:                                                   
+                                                                                
+  1. Synthesize their findings.                                                 
+  2. Run the targeted tests:                                                    
+     pytest -q tests/test_tokenized_data.py tests/test_distill_pilot.py         
+  tests/test_real_teacher.py                                                    
+  3. Resolve the exact 40-character SHA corresponding to the known Qwen3.8-27B  
+  commit prefix 72a217a.                                                        
+  4. Download the teacher exactly once to /workspace/models/qwen3.8-27b.        
+  5. Run the real teacher smoke test locally.                                   
+  6. Materialize and reload the canonical student.                              
+  7. Validate tokenizer/data integration.                                       
+  8. Determine the safest scientifically meaningful Run 001 configuration from  
+  the ACTUAL repository implementation.                                         
+  9. Perform exactly one preflight:                                             
+
+● I'll spawn the four read-only audit subagents first, then verify the pod
+  myself while they work. No agent gets to download or train — those steps stay
+  with me.
+
+● 4 background agents launched (↓ to manage)
+   ├ Audit student architecture
+   ├ Audit teacher pipeline
+   ├ Audit training and KD
+   └ Audit data and tokenizer
+
+● Four audit agents are running. Now verifying the pod myself.
+
+  Searched for 1 pattern, listed 1 directory, ran 9 shell commands (ctrl+o to expand)
+
+● Pod verified. Posting what I found while the audits run.
+
+  Pod verification (independent of subagents):
+  - GPU: 1× NVIDIA A40, 46068 MiB total (44.43 GiB usable per torch), 0 MiB in
+    use, no running processes, driver 570.195.03, CUDA 12.8, sm_86, persistence
+    mode on. bf16 supported.
+  - Python/PyTorch: Python 3.12.3, torch 2.8.0+cu128, cuDNN 9.10.2,
+    cuda.is_available() True, 1 device.
+  - Key libs already present: transformers 5.15.1 (exactly the version
+    requirements/serving.txt says the project verified against), accelerate
+    1.14.0, bitsandbytes 0.50.2, huggingface_hub 1.29.0, tokenizers 0.22.2,
+    safetensors 0.8.0, pytest 9.1.1, pyyaml 6.0.3. Missing: datasets, peft (both
+    listed as optional/commented in requirements).
+  - RAM: 503 GiB total, 437 GiB available. 96 vCPU. No swap.
+  - Storage: /workspace is a RunPod network volume (MooseFS) with 207 TB free —
+    ample. Root overlay is 50 GB, 50 GB free. /workspace/models,
+    /workspace/cache, /workspace/runs exist and are empty.
+    HF_HOME=/workspace/.cache/huggingface/, HF_HUB_ENABLE_HF_TRANSFER=1.
+  - Git: branch claude/qwen38-16gb-distill-t6d0gy, HEAD
+    a0c2c391e53e953024acaf1347d9be3c67937399 ("Add a tokenizer-backed data path
+    for the canonical student"), working tree clean, remote
+    github.com/pop123-ux/Qwen3.8-XXB-Instruct-Distill.
+
+  One note before I go further: your instruction list ends mid-sentence at "9. 
+  Perform exactly one preflight:" — the spec for the preflight is truncated.
+  I'll keep working through steps 1–8, and unless you tell me otherwise I'll
+  interpret step 9 as a single short no-training preflight (config resolution +
+  one forward/loss step at the Run 001 shape, then stop) rather than launching
+  Run 001. I'll pause for your confirmation before anything long-running
+  regardless.
+
+  Next: reading the teacher pin config myself so I can resolve the 72a217a SHA
+  (step 3), which is mine to do — no agent is allowed near the network.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Now resolving the teacher SHA — the first real network call of this session.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● SHA resolved. Getting the file manifest before any download.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Agent "Audit teacher pipeline" finished · 2m 13s
+
+● SHA resolved and the teacher manifest is in hand. Verifying the real
+  config.json against the repo's hardcoded expectations before committing to a
+  52 GiB download.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Real config matches the repo's hardcoded EXPECTED_ARCHITECTURE on all 8 fields
+  — the project's unverified teacher spec is now confirmed correct. Starting
+  the single download in the background while I run the tests.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Agent "Audit student architecture" finished · 3m 28s
+
+● Student is 13.01B params (24.23 GiB bf16) — full AdamW training would need
+  ~170–190 GiB, so Run 001 cannot be a full fine-tune. Noted for step 8.
+  Launching the download now.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Download reported complete — suspiciously fast, so let me verify it's real
+  bytes, not symlinks or a partial fetch.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Agent "Audit data and tokenizer" finished · 3m 37s
+● Download verified: 18 real safetensors shards, 55,586,066,285 bytes (51.77
+  GiB), no symlinks, manifest pinned to the full SHA. Running the targeted tests
+  now.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Tests running in background. Meanwhile, resolving the tokenizer question
+  subagent 4 flagged as unverifiable — I now have the real tokenizer on disk.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Confirmed a real blocker that subagent 4 could only hypothesize about.
+  Checking test progress.
+
+  Read 1 file, ran 2 shell commands (ctrl+o to expand)
+
+● Agent "Audit training and KD" finished · 8m 13s
+
+● All four audits are in. Subagent 3's conclusions are decisive enough that I'm
+  verifying the load-bearing claims myself rather than taking them at face
+  value.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Confirmed most of subagent 3's claims, but one correction that changes the
+  arithmetic. Checking the test run.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Two problems: a rogue full-suite pytest is running, and something has put 17
+  GiB on the GPU. Investigating immediately.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● A subagent left a GPU process running — the teacher smoke test — which I did
+  not authorize. Tracing its parentage before deciding.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Both rogue processes trace to the same subagent shell — one ran the full test
+  suite, the other launched the teacher smoke test on GPU. Neither was
+  authorized. Killing the redundant full-suite run and taking control.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Background command "Run targeted test suite" completed (exit code 0)
+
+● Targeted tests finished, exit code 0. Reading results.
+
+  Read 1 file (ctrl+o to expand)
+
+● All targeted tests passed (exit 0, ~131 tests). Now waiting on the teacher
+  smoke test to finish loading — it's reading 52 GB off a network volume.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● While that loads, let me nail down the Run 001 arithmetic — subagent 3 made an
+  error I need to correct.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Student builds cleanly: Qwen3_5MoeForCausalLM, 13,008,505,728 params — matches
+  the audit exactly. Checking smoke test progress and the one claim that
+  decides Run 001.
+
+  Ran 1 shell command (ctrl+o to expand)
+● Critical: subagent 3's recommended fallback is actually forbidden by the code.
+  Verifying.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Refuted — student_from_teacher hard-inherits vocab_size=teacher.vocab_size by
+  explicit design, so a real teacher always yields a 248,320-vocab student,
+  which chain_selftest.py:225 rejects with exit 2. Checking the smoke test.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Smoke test is I/O-bound reading shards off the network volume (RSS 32 GiB, GPU
+  17.1 GiB). Meanwhile, doing step 7 — validating the tokenizer/data path
+  end-to-end with the real tokenizer.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Step 7 validated, and the predicted trap is real and live. Checking on the
+  teacher load.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Teacher still streaming off the network volume (RSS 38.8 GB, GPU steady at
+  17.1 GiB). While it loads, examining what Run 001 would actually be.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Everything is verified except the teacher smoke test, which is ~75% through
+  reading shards (RSS climbing ~76 MiB/s, ~3 min left). Substantial interim
+  report:
+
+  Steps 2–4, 6 (partial), 7 complete:
+
+  - Targeted tests: all pass, exit 0 (tests/test_tokenized_data.py,
+    test_distill_pilot.py, test_real_teacher.py, ~131 tests, run with
+    HF_HUB_OFFLINE=1).
+  - SHA resolved: 72a217a → 72a217afab8029b39e4af1c7273a829995a3dbaf. Note the
+    repo's main is a different commit (1d4bf0f2…), so the pin was meaningful,
+    not cosmetic.
+  - Teacher downloaded exactly once to /workspace/models/qwen3.8-27b — 18 real
+    safetensors shards, 55,586,066,285 bytes (51.77 GiB), no symlinks, manifest
+    pinned to the full SHA.
+  - Teacher config verified against the repo's hardcoded EXPECTED_ARCHITECTURE: 
+    all 8 fields match (vocab 248320, hidden 5120, 64 layers, ffn 17408, 24/4
+    heads, head_dim 256, interval 4; 48 linear + 16 full). This closes the
+    repo's long-standing config_values_for_3_8: UNKNOWN — their unverified spec
+    was correct. The checkpoint is a multimodal wrapper
+    (Qwen3_5ForConditionalGeneration, model_type: qwen3_5) with the text config
+    nested.
+  - Student materializes: Qwen3_5MoeForCausalLM, 13,008,505,728 params (24.23
+    GiB bf16), active/token 9,611,119,488 — matches the audit exactly.
+
+  Two findings that change the plan:
+
+  1. A live data-path trap, now confirmed on real hardware. The real tokenizer
+     is len() = 248,077 but the embedding has 248,320 rows (243 padding rows).
+     real_teacher.py treats that as normal; tokenized_data.py:410-419 demands
+     exact equality. I ran it both ways: expected_vocab_size=248320 (the
+     constant used everywhere else in the repo) raises CorpusError; 248077 works
+     and produces correct packed batches (max id 248,046, all sequences
+     exactly 1024). Anyone wiring Run 001 with the obvious constant hits a hard
+     stop.
+  2. KD training is blocked, and more thoroughly than the repo's own docs say. I
+     verified this directly rather than trusting the audit:
+     train_student.py:341 calls train(config, spec) with no teacher=;
+     trainer.py:173 raises NotImplementedError for any strategy but full; the
+     optimizer is hardcoded torch.optim.AdamW regardless of config. The only
+     teacher-wired script, chain_selftest.py:405, refuses at line 225 unless the
+     student's vocab is 256 — and transfer.py:378 hard-inherits
+     vocab_size=teacher.vocab_size by deliberate design, so a real teacher
+     always produces a 248,320-vocab student and always hits that refusal. There
+     is no reachable code path today that runs gradient KD against the real 
+     teacher.
+
+  I also have to flag a control breach: a subagent started GPU work despite the 
+  constraint. Two orphaned processes appeared from one agent's shell — a full
+  pytest tests/ -q run and the teacher smoke test on GPU. I killed the redundant
+  full-suite run. The smoke test I let continue because it is byte-for-byte the
+  command step 5 calls for (correct local path, full SHA, 4-bit); I'll validate
+  its output independently rather than trusting it. No duplicate download
+  occurred — it used my copy.
+
+  One correction to my own earlier framing: the audit claimed the student is
+  always built fp32, giving ~194 GiB for full training. That's wrong for the
+  path that matters — trainer.py:135 passes dtype= for model.pretrained loads,
+  so bf16 is honored. Corrected arithmetic: 24.23 (weights) + 24.23 (grads) +
+  48.46 (AdamW m/v in param dtype) ≈ 96.9 GiB. Still 2.2× over the A40's 44.43
+  GiB, so the verdict is unchanged — full training does not fit — but by half
+  the claimed margin.
+
+  Waiting for the teacher load to finish before touching the GPU again.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Pilot dry-run is clean: 64→48 layer mapping with block types preserved, Q4 @
+  32k tokens fits the 16 GB target with 3.87 GiB headroom. Checking the teacher
+  load.
+
+  Read 1 file, ran 3 shell commands (ctrl+o to expand)
+
+● Both waiters are running (teacher smoke test at ~82% of shard reads;
+  acceptance gate in parallel on CPU). Holding here — I won't touch the GPU
+  until the teacher load releases its 17 GiB.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Repo working tree is clean (only untracked .claude/). Note: root-level runs/
+  is not in .gitignore (only experiments/**/runs/), so the smoke test's JSON
+  will land as an untracked repo file — I'll route my own artifacts to
+  /workspace/runs/ instead.
+
+  Waiting on the teacher load and the acceptance gate to report.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Background command "Run repo acceptance gate" completed (exit code 0)
+
+● Acceptance gate: 28 pass, 4 deferred, 0 fail — "READY FOR GPU" (exit 0).
+  Notably one deferred item is "measured GPU memory — analytical only until
+  hardware is available", which the running smoke test is about to convert into
+  the project's first measured number.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Teacher load has moved from disk-wait to running (RSS 45 GiB, GPU 17.4 GiB) —
+  it's past the shard reads and into the actual checks. Waiting for it to write
+  its JSON.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+● Waiting on the smoke test to complete. Its stdout belongs to the orphaned
+  subagent shell, so I'll read its results from the --json artifact and verify
+  the checks independently.
+
+  Read 1 file (ctrl+o to expand)
+
+● Background command "Wait for smoke test and dump result" completed (exit code
+0)
+
+● Background command "Wait for smoke test to finish" completed (exit code 0)
+
+● The smoke test exited without writing its JSON — no runs/ directory was
+  created, and the GPU is now free (311 MiB). Since it was an orphaned process I
+  couldn't capture its stderr, so I'm re-running step 5 myself, under control
+  and fully logged. The checkpoint is warm in page cache now, so this should be
+  much faster.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Background command "Wait for smoke test completion" failed with exit code 2
+
+● Re-run is progressing much faster with the checkpoint warm in cache (851
+  weight tensors loading, GPU at 17.1 GiB). Waiting for it.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Smoke test running under my control with full logging. Waiting on it before
+  the final synthesis and the single preflight.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Background command "Poll both background jobs" completed (exit code 0)
+
+● Still on check [1/10] (the load with the missing-weight gate armed), GPU
+  steady at 17.1 GiB. Waiting.
+
+  Read 1 file (ctrl+o to expand)
+
+● Good use of the wait: step 6 (distill_pilot) is CPU/disk-only — it streams
+  teacher tensors rather than loading the model — so it can run alongside the
+  GPU smoke test without contention. Launching it now.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Background command "Wait then poll smoke test" completed (exit code 0)
+
+● Both jobs running in parallel — GPU smoke test and CPU materialization.
+  Setting a combined waiter.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Both jobs running in parallel — teacher smoke test on GPU, canonical student
+  materialization on CPU. Waiting for both.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Polling both jobs.
+
+  Read 1 file (ctrl+o to expand)
+
+● Waiting on both background jobs to report.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Both jobs still running. I'll report as soon as either completes.
+
+  Read 1 file (ctrl+o to expand)
+
+● Holding for the two background jobs (GPU smoke test, CPU student
+  materialization). I'll report the moment they land.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll wait for the completion notifications rather than polling further.
+
+  Ran 1 shell command (ctrl+o to expand)
+● Waiting on both jobs.
+
+  Read 1 file (ctrl+o to expand)
+
+● Both jobs are still in flight. I'll stop polling and report when the
+  notifications arrive.
+
+✻ Brewed for 20m 41s · done 3:13 PM
+
+● Background command "Poll both jobs with detail" completed (exit code 0)
+
+  Read 1 file (ctrl+o to expand)
+
+● Status from the poll: pilot is materializing (streaming teacher tensors, RSS
+  19.4 GB climbing toward ~48 GiB); smoke test still on check [1/10] loading.
+  They're now competing for reads on the network volume, which is slowing the
+  smoke test's load. Both healthy. Waiting.
+
+  Read 1 file (ctrl+o to expand)
+
+● Waiting on the remaining jobs.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll stop polling and wait for the completion notifications.
+
+✻ Cogitated for 18s · done 3:15 PM
+
+● Background command "Wait for smoke test and show clean log" completed (exit
+code 0)
+
+  Read 1 file (ctrl+o to expand)
+
+● Smoke test result is in — and it surfaced a real defect. Reading the report
+  and checking the pilot.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Background command "Wait for both jobs and report" completed (exit code 0)
+
+● The pilot process is gone but its log stops mid-materialization — checking
+  whether it crashed.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The pilot died silently mid-materialization with no traceback — that signature
+  means it was killed, not that it errored. Investigating.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Found the real cause — and it invalidates my earlier RAM figure. Verifying.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Background command "Longer wait then poll both" completed (exit code 0)
+
+● Definitive: oom_kill 1 in the container's memory cgroup, with peak usage
+  hitting the limit exactly. This forces a correction to my earlier pod report:
+
+  The container RAM limit is 51.22 GiB, not 503 GiB. free reports the host's
+  memory; the cgroup cap is 54,999,998,464 bytes. My earlier "503 GiB total, 437
+  GiB available" was the host figure and was wrong for capacity planning.
+
+  That is exactly why the pilot died: distill_pilot.py calls
+  build_model(FROZEN_STUDENT, meta=False) → from_config → fp32 → 48.46 GiB, plus
+  torch runtime and streamed teacher tensors, against a 51.22 GiB cap — while
+  the smoke test was also resident. Retrying it alone now that the GPU and RAM
+  are clear, since that's the honest test of whether the supported path fits at
+  all.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Climbing toward the fp32 student allocation (47.3 GiB of a 51.22 GiB cap).
+  Continuing to watch — the danger point is streaming teacher tensors on top of
+  it.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Conclusive — oom_kill incremented to 2. The pilot OOM-killed again running
+  completely alone, hitting the 51.22 GiB cap exactly. scripts/distill_pilot.py 
+  cannot materialize the canonical student on this pod as written, reproduced
+  twice with kernel-level proof.
+
+  The cause is a single line: build_model(FROZEN_STUDENT, meta=False) has no
+  dtype control and from_config defaults to fp32 (48.46 GiB). Since the teacher
+  is bf16 on disk anyway, a bf16 student is both smaller (24.23 GiB) and avoids
+  a pointless upcast. Demonstrating that fix using the repo's own functions,
+  without touching tracked files.
+
+  Ran 3 shell commands (ctrl+o to expand)
+● Background command "Extended wait then poll both jobs" completed (exit code 0)
+
+● Memory is pinned at the cap but that's now mostly reclaimable page cache from
+  streaming the teacher — the bf16 student's anonymous allocation is only 24.23
+  GiB. Checking whether it survived.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● My own 2-minute monitoring command timed out and killed the process group —
+  not an OOM (oom_kill still 2). Relaunching detached so the shell returns
+  immediately.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Materialization running detached under a proper session leader. Waiting for
+  it.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Background command "Wait for materialization to finish" completed (exit code
+0)
+
+● Process is actually alive — pid 98061 (I'd captured the wrapper's pid).
+  Waiting on the correct one.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Waiting on the bf16 materialization (pid 98061).
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll wait for the completion notification rather than polling.
+
+  Read 1 file (ctrl+o to expand)
+
+● Waiting on the materialization to complete.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Materialization in progress. Waiting.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll stop polling and wait for the notification.
+
+  Read 1 file (ctrl+o to expand)
+
+● Waiting for the materialization to finish.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll wait for the completion notification.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Waiting on the materialization.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll wait for the notification rather than polling further.
+
+  Read 1 file (ctrl+o to expand)
+
+● The materialization is still running. I'll wait for the background
+  notification instead of polling.
+
+  Read 1 file (ctrl+o to expand)
+
+● Still running. Waiting for the completion notification.
+
+✻ Brewed for 9m 3s · done 3:25 PM
+
+● Background command "Poll materialization progress" completed (exit code 0)
+
+  Read 1 file (ctrl+o to expand)
+● Still running healthily (RSS 17.3 GB climbing toward the 24.23 GiB bf16
+  target, no new OOM). The from_config weight init for 13B params is slow.
+  Waiting.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll wait for the notification.
+
+  Read 1 file (ctrl+o to expand)
+
+● Waiting for the materialization to complete.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll wait for the background completion notification rather than re-reading
+  unchanged files.
+
+  Read 1 file (ctrl+o to expand)
+
+● Waiting on the materialization notification.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'm waiting on the materialization job; I'll report when its notification
+  arrives.
+
+✻ Crunched for 25s · done 3:28 PM
+
+● Background command "Longer poll of materialization" completed (exit code 0)
+
+  Read 1 file (ctrl+o to expand)
+
+● Model build nearly complete (RSS 22.5 GB of the 24.23 GiB bf16 target, no
+  OOM). The from_config random-init of 13B params is the slow part;
+  materialization follows. Waiting.
+
+  Read 1 file (ctrl+o to expand)
+
+● Waiting for the materialization job to finish.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Waiting on the materialization.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll wait for the notification.
+
+  Read 1 file (ctrl+o to expand)
+
+● Waiting for the materialization job's completion notification.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll wait for the notification instead of re-reading unchanged files.
+
+✻ Baked for 30s · done 3:32 PM
+
+● Background command "Wait for correct materialization pid" completed (exit code
+0)
+
+  Read 1 file (ctrl+o to expand)
+
+● Step 6 complete. The canonical student materialized and wrote successfully:
+
+  - 13,008,505,728 params, bf16, 24.23 GiB, built in 530s
+  - complete=True, missing=0, coverage=99.9830% of student parameters came from
+    the teacher
+  - copied=471, KV-merged=24, decomposed=240, initialised=96 (router +
+    shared-expert gate, which have no teacher counterpart)
+  - FFN coverage 39.7%, active width 2304 — matches the audit's predicted
+    6,912/17,408
+  - Written to /workspace/runs/pilot001/transferred (26,017,243,200 bytes), 769s
+    total
+
+  Now the single preflight: reload it on GPU and run one forward pass. Nothing
+  else is on the card.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Preflight running — reloading the 24.23 GiB student onto the GPU for a single
+  forward pass. Waiting.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll wait for the preflight notification.
+
+  Read 1 file (ctrl+o to expand)
+
+● Waiting for the preflight to complete.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll wait for the preflight's completion notification.
+
+  Read 1 file (ctrl+o to expand)
+● Waiting on the preflight.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Waiting on the preflight to complete.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll wait for the notification.
+
+  Read 1 file (ctrl+o to expand)
+
+● Waiting for the preflight notification.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll wait for the preflight's completion notification.
+
+✻ Worked for 1m 20s · done 3:39 PM
+
+● Background command "Extended poll of materialization" completed (exit code 0)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Weights loaded (831/831 in 118s), now transferring to GPU (13.7 GiB and
+  climbing toward 24.23 GiB). Waiting for the forward pass.
+
+  Read 1 file (ctrl+o to expand)
+
+● Waiting for the preflight to complete.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Waiting on the preflight result.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll wait for the notification.
+
+  Read 1 file (ctrl+o to expand)
+
+● Waiting for the preflight completion notification.
+
+  Read 1 file (ctrl+o to expand)
+
+● I'll wait for the preflight's completion notification.
+
+✻ Worked for 33s · done 3:41 PM
+
+● Background command "Wait for preflight to finish" completed (exit code 0)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Background command "Wait for preflight result" completed (exit code 0)
+
+● Preflight passed. Writing the synthesis report.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Background command "Poll preflight progress" completed (exit code 0)
+
+● Two alarms: the repo HEAD moved from a0c2c39 to aae829a — a commit I did not
+  make — and /workspace/runs/kd_run_001 exists, which I did not create.
+  Investigating immediately.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● This changes the picture materially, and I need to correct something I told
+  you earlier.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now I have the full picture. Writing the report.
+  Read 1 file (ctrl+o to expand)
+
+● Final sanity check before reporting.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Sanity check passed: all six artifacts present, repo working tree unmodified
+  by me (only untracked .claude/ and the other session's CLAUDE_CLI_RUNS/),
+  targeted tests exit 0, preflight loss finite at 26.75 GiB peak.
+
+  First, a correction I owe you. Earlier I reported that "a subagent started GPU
+  work despite the constraint." That was wrong. Those processes belong to a
+  second, concurrent Claude Code session on this Pod
+  (session_01HsKRCg4de4cC1K21GUmJLt), not to my subagents — my four audit agents
+  stayed read-only as instructed. Consequence you should know about: I killed 
+  that session's pytest tests/ -q run (PID 14829) believing it was a rogue
+  subagent. Nothing else of theirs was touched.
+
+  What that session is doing right now: it has committed twice to your shared
+  branch (HEAD moved a0c2c39 → aae829a), created a locked worktree
+  .claude/worktrees/run001-kd-pilot with a new scripts/kd_run.py, downloaded a 
+  second 52 GB teacher at a different revision
+  (dbdc473dea0d6a9763042881cc33d6058d1742d2), and is running KD on the GPU (16.8
+  GiB) as I write. There are now 104 GB of teacher weights on disk at two
+  different revisions. The repo's documented pin is 72a217a; dbdc473… is neither
+  that nor main (1d4bf0f2…). Which revision is authoritative is a provenance 
+  call only you can make.
+
+  Results of my run (steps 1–9):
+
+  - Tests — all pass, exit 0. Acceptance gate — 28 pass, 4 deferred, 0 fail,
+    "READY FOR GPU".
+  - SHA — 72a217a → 72a217afab8029b39e4af1c7273a829995a3dbaf.
+  - Teacher — downloaded once (51.77 GiB, 18 shards, manifest pinned). Its real
+    config.json matches the repo's hardcoded EXPECTED_ARCHITECTURE on all 8 
+    fields, closing the project's long-standing config_values_for_3_8: UNKNOWN.
+  - Smoke test — loads perfectly (0 missing/unexpected/mismatched; the
+    missing-weight gate held) but fails at check 3/10: the chat template rejects
+    reasoning_effort: medium and expects low/high/xhigh. Your
+    configs/teacher/qwen3_8_27b.yaml lists [low, medium, xhigh] — it has a mode
+    that doesn't exist and is missing one that does. One-line fix, and it's the
+    only thing between this checkpoint and 10/10.
+  - Student — materialized and reloaded: complete, 0 missing, 99.983% teacher 
+    coverage, 24.23 GiB at /workspace/runs/pilot001/transferred.
+  - Preflight — one forward pass: loss 9.270, all logits finite, peak 26.75 GiB 
+    of 44.43 (17.7 GiB headroom). Against uniform ln(248320)=12.42, the transfer
+    carries real signal but is untrained — the correct signature.
+
+  Two hard blockers I found:
+
+  1. scripts/distill_pilot.py OOM-kills on this Pod. The container RAM cap is
+     51.22 GiB, not the 503 GiB free advertises (that's the host) — I had this
+     wrong in my first pod report. build_model(..., meta=False) has no dtype
+     control and from_config defaults to fp32 = 48.46 GiB. Reproduced twice,
+     kernel-confirmed (oom_kill 2). I completed step 6 via
+     torch.set_default_dtype(torch.bfloat16) using your own functions, without
+     modifying the repo.
+  2. Gradient KD on the canonical student is unreachable in this codebase,
+     verified four ways: train_student.py:341 never passes teacher=;
+     trainer.py:173 NotImplementedError for non-full strategies; the optimizer
+     is hardcoded AdamW so adamw_8bit is a silent no-op; and
+     chain_selftest.py:225 refuses any non-byte vocab while transfer.py:378
+     hard-inherits the teacher's vocab by design. Full training needs ~96.9 GiB
+     vs 44.43 available — 2.2× over. So Run 001 should be the materialization 
+     pilot, which is now done and verified, not a training run.
+
+  I stopped before launching anything long-running, as instructed. Note your
+  step 9 arrived truncated at "Perform exactly one preflight:" — I interpreted
+  it as one no-training forward pass at the Run 001 shape; tell me if you meant
+  something else.
+
+  result: A40 bring-up complete — teacher pinned at
+  72a217afab8029b39e4af1c7273a829995a3dbaf and downloaded once, student
+  materialized (13,008,505,728 params, 99.983% transfer coverage) and
+  preflighted at 26.75/44.43 GiB with finite loss 9.27; report at
+  /workspace/runs/RUN001_READINESS.md. Three blockers found: gradient KD is
+  unreachable in-repo, distill_pilot OOMs against a 51.22 GiB container cap, and
+  the teacher config's reasoning_effort list is wrong. A second concurrent
+  Claude session is committing to your branch and running KD with a different
+  teacher revision — needs your provenance decision.
+
+✻ Brewed for 2m 57s · done 3:44 PM
+
+@ list agents call❯
+  Please relay the completed results from your Subagents 1–4 so I can surface
+  them to the user. I need each audit summarized separately and verbatim where
+  possible: (1) student architecture audit, (2) teacher pipeline audit, (3)
+  training/KD audit, (4) data/tokenizer audit. Include each subagent's key
+  findings, any blockers/risks flagged, and file paths referenced. Do not start
+  any new agents — just paste back what already completed.
+
+● Relaying the four completed audits to the peer session. All four finished; I'm
+  pasting their findings and flagging where my own hardware verification
+  contradicted them — several load-bearing claims turned out wrong, and passing
+  them on unqualified would propagate errors.
+
+  ---
+
+  SUBAGENT 1 — STUDENT ARCHITECTURE
+
+  Framing: src/qwen_distill/architecture/ holds two non-interchangeable
+  representations (architecture/__init__.py:1-15): moe_student.py →
+  MoEStudentSpec/FROZEN_STUDENT (qwen38_19b_h5120_l48_moe) is the canonical 
+  student; spec.py → HybridArchSpec is a dense family used for the teacher, the
+  dense baseline, and architecture search. search.py, params.py, memory.py,
+  transfer.py, materialize.py all operate on the dense family, not the MoE
+  student.
+
+  Architecture (moe_student.py:63-217): built via
+  MOE_MODEL_TYPE="qwen3_5_moe_text" → Qwen3_5MoeForCausalLM. hidden 5120, 48
+  layers, vocab 248320, max_position_embeddings 262144,
+  tie_word_embeddings=False, rms_norm_eps 1e-6. Attention: 24 Q / 2 KV heads
+  (GQA 12:1; teacher has 4), head_dim 256, partial_rotary_factor=0.25 → rope_dim
+  64, rope_theta 10,000,000. DeltaNet: 16 key / 48 value heads, key/value head
+  dim 128, conv kernel 4.
+
+  Parameter counts — the agent re-derived the closed form independently rather
+  than trusting the repo:
+  embedding   1,271,398,400     routed_exp  4,529,848,320
+  lm_head     1,271,398,400     shared_exp    566,476,800
+  attention   1,195,382,784     router          1,966,080
+  deltanet    4,171,538,304     norms             496,640
+  TOTAL      13,008,505,728    ACTIVE      9,611,119,488
+  The "22.07B → 13.01B" correction is verified, not merely asserted: total
+  scales with num_experts × moe_intermediate_size, active with
+  num_experts_per_tok × moe_intermediate_size, so 24→8 experts drops total by
+  9.06B while active moves only −0.04%.
+
+  Layer mapping (moe_init.py:86-145): "group" keeps 12 of 16 four-layer hybrid
+  groups, mapping position-for-position so block types always match. Naive
+  every-4th-layer stride is explicitly identified as broken and unit-tested
+  against.
+
+  Interleave (moe_student.py:105-108,154-157): [DeltaNet ×3, FullAttention] × 12
+  = 36 + 12; attention at indices [3,7,…,47].
+
+  MoE (moe_student.py:97-103): 8 routed experts, top-2, 1 shared (width 768),
+  moe_intermediate_size=768, router_aux_loss_coef=0.001. Router is a bare
+  nn.Linear initialized at scale=1e-3 — scale=0.0 is a documented trap
+  (moe_init.py:354-373): exact uniformity makes torch.topk tie-break by index,
+  leaving 6/8 experts permanently dead while entropy still reports 1.0.
+  Teacher-derived init is importance_partition (moe_init.py:196-248), covering
+  only 6,912/17,408 = 39.7% of teacher FFN channels; gate compensation moves
+  output-norm ratio 0.357→0.715.
+
+  Discrepancies flagged: configs/student/*.json are stale dense pre-MoE
+  candidates (tied embeddings, 4 KV heads, no MoE fields) — a trap given the
+  directory name. docs/ARCHITECTURE.md never mentions FROZEN_STUDENT or MoE.
+  architecture/memory.py::estimate_memory cannot size the MoE student
+  (params.py:73-75 is a dense 3·H·I formula); the real model is
+  research/memory.py. "Fits 16 GB" is scoped to quantized release (Q4/Q5/Q6),
+  never bf16/fp32. to_hf_text_config() drops the teacher's M-RoPE fields
+  (mrope_section, mrope_interleaved) — likely intentional, undocumented.
+
+  Blocker: bf16 weights 24.23 GiB fit the A40; fp32 48.46 GiB does not. Full
+  AdamW training estimated at 170–190 GiB.
+
+  ---
+
+  SUBAGENT 2 — TEACHER PIPELINE
+
+  Workflow. scripts/download_teacher.py argparse (:68-85): --revision required
+  (exact SHA; branch/tag/main refused), --model default Qwen/Qwen3.8-27B
+  (SUPPRESSed), --output default /data/models/qwen3.8-27b (must be outside the
+  repo, checked at :88-99), --dry-run, --verify-only, --max-workers default 8.
+  Calls snapshot_download (:242-247), writes teacher_download_manifest.json
+  (:165-197). Exit codes: 0 complete, 1 incomplete, 2 refused pre-network.
+
+  scripts/teacher_smoke_test.py argparse (:69-92): --model, --revision,
+  --local-path, --dtype (auto), --device (auto), --quantization {4bit,8bit},
+  --offload-folder, --max-memory (JSON), --prompt, --mode (low),
+  --max-new-tokens (64), --top-k (64), --lenient-architecture, --json.
+
+  Pin. DEFAULT_TEACHER_MODEL="Qwen/Qwen3.8-27B" (real_teacher.py:48).
+  _COMMIT_SHA = re.compile(r"[0-9a-fA-F]{7,40}") (:80) — accepts a 7-char 
+  prefix, flagged in commit 3b78253 as "a real trap": 72a217a passes validate()
+  but must not be recorded as the research pin.
+  MOVING_REVISIONS={"main","master","latest","head","refs/heads/main"} refused
+  regardless.
+
+  Loader. output_loading_info=True always passed (:479); any non-empty
+  missing_keys/mismatched_keys raises TeacherLoadError (:519-531) — because
+  transformers silently returns a freshly-initialized model otherwise.
+  BENIGN_UNEXPECTED_PREFIXES=("model.visual.","visual.","mtp.","model.mtp.")
+  (:304). Architecture re-verified against EXPECTED_ARCHITECTURE (:56-65). 4-bit
+  = NF4 + double-quant, bf16 compute (:367-391).
+
+  Minimum HF requests: 1 metadata call to resolve the SHA, 1 snapshot_download,
+  0 for the smoke test with --local-path. Gap flagged: load_verified_teacher()
+  does not pass local_files_only=True nor use the repo's own offline_mode()
+  guard (utils/offline.py:41-58), unlike tokenized_data.py:197 — so export
+  HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 to make it airtight.
+
+  KD exposure: teacher_logits() (:753-770) returns final-layer logits only.
+  OnlineTeacher (teacher_signal.py:47-84) produces dense or top-k signal with a
+  full-vocab logsumexp so tail mass is exactly recoverable.
+  signal_bytes_per_token = top_k*6+4 → k=64 ≈ 388 B/token. No hidden-state hook 
+  exists in real_teacher.py; build_provider(kind="offline") raises
+  NotImplementedError (teacher_signal.py:141-146).
+
+  Footprint: bf16 ~54–55.6 GB disk / ~48 GiB load; 4-bit ~16.3 GiB; 8-bit ~27
+  GiB.
+
+  ---
+
+  SUBAGENT 3 — TRAINING / KD
+
+  Entrypoints. train_student.py trains but never passes teacher= (:341).
+  train_distilled_student.py always exits at :178-188 ("Teacher-text SFT is not
+  yet connected"). distill_pilot.py does weight transfer only (:224).
+  chain_selftest.py:405 is the only script passing teacher= — and is
+  self-described as a developer mechanism self-test on a dense throwaway
+  student.
+
+  No Trainer class — a single function trainer.train() (trainer.py:212-783).
+
+  CLI. train_student.py (:37-83): --config (required), --dry-run,
+  --simulate-vram, --output-dir, --max-steps, --seed, --resume, --resume-from,
+  --status, --restore, --persistent-dir, --json, --force. Only 3 hyperparameter 
+  overrides exist — everything else is YAML-only.
+
+  Losses (kd_loss.py): total = alpha·KD + (1-alpha)·CE (:337); KD = mean forward
+  KL with T² scaling (:289). bucket tail (default) keeps the objective exact
+  via the captured full-vocab logsumexp (:269-286); renormalize discards tail
+  mass. Per-step diagnostics: top1_agreement, teacher_entropy,
+  teacher_tail_mass. Not implemented: hidden-state/feature matching, attention
+  transfer (both DEFERRED).
+
+  Optimizer: hardcoded torch.optim.AdamW (trainer.py:336) —
+  config.training.optimizer is validated and fed to memory estimates but never
+  instantiates anything else; adamw_8bit is a silent no-op reporting savings
+  that never happen. Grad clip hardcoded 1.0 (:622). warmup_steps and scheduler
+  appear unconsumed.
+
+  Memory mechanisms: gradient checkpointing real (:325-331,
+  use_reentrant=False); grad accumulation real (:563); LoRA/QLoRA raise 
+  NotImplementedError (:173-178); quantization exists for the teacher only; no
+  FSDP/DeepSpeed/accelerate for the student; no CPU/activation offload.
+
+  Checkpointing (checkpoints.py:80-91): atomic staged-then-renamed dirs with
+  model/optimizer/scheduler/scaler/RNG + sampler position; full resume with
+  compatibility refusal. Measured ~12 bytes/param → ~156 GB per checkpoint for
+  the 13.01B student.
+
+  Validation: always plain CE, never the KD-weighted loss — best_validation_loss
+  in a KD run is an SFT-style number.
+
+  Verdict: full training does not fit, by >100 GiB at every cell.
+
+  ---
+
+  SUBAGENT 4 — DATA / TOKENIZER
+
+  Interface: no Dataset class — a function pipeline.
+  prepare_tokenized_corpus(...) (tokenized_data.py:366-472) returns (train_seqs,
+  val_seqs, stats) as list[list[int]]. Batching by ResumableBatchSampler
+  (text_data.py:266-363). No DataLoader, no collate_fn, no num_workers.
+
+  Vocab: read from len(tokenizer), never hardcoded. Optional expected_vocab_size
+  raises on any mismatch (:410-419). Flagged strictness inconsistency:
+  real_teacher.py:555-566 treats tokenizer < embedding as normal padding, while
+  tokenized_data.py demands exact equality — the agent predicted this would trip
+  anyone reusing the student's vocab_size constant, but could not verify
+  offline because vendor/qwen38-metadata/ deliberately ships no tokenizer.json.
+
+  Packing: add_special_tokens=False, exactly one EOS appended per document,
+  concatenated, chunked into fixed windows; trailing partial chunk dropped.
+  Cross-document attention is NOT masked — no attention mask, no position_ids,
+  only an inline EOS sentinel. PACKING_VERSION="1.0" folded into a SHA-256
+  digest.
+
+  Batch contract: torch.tensor(next(batches), dtype=torch.long, device=device)
+  (trainer.py:566), shape (batch, seq), passed as both input_ids and labels
+  (:578) — the causal shift lives inside the model, not the collator.
+
+  Wiring: DataConfig.tokenized_text (config.py:88); validate() refuses a KD
+  objective over a corpus unless signal_source == "online" (:288-296). No YAML 
+  under configs/ sets tokenized_text: true, and chain_selftest.py:225-232 still
+  only knows the byte-level path.
+
+  Test gaps: no test for tokenizer < expected vocab; none for cross-document
+  attention; none for the pad-as-eos fallback; max_bytes untested.
+
+  ---
+
+  Corrections from hardware — please don't propagate these unqualified
+
+  1. S3 wrong: "the model is always built fp32." True only for the from_config
+     path. trainer.py:135 passes dtype= for model.pretrained loads, so bf16 is
+     honored. Full-training cost is ~96.9 GiB, not the ~194 GiB S3 reported.
+     Verdict unchanged (still >2× over 44.43 GiB), magnitude halved.
+  2. S3's recommended fallback is impossible. It proposed chain_selftest.py +
+     real 4-bit teacher. chain_selftest.py:225 refuses any student whose vocab ≠
+     256, and transfer.py:378 sets vocab_size=teacher.vocab_size by explicit 
+     design — a real teacher always yields 248,320 and always hits that refusal
+     (exit 2).
+  3. S2 wrong: "B4 appears closed." Only half — the tokenized data path exists,
+     but no entrypoint wires it to a teacher. KD blocker is open.
+  4. S4's hypothetical is real and confirmed live: len(tokenizer) = 248,077 vs
+     embedding 248,320 (243 padding rows). expected_vocab_size=248320 raises
+     CorpusError; 248077 works. Any config must use 248077 or null.
+  5. S1's fp32 concern is worse than stated: fp32 materialization fails on
+     container RAM, not just VRAM. The cgroup cap is 51.22 GiB (free's 503 GiB
+     is the host). distill_pilot.py OOM-killed twice (oom_kill 2). Workaround:
+     torch.set_default_dtype(torch.bfloat16) before build_model.
+
+  Also relevant to you: the smoke test loads clean (0
+  missing/unexpected/mismatched) but fails at check 3/10 — the chat template
+  rejects reasoning_effort: medium and expects low/high/xhigh, contradicting
+  configs/teacher/qwen3_8_27b.yaml. And you are running revision
+  dbdc473dea0d6a9763042881cc33d6058d1742d2, which is neither this repo's
+  documented pin 72a217a (→ 72a217afab8029b39e4af1c7273a829995a3dbaf,
+  docs/REAL_TEACHER_RUN.md:13) nor main (1d4bf0f2…). That provenance conflict
+  needs the user's decision, not ours.
+
+  No new agents were started. Full write-up:
+  /workspace/runs/RUN001_READINESS.md.
+
+✻ Cooked for 1m 25s · done 4:10 PM

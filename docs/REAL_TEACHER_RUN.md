@@ -8,6 +8,105 @@ and says nothing about the 16 GB student target — they are separate budgets.
 
 ---
 
+
+
+## The pin: `dbdc473dea0d6a9763042881cc33d6058d1742d2` — RESOLVED, and it is not `72a217a`
+
+**Closed on hardware, 2026-09-02.** Both halves of this turned out to matter, and the
+second one was not anticipated:
+
+```
+Qwen/Qwen3.8-27B @ dbdc473dea0d6a9763042881cc33d6058d1742d2      <- use this
+Qwen/Qwen3.8-27B @ 72a217afab8029b39e4af1c7273a829995a3dbaf      <- the upload commit; do NOT use
+```
+
+`72a217a` resolves to `72a217afab8029b39e4af1c7273a829995a3dbaf`, and it is the commit that
+uploaded the weights. It is still the wrong pin. Upstream replaced `tokenizer_config.json`,
+`chat_template.jinja` and `generation_config.json` about two hours after that upload, so the
+weights-upload commit carries **correct weights beside superseded metadata**.
+
+The weights are provably identical at the two revisions — all 18 safetensors shards have the
+same LFS object ids and no weight commit exists between them — so this costs nothing to fix
+and is not a re-download of the checkpoint.
+
+What pinning the upload commit actually does, observed rather than predicted:
+
+| | `72a217a` (upload) | `dbdc473` (adopted) |
+|---|---|---|
+| `chat_template.jinja` accepts | `low`, `high`, `xhigh` | `low`, `medium`, `xhigh` |
+| smoke-test check 3 | **FAILS** — `TemplateError: Unknown reasoning_effort: medium` | passes, four distinct renders |
+| tokenizer `model_max_length` | 131,072 | 262,144 |
+| metadata matches `vendor/qwen38-metadata` | no | **yes**, all four SHA-256 |
+
+`reasoning_modes.py` documents the *corrected* contract — `xhigh`/`medium`/`low`, with
+`high` raising, "the one that catches people out". That module and the upload commit's
+template contradict each other, so every reasoning-mode experiment run at `72a217a` would
+have been measuring a prompt the project's own model of the teacher says does not exist.
+
+The lesson generalises past this repo: **on the Hub, the commit that uploads the weights is
+not necessarily the commit you want to pin.** Verify the metadata hashes, not just the
+architecture — `config.json` is byte-identical at both revisions, so an architecture check
+alone passes and tells you nothing.
+
+<details>
+<summary>The original note, kept for the record</summary>
+
+The teacher's checkpoint-upload commit is known in abbreviated form:
+
+```
+Qwen/Qwen3.8-27B @ 72a217a          (abbreviated — NOT usable as the research pin)
+```
+
+`TeacherLoadPlan.validate()` accepts a 7-to-40 character commit id, so `72a217a` will pass
+the gate and load. **Do not use it as the recorded pin.** An abbreviation is not immutable:
+it is a prefix, and a prefix can become ambiguous as the repository grows. Final provenance
+must carry the full 40-character SHA.
+
+Resolving it needs one Hugging Face metadata request, which the authoring sandbox cannot
+make — `huggingface.co` egress is denied there by organisation policy. On the GPU machine:
+
+```bash
+python - <<'EOF'
+from huggingface_hub import HfApi
+print(HfApi().model_info("Qwen/Qwen3.8-27B", revision="72a217a").sha)
+EOF
+```
+
+That is one request and it returns the full SHA. Use that value everywhere afterwards, and
+record it in the ledger alongside the run. The abbreviation is recorded here only so the
+next session does not have to rediscover which commit is meant.
+
+</details>
+
+## The one-command start
+
+```bash
+# 1. fetch the pinned checkpoint. Resumable; writes teacher_download_manifest.json.
+python scripts/download_teacher.py \
+    --revision <EXACT_QWEN3.8-27B_COMMIT_SHA> \
+    --output /data/models/qwen3.8-27b
+
+# 2. verify the weights actually load. THIS is the authoritative check.
+python scripts/teacher_smoke_test.py \
+    --local-path /data/models/qwen3.8-27b \
+    --revision <EXACT_QWEN3.8-27B_COMMIT_SHA> \
+    --quantization 4bit \
+    --json runs/teacher_smoke.json
+```
+
+Three things are worth keeping straight, because they are easy to conflate:
+
+- **the revision SHA is the research pin.** A repo id serves different weights over time, so
+  every artifact records the SHA and an unpinned Hub load is refused before it downloads;
+- **the manifest records the download.** It says which files arrived and how big they were;
+- **the smoke test performs the pretrained-weight verification.** The downloader proves
+  files exist. It cannot prove they load as the intended teacher — `transformers` returns a
+  freshly-initialised model rather than raising when keys do not match, so the missing-weight
+  gate in `load_verified_teacher()` is the only thing standing between you and a 27B teacher
+  full of random numbers generating fluent nonsense.
+
+A fresh GPU machine should need nothing beyond those two commands before the pilot.
+
 ## A. Setup
 
 ```bash
@@ -100,6 +199,66 @@ rather than transferred, so a report claiming 100% would be wrong.
 drives a small dense student through transfer → KD → checkpoint. It keeps geometry flags
 because varying geometry is its job. It is not a research run and its loss means nothing
 about capability.
+
+
+## E2. Tokenising a corpus for the canonical student
+
+The canonical student has a **248,320-entry embedding**, inherited from the teacher. The
+byte-level corpus path (`data.text_corpus`) emits ids in 0-255 and would only ever index
+the first 256 rows of it, so it **cannot** train this student. That path is not going
+away — every historical experiment through Level 2R used it, and it stays the byte-level
+baseline — but it is legacy for the canonical target.
+
+Tokenizer-backed training uses **the teacher's own tokenizer**, taken from the pinned
+checkpoint downloaded in step C:
+
+```bash
+/data/models/qwen3.8-27b/        # from step C; tokenizer.json lives here
+```
+
+Set the data block to:
+
+```yaml
+data:
+  tokenized_text: true
+  text_path: corpora/train.txt          # plain UTF-8
+  tokenizer_path: /data/models/qwen3.8-27b
+  document_separator: blank_line        # or "line", or "file"
+  max_sequence_length: 4096
+  expected_vocab_size: 248320           # the student's vocab_size; a mismatch refuses
+```
+
+Points worth being explicit about:
+
+- **The tokenizer path loads tokenizer files only.** `AutoTokenizer.from_pretrained(...,
+  local_files_only=True)` reads a few megabytes beside the 54 GB of weights and never
+  opens them. Corpus preparation therefore needs no GPU and no network, and can be done
+  before the machine is rented.
+- **`expected_vocab_size` is a refusal, not a repair.** If the tokenizer disagrees with the
+  student, the run stops. Nothing resizes the embedding: that would leave rows the run
+  never trains and a checkpoint whose vocabulary cannot be accounted for.
+- **248,320 is never hardcoded as the tokenizer's answer.** The vocabulary is read off the
+  loaded tokenizer with `len(tokenizer)` and recorded; `expected_vocab_size` is the
+  student's number, checked against it.
+- **Packing is `document + EOS + document + EOS + ...`**, chunked at exactly
+  `max_sequence_length`. The trailing partial chunk is dropped and counted rather than
+  padded, because the trainer feeds one rectangular tensor as both input and labels with
+  no mask and no `-100` — padding would be trained on as if it were text.
+- **`vendor/qwen38-metadata` cannot serve as `tokenizer_path`.** It carries
+  `tokenizer_config.json` but no `tokenizer.json`, so it has no vocabulary to encode with.
+  Use the downloaded checkpoint.
+- **The run summary records the tokenizer** — class, vocabulary size, EOS id, source path,
+  per-file SHA-256, and the teacher model and revision when the config supplies them —
+  inside the existing `corpus` block of `summary.json`.
+
+A smoke run needs no large corpus: `max_documents` and `max_tokens` bound the stream, and
+a few kilobytes of text is enough to prove the path end to end.
+
+**What CPU work has and has not established.** The data path, its packing, its vocabulary
+refusals and its trainer integration are tested offline against the repository's own tiny
+tokenizer fixture (`tests/test_tokenized_data.py`). None of that touches the real Qwen
+tokenizer, the real teacher, or a GPU. The full teacher SHA is resolved here, on the GPU
+machine, in step B — it was not available to the CPU work.
 
 
 ## F. Preserve these

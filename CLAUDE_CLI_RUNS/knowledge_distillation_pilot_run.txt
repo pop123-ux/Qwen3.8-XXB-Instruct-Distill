@@ -1,0 +1,907 @@
+ ▐▛███▛█   Claude Code v2.1.258
+▝▜██████▀  Opus 5 · Claude Pro
+  ▝▝ ▝▝    /…/Qwen3.8-XXB-Instruct-Distill/.claude/worktrees/run001-kd-pilot
+
+
+❯ teacher forward → student forward → KD loss → backward → optimizer step.      
+  10. If the preflight is successful, run the FIRST REAL KD PILOT.              
+  11. Keep Run 001 bounded to approximately 100–300 optimizer steps, with a     
+  maximum target cost of about $2 and maximum wall time of 2 hours.             
+  12. Do not launch Run 002.                                                    
+                                                                                
+  GPU access is centralized:                                                    
+  Only the MAIN AGENT may perform model downloads, model materialization, GPU   
+  training, or GPU benchmarking unless a subagent is explicitly required for a  
+  tiny isolated validation.                                                     
+                                                                                
+  Do not invent CLI flags.                                                      
+  Do not modify the canonical architecture.                                     
+  Do not fabricate MTP behavior.                                                
+  Do not silently change research methodology.                                  
+  Minimize external requests and reuse local artifacts.                         
+                                                                                
+  At the end, produce a consolidated report containing the subagent findings    
+  plus the complete Run 001 experimental record.                                
+
+● I'll start by reading the repo state to reconstruct what Run 001 requires —
+  your message came through starting at item 10, so I need the project's own
+  protocol docs to fill in steps 1–9.
+
+  Searched for 1 pattern, ran 1 shell command (ctrl+o to expand)
+
+● Reading the protocol docs and checking hardware. The key unknowns: what the
+  recorded KD blocker is, and whether a GPU is actually present.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● A40 with 47.7 GB is present (the checked-in hardware_report.json is stale — it
+  records a 14.5 GB T4). Now reading the recorded KD blocker and the run
+  protocol.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Now checking the actual environment: disk, installed library versions, and
+  whether the pinned teacher is reachable at all.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● RunPod A40, 96 CPU, 503 GB RAM, 207 TB free on /workspace — but no ML
+  libraries installed at all. Setting up tracking, then installing deps and
+  testing HF reachability.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● pip and huggingface.co both reachable. Now the decisive question — does the
+  pinned teacher, and the transformers version the student needs, actually
+  exist?
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Teacher repo exists and transformers 5.15.1 is available. Starting dependency
+  install in the background while I read the run protocol.
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● B2 is now closed — full SHA resolved:
+  72a217afab8029b39e4af1c7273a829995a3dbaf. Checking teacher size and config
+  before committing to any download.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Background command "Install ML dependencies" completed (exit code 0)
+
+● Deps installed. Teacher is 55.59 GB, and notably multimodal
+  (Qwen3_5ForConditionalGeneration — vision tower + mtp_num_hidden_layers: 1).
+  Let me check the downloader's real flags before launching it.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Launching the pinned download now — it's the long pole. Everything goes on
+  /workspace (the 50 GB overlay root would overflow).
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Entering a worktree before any code changes, then launching the download.
+
+● Creating worktree(run001-kd-pilot)
+  ⎿  Switched to worktree on branch worktree-run001-kd-pilot
+     /workspace/Qwen3.8-XXB-Instruct-Distill/.claude/worktrees/run001-kd-pi
+     lot
+  Ran 1 shell command (ctrl+o to expand)
+
+● The worktree was branched from main and is missing the three newest commits —
+  including the tokenizer-backed data path I need. Rebasing it onto the working
+  branch tip.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Worktree now matches the branch tip. Launching the pinned 55.6 GB download in
+  the background.
+
+  Listed 1 directory, ran 2 shell commands (ctrl+o to expand)
+
+● Background command "Download pinned teacher checkpoint" completed (exit code
+0)
+
+● 55.6 GB downloaded in 47 seconds. Now mapping the actual source tree and
+  checking the test suite.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Test suite still running. Let me check the architecture gate before launching
+  a 20-minute smoke test — the teacher is Qwen3_5ForConditionalGeneration but
+  the repo's ledger references Qwen3_5ForCausalLM.
+
+  Searched for 2 patterns (ctrl+o to expand)
+
+● Repo already handles the multimodal→text-tower remap correctly. Verifying
+  provenance, then launching the smoke test.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Important provenance finding: config.json matches the vendored verified hash
+  exactly, but tokenizer_config.json, generation_config.json, and 
+  chat_template.jinja all differ from the metadata verified on 2026-08-23. The
+  architecture is identical; the tokenizer/chat-template layer is not.
+  Investigating that while the smoke test runs, and putting a subagent on the
+  KD-path audit in parallel.
+
+● Agent(Audit KD training path) Sonnet 5
+  ⎿  Backgrounded agent (↓ to manage · ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Found the explanation. 72a217a (2026-08-13 08:23) is the weights-upload commit
+  — but upstream pushed three metadata fixes two hours later
+  (tokenizer_config.json, chat_template.jinja, generation_config.json). The
+  vendored "verified" metadata came from after those fixes. Verifying what the
+  later revision contains.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Confirmed: dbdc473dea0d carries exactly the metadata the project verified on
+  2026-08-23, config.json is byte-identical across all revisions, and no weight
+  commit sits between. Verifying the weights really are identical, and checking
+  smoke-test progress.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Weights confirmed byte-identical across both revisions (same LFS oid digest
+  for all 18 shards). Smoke test is still loading. Meanwhile, running the
+  project's own VRAM tooling on the training case — this is the question that
+  decides whether Run 001 is feasible at all.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Decisive constraint confirmed: full-parameter KD on the canonical student 
+  needs 48.5 GiB for weights+gradients alone — before the teacher, optimizer, or
+  activations — against 44.4 GiB usable. Checking the smoke test.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Smoke test is progressing — GPU sitting at 17.3 GB, matching the predicted
+  4-bit teacher footprint (output is block-buffered, hence empty). Preparing the
+  corpus path meanwhile.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The project already has a reproducible corpus method (Project Gutenberg, fixed
+  catalogue ids). Reusing it rather than inventing one. Starting corpus prep in
+  parallel.
+
+  Ran 2 shell commands (ctrl+o to expand)
+● GPU holds 17.3 GB (teacher loaded) but 0% util — checking whether it's
+  actually progressing. Launching corpus prep in parallel.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Smoke test is in torch.compile (32 inductor workers spawned) — that's the
+  generation check, so load and tokenizer stages passed. Waiting on it while
+  checking corpus prep.
+
+  Listed 1 directory, ran 1 shell command (ctrl+o to expand)
+
+● Background command "Prepare Gutenberg corpus" completed (exit code 0)
+
+● Agent "Audit KD training path" finished · 4m 53s
+
+● Subagent audit is back with a decisive finding. Let me check the smoke test
+  and corpus, then reconcile.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Corpus is ready: 5.6 MB train / 4.4 MB validation of real public-domain
+  English, deterministic and hashed. Smoke test still compiling. Using the wait
+  to check the infeasibility against the project's own estimator rather than my
+  arithmetic.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● There's a tiny_fixture — the project's own scaled-down member of the same
+  architecture family as FROZEN_STUDENT. Checking it, and the smoke test.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Background command "Run teacher smoke test (4-bit)" completed (exit code 0)
+
+● Background command "Run full test suite" completed (exit code 0)
+
+● Decisive result — and it confirms the provenance drift I found by hashing. The
+  smoke test:
+
+  - [1/10] load PASSED — Qwen3_5ForCausalLM, 611.9s, 0 non-text tensors 
+    discarded, missing-weight gate armed. The teacher is real and loads.
+  - [2/10] tokenizer PASSED — Qwen2Tokenizer, vocab 248,077, </think> id 248069.
+  - [3/10] chat template FAILED — Unknown reasoning_effort: medium. Expected one
+    of: low, high, xhigh.
+
+  That failure is exactly what the hash mismatch predicted: 72a217a carries the
+  original chat template, which upstream replaced two hours later. Checking the
+  report and test suite before correcting the pin.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Test suite: 3 failures, all environment artifacts (a CPU-only test that fails
+  because we have a GPU, a matplotlib-missing plots test, one
+  checkpoint-contract test) — none on the KD path. Confirmed: teacher loaded
+  with 0 missing / 0 unexpected / 0 mismatched, A40 = 44.43 GiB.
+
+  Now correcting the pin. Fetching the three superseded metadata files from
+  dbdc473, preserving the originals for provenance.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Blocked — and that's a fair block: mutating the downloaded checkpoint would
+  leave a directory matching no single revision. The cleaner research practice
+  is a separate, properly-pinned download. The weights are identical LFS objects
+  and the first fetch took 47s, so this is cheap.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● All four hashes at dbdc473 match the vendored verified metadata exactly. But
+  note the templates accept different mode sets: 72a217a = {low, high, xhigh},
+  dbdc473 = {low, medium, xhigh}. Checking what the project expects.
+
+  Searched for 1 pattern, ran 1 shell command (ctrl+o to expand)
+
+● Strong confirmation: the project's reasoning_modes.py documents exactly the
+  corrected template's contract — accepts xhigh/medium/low, and high "raises
+  inside it… the one that catches people out." dbdc473 accepts
+  ('xhigh','medium','low'); 72a217a accepts ('low','high','xhigh'). The pin was
+  the problem, not the code. Re-running the gate at the corrected pin.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Smoke test running. Meanwhile, getting the infeasibility verdict from the
+  project's own feasibility checker rather than my arithmetic.
+
+  Ran 2 shell commands (ctrl+o to expand)
+● Key correction from the project's own memory model: under bf16 it holds fp32 
+  master weights and fp32 gradients (autocast casts only compute), and adamw
+  moments cost 8 B/param. Computing the canonical Run 001 budget with the
+  project's constants and its audited parameter count.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Definitive: 210.2 GiB required vs 43.43 GiB available — 4.8× over, and even
+  the (unimplemented) 8-bit optimizer path is 3.2× over. Run 001 at canonical
+  scale cannot run on this card. Checking the smoke test, then building the
+  preflight glue.
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● Now writing the missing glue — the launcher that wires canonical-path
+  components into train(). Checking the backend constructor first so I reuse the
+  verified loader rather than a bare from_pretrained.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Smoke test still loading. Writing the preflight launcher now — the glue the
+  audit found missing. It drives the same code path Run 001 would use
+  (pretrained checkpoint + tokenized corpus + resident verified teacher).
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● A real 32.3 M-param Qwen3_5MoeForCausalLM — same architecture family, same
+  class, same 248,320 vocab as the frozen target. That's the sanctioned
+  preflight stand-in. Writing the launcher.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Writing the launcher while the gate finishes.
+
+● Write(scripts/kd_run.py)
+  ⎿  Wrote 247 lines to scripts/kd_run.py
+       1 #!/usr/bin/env python3
+         dent forward, KD loss,
+       3 backward, optimizer step.
+       5 This is the glue the roadmap was missing. Every piece it uses al
+         ready existed and is
+         ing loop:
+       7 
+         ose missing-weight gate is
+       9   fatal — never a bare ``from_pretrained``;
+         urce: online``), the only
+     … +308 lines (ctrl+o to expand)
+
+● Background command "Re-run smoke test at corrected pin" completed (exit code
+0)
+
+  Read 1 file (ctrl+o to expand)
+
+● Major progress — checks 1–6 all pass at the corrected pin:
+
+  - [3/10] all four reasoning modes now render distinctly (thinking_disabled
+    114, low 269, medium 103, xhigh 340 chars, four distinct hashes) —
+    confirming the docs' claim that medium is the shortest and not a no-op.
+  - [5/10] generation: answered 391 to "17 × 23" — correct, so these are
+    genuinely the trained weights, not random ones.
+  - [7/10] FAILED — RuntimeError: index is on cpu, different from other tensors 
+    on cuda:0 building the TeacherSignal.
+
+  That's a real bug in the project's own KD code, and it sits directly on the
+  Run 001 path. Locating it.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● capture_signal is device-safe. The index_select call must be in the smoke
+  test's own check 7. Locating it.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Confirmed the bug: teacher_logits moves ids to the model's device
+  (real_teacher.py:770), but OnlineTeacher.signal_for calls the model directly
+  with no move. Two paths to the same teacher, only one device-safe. Fixing it.
+
+● Update(src/qwen_distill/distillation/teacher_signal.py)
+  ⎿  Added 8 lines
+      68          self.model.eval()
+      69          try:
+      70              with torch.no_grad():
+      71 +                # Move the ids the way ``real_teacher.teacher_l
+         +ogits`` does. The trainer                                      
+      72 +                # already builds its batch on the training devi
+         +ce, so this is a no-op                                         
+      73 +                # there; a caller holding CPU ids — the smoke t
+         +est does — would otherwise                                     
+      74 +                # fail inside the embedding's index_select with
+         + a device mismatch, and the                                    
+      75 +                # two routes to the same teacher must not disag
+         +ree about whose job this is.                                   
+      76 +                device = getattr(self.model, "device", None)   
+      77 +                if device is not None:                         
+      78 +                    input_ids = input_ids.to(device)           
+      79                  logits = self.model(input_ids=input_ids).logits
+      80              signal = capture_signal(logits, top_k=self.top_k, t
+          emperature=self.temperature)
+      81          finally:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● 58 tests pass. Fixing the import ordering ruff flagged.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Ruff clean, config validates, launcher works. Running the preflight for real —
+  5 steps first to prove the chain end-to-end against the live teacher.
+
+  Ran 1 shell command (ctrl+o to expand)
+● The trainer's own cross-check caught a real bug in my launcher: I built the
+  signal provider at temperature 1.0 while kd_temperature was 2.0. Fixing.
+
+● Update(scripts/kd_run.py)
+  ⎿  Added 6 lines, removed 1 line
+      226          strict_architecture=True,
+      227      )
+      228      backend.load()   # missing weights are fatal here, never a
+            warning
+      229 -    teacher = backend.signal_provider(top_k=args.kd_top_k or N
+          -one, temperature=1.0)                                         
+      229 +    # The capture temperature must equal training.kd_temperatu
+          +re: the stored logsumexp is                                   
+      230 +    # taken at the capture temperature, and the trainer refuse
+          +s a mismatch rather than                                      
+      231 +    # letting the tail term be computed against a distribution
+          + it does not describe.                                        
+      232 +    teacher = backend.signal_provider(                        
+      233 +        top_k=args.kd_top_k or None, temperature=args.kd_tempe
+          +rature                                                        
+      234 +    )                                                         
+      235      print(f"    teacher ready: {teacher.describe()}")
+      236  
+      237      print(f"\n  DISTILLING {args.steps} steps "
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The fail-closed vocab guard fired — and this is a real defect on the critical 
+  path, not a nuisance. The teacher's tokenizer reports 248,077 tokens; the
+  model's config.vocab_size (which the canonical student inherits) is 248,320.
+  The 243-token gap is standard embedding padding (248,320 = 128 × 1,940). So
+  the config documented in REAL_TEACHER_RUN.md — expected_vocab_size: 248320 —
+  can never be satisfied against the real teacher. Let me look at the guard.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Confirmed: 248,320 = 128 × 1,940 exactly, so 243 padding rows. The guard
+  demands exact equality, which the real teacher can never satisfy — B4 is not 
+  actually resolved. Fixing the guard to enforce the invariant that matters (no
+  token id may index past the embedding) while making padding explicit rather
+  than silent.
+
+● Update(src/qwen_distill/training/tokenized_data.py)
+  ⎿  Added 30 lines, removed 10 lines
+      407      # Checked before any tokenisation, so a mismatch costs a s
+           econd rather than a corpus.
+      408      # Loud on purpose: the alternative — resizing the student'
+           s embedding to fit — leaves
+      409      # rows that were never trained and a checkpoint whose voca
+           bulary nobody can account for.
+      410 -    if expected_vocab_size is not None and vocab_size != expec
+          -ted_vocab_size:                                               
+      411 -        raise CorpusError(                                    
+      412 -            f"the tokenizer at {tokenizer_path} has a vocabula
+          -ry of {vocab_size}, but the "                                 
+      413 -            f"student expects {expected_vocab_size}.\n"       
+      414 -            "  These must match exactly. Do not resize the stu
+          -dent's embedding to close "                                   
+      415 -            "the gap: that leaves rows the run never trains an
+          -d a checkpoint whose "                                        
+      416 -            "vocabulary cannot be accounted for.\n"           
+      417 -            "  Check that tokenizer_path points at the teacher
+          - checkpoint this student "                                    
+      418 -            "was derived from."                               
+      419 -        )                                                     
+      410 +    #                                                         
+      411 +    # The direction matters, and only one of the two is danger
+          +ous. A tokenizer that can                                     
+      412 +    # emit an id at or past the student's embedding produces a
+          +n out-of-range index and a                                    
+      413 +    # run that is wrong from its first batch, so that stays fa
+          +tal. A tokenizer *smaller*                                    
+      414 +    # than the embedding is the normal case for this teacher a
+          +nd not an error: Qwen3.8-27B                                  
+      415 +    # declares vocab_size 248,320 = 128 x 1,940 while its toke
+          +nizer holds 248,077, because                                  
+      416 +    # the embedding is padded to a multiple of 128 for kernel 
+          +alignment. Demanding exact                                    
+      417 +    # equality made this check unsatisfiable against the real 
+          +teacher and blocked every KD                                  
+      418 +    # run; the padding is reported instead of being tolerated 
+          +silently.                                                     
+      419 +    embedding_padding = None                                  
+      420 +    if expected_vocab_size is not None:                       
+      421 +        if vocab_size > expected_vocab_size:                  
+      422 +            raise CorpusError(                                
+      423 +                f"the tokenizer at {tokenizer_path} has a voca
+          +bulary of {vocab_size}, "                                     
+      424 +                f"which is LARGER than the student's embedding
+          + ({expected_vocab_size}).\n"                                  
+      425 +                "  It can emit ids the student cannot index, s
+          +o the run would be wrong "                                    
+      426 +                "from its first batch. Do not resize the stude
+          +nt's embedding to close the "                                 
+      427 +                "gap: that leaves rows the run never trains an
+          +d a checkpoint whose "                                        
+      428 +                "vocabulary cannot be accounted for.\n"       
+      429 +                "  Check that tokenizer_path points at the tea
+          +cher checkpoint this "                                        
+      430 +                "student was derived from."                   
+      431 +            )                                                 
+      432 +        embedding_padding = expected_vocab_size - vocab_size  
+      433 +        if embedding_padding:                                 
+      434 +            print(                                            
+      435 +                f"  tokenizer vocabulary {vocab_size:,} agains
+          +t a student embedding of "                                    
+      436 +                f"{expected_vocab_size:,}: {embedding_padding}
+          + padding row(s) that no "                                     
+      437 +                "token id reaches. This is the teacher's own a
+          +lignment padding and is "                                     
+      438 +                "carried, not trimmed."                       
+      439 +            )                                                 
+      440  
+      441      eos_id = resolve_eos_id(loaded)
+      442      documents = read_documents(
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Two tests assert the old exact-match contract. Reading them to update honestly
+  rather than weaken them.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Too permissive — a 300-token tokenizer against a 248,320 embedding is a wrong 
+  tokenizer, not padding. The real rule: 248,320 = 256 × 970, and 248,077
+  rounded up to a 256 boundary is exactly 248,320. So padding is legitimate only
+  when it's below one alignment boundary. Tightening.
+
+● Update(src/qwen_distill/training/tokenized_data.py)
+  ⎿  Added 21 lines, removed 18 lines
+      417      # equality made this check unsatisfiable against the real 
+           teacher and blocked every KD
+      418      # run; the padding is reported instead of being tolerated 
+           silently.
+      419      embedding_padding = None
+      420 -    if expected_vocab_size is not None:                       
+      421 -        if vocab_size > expected_vocab_size:                  
+      420 +    if expected_vocab_size is not None and vocab_size != expec
+          +ted_vocab_size:                                               
+      421 +        padding = expected_vocab_size - vocab_size            
+      422 +        if not 0 < padding < VOCAB_ALIGNMENT:                 
+      423              raise CorpusError(
+      423 -                f"the tokenizer at {tokenizer_path} has a voca
+          -bulary of {vocab_size}, "                                     
+      424 -                f"which is LARGER than the student's embedding
+          - ({expected_vocab_size}).\n"                                  
+      425 -                "  It can emit ids the student cannot index, s
+          -o the run would be wrong "                                    
+      426 -                "from its first batch. Do not resize the stude
+          -nt's embedding to close the "                                 
+      427 -                "gap: that leaves rows the run never trains an
+          -d a checkpoint whose "                                        
+      428 -                "vocabulary cannot be accounted for.\n"       
+      429 -                "  Check that tokenizer_path points at the tea
+          -cher checkpoint this "                                        
+      430 -                "student was derived from."                   
+      424 +                f"the tokenizer at {tokenizer_path} has a voca
+          +bulary of {vocab_size}, but "                                 
+      425 +                f"the student expects {expected_vocab_size}.\n
+          +"                                                             
+      426 +                + ("  It can emit ids the student cannot index
+          +, so the run would be wrong "                                 
+      427 +                   "from its first batch.\n" if padding < 0 el
+          +se                                                            
+      428 +                   f"  The embedding is {padding} rows larger,
+          + which is too much to be "                                    
+      429 +                   f"alignment padding (that is bounded by {VO
+          +CAB_ALIGNMENT}); this is a "                                  
+      430 +                   "different tokenizer, not a padded one.\n")
+      431 +                + "  These must match. Do not resize the stude
+          +nt's embedding to close the "                                 
+      432 +                  "gap: that leaves rows the run never trains 
+          +and a checkpoint whose "                                      
+      433 +                  "vocabulary cannot be accounted for.\n"     
+      434 +                  "  Check that tokenizer_path points at the t
+          +eacher checkpoint this "                                      
+      435 +                  "student was derived from."                 
+      436              )
+      432 -        embedding_padding = expected_vocab_size - vocab_size  
+      433 -        if embedding_padding:                                 
+      434 -            print(                                            
+      435 -                f"  tokenizer vocabulary {vocab_size:,} agains
+          -t a student embedding of "                                    
+      436 -                f"{expected_vocab_size:,}: {embedding_padding}
+          - padding row(s) that no "                                     
+      437 -                "token id reaches. This is the teacher's own a
+          -lignment padding and is "                                     
+      438 -                "carried, not trimmed."                       
+      439 -            )                                                 
+      437 +        embedding_padding = padding                           
+      438 +        print(                                                
+      439 +            f"  tokenizer vocabulary {vocab_size:,} against a 
+          +student embedding of "                                        
+      440 +            f"{expected_vocab_size:,}: {padding} alignment pad
+          +ding row(s) that no token id "                                
+      441 +            "reaches. Carried, not trimmed — trimming would ch
+          +ange the student's geometry."                                 
+      442 +        )                                                     
+      443  
+      444      eos_id = resolve_eos_id(loaded)
+      445      documents = read_documents(
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● 44 tests pass. Fixing the misplaced constant (it split the DOCUMENT_SEPARATORS
+  comment) and the unused variable.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Clean — 44 tests pass, ruff clean, constant correctly placed. Running the
+  preflight against the live teacher.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Vocab guard now passes and correctly reports the 243 padding rows. The
+  --max-documents 4 bound was too tight (39 tokens). Running the real preflight
+  at 100 steps — within the Run 001 step bound.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The full KD chain works end-to-end against the real teacher. 100 steps, exit
+  0, 130.7s at 423 tok/s: teacher forward (4-bit 27B) → student forward → KD
+  loss → backward → optimizer step. Validation fell monotonically 12.139 →
+  11.623 → 11.425 → 11.414, top-1 agreement rose 0.00 → 0.07.
+
+  Now re-running the smoke test — my device fix should let it pass check 7 and
+  produce the tail-mass sweep and measured peak memory.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Checks 7 and 8 now pass — the device fix worked. Check 9 fails on prefix 
+  consistency (not self-divergence, which passed). For a causal model that
+  should hold exactly; with 4-bit weights and chunked linear-attention kernels
+  it may just be numerical. That distinction matters — if alignment were truly
+  broken, KD targets would be wrong. Measuring it precisely in the background
+  while I write up.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Write(scripts/probe_prefix_consistency.py)
+  ⎿  Wrote 91 lines to scripts/probe_prefix_consistency.py
+       1 #!/usr/bin/env python3
+         nt, or on 4-bit noise?
+       3 
+          for a prefix match the
+         causal model that identity
+       6 holds in exact arithmetic, so a failure is worth separating into
+       7 causes:
+       8 
+          for the token the student
+         ffer substantially, and
+     … +102 lines (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+● While that runs, gathering the preflight's recorded metrics for the report.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Rich record. Notably the first measured teacher memory: 16.46 GiB resident vs
+  the 16.31 GiB analytical estimate. Getting the peak and the probe result.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Measured peak: 19.02 GiB allocated / 20.27 GiB reserved. Probe still loading.
+  Recording findings in the project's ledger now.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Write(scripts/record_run001.py)
+  ⎿  Wrote 207 lines to scripts/record_run001.py
+       1 #!/usr/bin/env python3
+       2 """Write this session's findings into the experiment ledger.
+       3 
+       4 One entry per finding, each with its own provenance, so a later 
+         reader can tell what was
+       6 """
+       7 
+       8 from __future__ import annotations
+       9 
+      10 import json
+     … +253 lines (ctrl+o to expand)
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● 5 findings recorded (ledger now 9 entries). Fixing ruff and checking the
+  probe, which is taking longer than expected.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Background command "Run prefix consistency probe" completed (exit code 0)
+
+● Verdict is unambiguous: numerical, not misalignment. Argmax agrees at 100% of
+  shared positions (0 disagreements); max logit difference 0.125 against a logit
+  scale of 19.1 (0.65% relative), max total-variation 0.022. Positions are
+  correctly aligned — the smoke test's atol=1e-2 is simply too tight for a 4-bit
+  hybrid model. I'm recording that rather than loosening a verification gate on
+  my own initiative.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Write(scripts/record_prefix_finding.py)
+  ⎿  Wrote 56 lines to scripts/record_prefix_finding.py
+      1 #!/usr/bin/env python3
+      2 """Record the prefix-consistency probe's verdict in the ledger.""
+        "
+      3 
+      4 from __future__ import annotations
+      5 
+      6 import json
+      7 from pathlib import Path
+      8 
+      9 import _bootstrap  # noqa: F401
+     … +57 lines (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● 6 findings recorded. Updating the docs with the pin correction.
+
+● Update(docs/REAL_TEACHER_RUN.md)
+  ⎿  Added 40 lines, removed 1 line
+      10  
+      11  
+      12  
+      13 -## The pin: `72a217a`, not yet resolved to 40 characters       
+      13 +## The pin: `dbdc473dea0d6a9763042881cc33d6058d1742d2` — RESOLV
+         +ED, and it is not `72a217a`                                    
+      14  
+      15 +**Closed on hardware, 2026-09-02.** Both halves of this turned 
+         +out to matter, and the                                         
+      16 +second one was not anticipated:                                
+      17 +                                                               
+      18 +```                                                            
+      19 +Qwen/Qwen3.8-27B @ dbdc473dea0d6a9763042881cc33d6058d1742d2    
+         +  <- use this                                                  
+      20 +Qwen/Qwen3.8-27B @ 72a217afab8029b39e4af1c7273a829995a3dbaf    
+         +  <- the upload commit; do NOT use                             
+      21 +```                                                            
+      22 +                                                               
+      23 +`72a217a` resolves to `72a217afab8029b39e4af1c7273a829995a3dbaf
+         +`, and it is the commit that                                   
+      24 +uploaded the weights. It is still the wrong pin. Upstream repla
+         +ced `tokenizer_config.json`,                                   
+      25 +`chat_template.jinja` and `generation_config.json` about two ho
+         +urs after that upload, so the                                  
+      26 +weights-upload commit carries **correct weights beside supersed
+         +ed metadata**.                                                 
+      27 +                                                               
+      28 +The weights are provably identical at the two revisions — all 1
+         +8 safetensors shards have the                                  
+      29 +same LFS object ids and no weight commit exists between them — 
+         +so this costs nothing to fix                                   
+      30 +and is not a re-download of the checkpoint.                    
+      31 +                                                               
+      32 +What pinning the upload commit actually does, observed rather t
+         +han predicted:                                                 
+      33 +                                                               
+      34 +| | `72a217a` (upload) | `dbdc473` (adopted) |                 
+      35 +|---|---|---|                                                  
+      36 +| `chat_template.jinja` accepts | `low`, `high`, `xhigh` | `low
+         +`, `medium`, `xhigh` |                                         
+      37 +| smoke-test check 3 | **FAILS** — `TemplateError: Unknown reas
+         +oning_effort: medium` | passes, four distinct renders |        
+      38 +| tokenizer `model_max_length` | 131,072 | 262,144 |           
+      39 +| metadata matches `vendor/qwen38-metadata` | no | **yes**, all
+         + four SHA-256 |                                                
+      40 +                                                               
+      41 +`reasoning_modes.py` documents the *corrected* contract — `xhig
+         +h`/`medium`/`low`, with                                        
+      42 +`high` raising, "the one that catches people out". That module 
+         +and the upload commit's                                        
+      43 +template contradict each other, so every reasoning-mode experim
+         +ent run at `72a217a` would                                     
+      44 +have been measuring a prompt the project's own model of the tea
+         +cher says does not exist.                                      
+      45 +                                                               
+      46 +The lesson generalises past this repo: **on the Hub, the commit
+         + that uploads the weights is                                   
+      47 +not necessarily the commit you want to pin.** Verify the metada
+         +ta hashes, not just the                                        
+      48 +architecture — `config.json` is byte-identical at both revision
+         +s, so an architecture check                                    
+      49 +alone passes and tells you nothing.                            
+      50 +                                                               
+      51 +<details>                                                      
+      52 +<summary>The original note, kept for the record</summary>      
+      53 +                                                               
+      54  The teacher's checkpoint-upload commit is known in abbreviated 
+          form:
+      55  
+      56  ```
+
+● Update(docs/REAL_TEACHER_RUN.md)
+  ⎿  Added 2 lines
+      76  record it in the ledger alongside the run. The abbreviation is 
+          recorded here only so the
+      77  next session does not have to rediscover which commit is meant.
+      78  
+      79 +</details>                                                     
+      80 +                                                               
+      81  ## The one-command start
+      82  
+      83  ```bash
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Committing. First a sanity check on the tests I touched, and preserving the
+  run records.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● runs/ at repo root isn't gitignored (only experiments/**/runs/). Checking for
+  weight files before I commit anything large.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● 633 MB of checkpoints under runs/ — the docs are explicit that weights and
+  optimizer state are never committed. Unstaging it and adding the gitignore
+  rule the repo was missing.
+
+  Ran 7 shell commands (ctrl+o to expand)
+● No GitHub credentials in this environment. The worktree shares the main repo's
+  object store, so the commit should survive worktree removal — verifying that.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Verified: the branch ref lives in the shared .git, so the commit survives
+  worktree cleanup. Sanity checks done — targeted suites (tokenized_data,
+  teacher_signal, kd_loss, kd_training, ledger) all pass, ruff clean across
+  scripts/ and src/, and I re-read the ask to confirm Run 002 was not launched.
+
+  ---
+
+  Consolidated report — teacher bring-up and first real KD
+
+  Headline: the teacher is verified and the first real KD steps ran. Run 001 at 
+  canonical scale was not executed, because it does not fit this GPU — by 4.8×.
+  Run 002 was not launched.
+
+  The environment is not what the repo believed
+
+  hardware_report.json records a 14.56 GiB Tesla T4. The actual machine is an
+  A40 with 44.43 GiB (96 CPU, 503 GB RAM). No ML libraries were installed;
+  huggingface.co and PyPI are both reachable here, unlike the authoring sandbox.
+
+  1. The pin was wrong — and not in the way the roadmap expected
+
+  B2 assumed the only open question was expanding 72a217a to 40 characters. It
+  expands to 72a217afab... — and that is still the wrong pin. It's the
+  weights-upload commit; upstream replaced tokenizer_config.json,
+  chat_template.jinja and generation_config.json ~2 hours later.
+
+  I caught this by hashing the download against vendor/qwen38-metadata before
+  loading anything: config.json matched, the other three didn't. The smoke test
+  then confirmed it the hard way — at 72a217a, check 3 dies with TemplateError: 
+  Unknown reasoning_effort: medium, because that template accepts low/high/xhigh
+  while the project's own reasoning_modes.py documents low/medium/xhigh with
+  high raising.
+
+  Adopted pin: dbdc473dea0d6a9763042881cc33d6058d1742d2 — weights provably
+  identical (all 18 shards share LFS oids; no weight commit between), metadata
+  matching the vendored hashes on all four files. The trap worth carrying
+  forward: config.json is byte-identical at both revisions, so an architecture
+  check passes and reveals none of this.
+
+  2. The teacher is real
+
+  Loads as Qwen3_5ForCausalLM: 0 missing, 0 unexpected, 0 mismatched, 0 non-text
+  tensors discarded. Answers 391 to "17 × 23" — trained weights, not a
+  freshly-initialised model. All four reasoning modes render distinctly.
+  Measured 4-bit footprint 16.456 GiB vs the 16.31 GiB analytical estimate — the
+  first measured number for this teacher, and the estimator was close.
+
+  3. First real KD steps — mechanism proven
+
+  100 optimizer steps of teacher forward → student forward → KD loss → backward
+  → optimizer step against the resident 4-bit teacher, over Gutenberg English
+  tokenised by the teacher's own tokenizer. Exit 0, 130.7 s, 423 tok/s, peak
+  19.019 GiB. Validation fell 12.139 → 11.414; top-1 agreement rose 0.00 →
+  0.065.
+
+  This is labelled a mechanism check, not Run 001. The student is tiny_fixture
+  at the teacher's vocab — same family, same Qwen3_5MoeForCausalLM class, 32.3 M
+  params. Its loss says nothing about capability.
+
+  Two defects blocked the first step, both on the KD path and neither reachable
+  without real weights:
+  - OnlineTeacher.signal_for never moved input ids to the model's device
+    (teacher_logits always did) — this is what broke smoke-test check 7.
+  - The corpus vocab guard demanded exact equality, which the real teacher can 
+    never satisfy: tokenizer 248,077 vs embedding 248,320 = 256 × 970, i.e. 243
+    alignment padding rows. The config documented in REAL_TEACHER_RUN.md would
+    have refused every KD run. The guard now fails the dangerous direction and
+    bounds padding by one alignment boundary — both existing tests pass
+    unchanged.
+
+  4. Why Run 001 did not run
+
+  By the project's own memory model: 48.5 GiB weights + 48.5 gradients + 96.9
+  AdamW moments = 193.8 GiB, or 210.2 GiB with the teacher resident, against 
+  43.4 GiB usable — 4.8× over. No cheaper path exists in this codebase:
+  lora/qlora raise NotImplementedError, the optimizer is hardcoded
+  torch.optim.AdamW (training.optimizer is cosmetic), and KD over text requires
+  the teacher resident. Largest full-parameter student that fits here: ~1.7 B.
+  Filed as B11 rather than worked around — substituting a smaller student and
+  calling it Run 001 would produce a number nobody could attribute.
+
+  5. Two results that need care
+
+  - Tail mass at k=64 is ~0.675 — but at T=2.0, which inflates it. B6 needs the
+    T=1.0 sweep from check 9, which didn't complete. B6 stays open and the
+    ledger says so.
+  - Check 9's prefix assertion fails at 4-bit. I probed rather than assumed:
+    argmax identical at every shared position, total variation 0.022, relative
+    logit diff 0.65%. Positions are aligned; it's quantisation plus chunked
+    linear-attention kernels. atol=1e-2 is unreachable for any 4-bit run. Left 
+    unchanged — loosening a verification gate is the owner's call, and the
+    evidence belongs in the record first.
+
+  Where it lives
+
+  Branch worktree-run001-kd-pilot, commit 7bdd190 (ref stored in the shared
+  .git, so it survives worktree cleanup). Not pushed — no GitHub credentials and
+  no gh in this environment. To push: git push -u origin 
+  worktree-run001-kd-pilot from a shell with credentials. Records in
+  evaluations/run001/, 6 provenance-tagged ledger entries, new scripts/kd_run.py
+  (the launcher the audit found missing). Checkpoints gitignored.
+
+  Cost ≈ $0.80 of A40 time against the $2 cap; ~2 h 05 wall clock. Three
+  pre-existing test failures are environment artifacts (a CPU-only test that
+  fails because a GPU exists, missing matplotlib, one checkpoint-contract test)
+  — none on the KD path.
+
+  result: Teacher verified and first 100 real KD steps ran on an A40; teacher
+  pin corrected from the weights-upload commit 72a217a to dbdc473 (identical
+  weights, valid metadata); Run 001 at canonical 13.01B scale proven infeasible
+  on this card by 4.8× and deliberately not faked — committed as 7bdd190 on
+  worktree-run001-kd-pilot, unpushed (no credentials).
+
+✻ Brewed for 1h 9m 12s · done 4:02 PM

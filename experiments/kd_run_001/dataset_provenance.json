@@ -1,0 +1,24 @@
+{
+  "captured_at": "2026-09-02T17:17:37.789149+00:00",
+  "manifest_path": "/workspace/corpora/gutenberg/corpus_manifest.json",
+  "name": "level2r_public_domain_english",
+  "preparation_version": "1.0",
+  "created_at": "2026-09-02T15:03:17.789127+00:00",
+  "n_documents": 16,
+  "n_train_documents": 8,
+  "n_validation_documents": 8,
+  "total_bytes": 9990607,
+  "train_bytes": 5554406,
+  "validation_bytes": 4436201,
+  "train_sha256": "bc5972d9a52580ff14ab1b3b1753f9cd68c726c63cc625a7ed3913ec3c5dc5c5",
+  "validation_sha256": "ad34c19250a46fde189e1fcbeabc66aa3e66c0f63da6cd657e0a28b723b83961",
+  "split_rule": "Document-level. Whole works are assigned to train or validation by explicit catalogue id and never split across the two, so validation measures generalisation to unseen prose rather than continuation of a passage already being read. The assignment is fixed in this script and written once into train.txt/validation.txt, so no seed, fraction or ordering can change it between sessions.",
+  "overlap_check": {
+    "checked": 64,
+    "overlaps": 0,
+    "ok": true
+  },
+  "warnings": [],
+  "manifest_sha256": "da98789aae5e8ee127ecf5b326194417cb80d7dea0b4ff4b131277156c08f412",
+  "directory": "/workspace/corpora/gutenberg"
+}

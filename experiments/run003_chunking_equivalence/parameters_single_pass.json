@@ -1,0 +1,47 @@
+{
+  "stage": "parameters",
+  "chunk_pairs": 4,
+  "sequence_length": 1536,
+  "corpus_sha256": "e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d",
+  "lora_dropout": 0.05,
+  "rng_state_restored_before_each_pass": true,
+  "layer_term": {
+    "unchunked_a": 1.450157642364502,
+    "unchunked_b": 1.450157642364502,
+    "chunked": 1.4501575492031407
+  },
+  "value_relative_difference": 6.42422303413191e-08,
+  "gradient_floor_unchunked_vs_unchunked": {
+    "worst_absolute": 0.0001220703125,
+    "worst_relative": 0.034334763948497854,
+    "worst_at_parameter": "base_model.model.model.layers.19.self_attn.q_proj.lora_B.default.weight",
+    "n_compared": 240,
+    "n_zero_in_both": 120
+  },
+  "gradient_test_unchunked_vs_chunked": {
+    "worst_absolute": 0.00091552734375,
+    "worst_relative": 0.0423728813559322,
+    "worst_at_parameter": "base_model.model.model.layers.3.self_attn.q_proj.lora_B.default.weight",
+    "n_compared": 240,
+    "n_zero_in_both": 120
+  },
+  "test_within_tolerance": false,
+  "test_at_or_below_floor": false,
+  "step_peak_allocated_gib": {
+    "unchunked_a": 42.11172151565552,
+    "unchunked_b": 42.11965608596802,
+    "chunked": 37.330469608306885
+  },
+  "tolerance": {
+    "value_relative": 1e-06,
+    "gradient_relative": 1e-05
+  },
+  "elapsed_s": 275.7,
+  "equivalent": false,
+  "teacher": {
+    "model": "Qwen/Qwen3.8-27B",
+    "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+    "quantization": "4bit"
+  },
+  "student_checkpoint": "/workspace/runs/pilot001/transferred"
+}

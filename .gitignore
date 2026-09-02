@@ -39,8 +39,19 @@ experiments/**/runs/**
 # ...and nothing heavy, whatever directory it turns up in.
 experiments/**/*.pt
 experiments/**/*.safetensors
+
+# ... except a completed research run's trained adapters, which are its only irrecoverable
+# output and go through Git LFS (see .gitattributes). The optimizer/scheduler/scaler/RNG
+# state beside them stays excluded by the rules above: it exists to resume training.
+!experiments/**/adapters/**/adapter_model.safetensors
 experiments/**/*.bin
 experiments/**/metrics.jsonl
+# ...except in an archived run record, where the per-step metrics stream IS the evidence
+# and is a few KB for a controlled run. Re-included by pattern rather than `git add -f`'d,
+# for the reason given above: a forgotten flag loses the record. By pattern rather than by
+# name because it was named for Run 001 alone, and the next run's record would have been
+# silently dropped by a rule nobody thought to update.
+!experiments/*/metrics.jsonl
 evaluations/**/raw/
 # Generations can be hundreds of MB; the summaries next to them are what we commit.
 **/generations.jsonl
@@ -49,6 +60,10 @@ evaluations/**/raw/
 **/student_generations.jsonl
 wandb/
 *.log
+# ...except an archived run's training log: tens of KB of the run's own stdout, and the
+# only place its per-step console trace survives. Must come after `*.log`, because the
+# last matching rule wins.
+!experiments/*/training.log
 
 # Local environment
 .env
@@ -67,3 +82,9 @@ vendor/qwen38-metadata/*
 data/level2r/
 data/*/train.txt
 data/*/validation.txt
+
+# Run output at the repository root. `experiments/**/runs/` above covers the
+# historical layout; the GPU workflow writes to ./runs, which holds checkpoints,
+# optimizer state and materialised students. Small JSON records worth keeping are
+# copied into evaluations/ by hand.
+/runs/

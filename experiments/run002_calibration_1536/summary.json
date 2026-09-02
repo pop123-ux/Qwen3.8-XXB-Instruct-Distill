@@ -1,0 +1,287 @@
+{
+  "experiment": "run002_calibration_1536",
+  "level": "",
+  "git_commit": "f5dd3f75bf4e069c75442396bcf43f2f52d0471d",
+  "device": "cuda",
+  "requested_precision": "bf16",
+  "effective_precision": "bf16",
+  "precision_note": null,
+  "objective": "logit_kd",
+  "parameters": null,
+  "parameter_counts": {
+    "total_parameters": 13031508864,
+    "trainable_parameters": 23003136,
+    "trainable_fraction": 0.0017651935965409939,
+    "frozen_parameters": 13008505728
+  },
+  "strategy": "qlora",
+  "optimizer": "adamw",
+  "steps": 1,
+  "runtime_s": 35.62,
+  "tokens_seen": 1536,
+  "tokens_per_second": 43.1,
+  "throughput": {
+    "total_tokens": 1536,
+    "elapsed_s": 35.62,
+    "tokens_per_second": 43.1,
+    "session_tokens": 1536,
+    "session_elapsed_s": 35.62,
+    "session_tokens_per_second": 43.1,
+    "resumed_tokens": 0,
+    "resumed_seconds": 0.0,
+    "n_sessions_note": "elapsed_s and tokens_per_second span every session this experiment ran across; session_* cover only the process that wrote this record"
+  },
+  "first_loss": 7.190154075622559,
+  "final_loss": 7.190154075622559,
+  "best_validation_loss": 9.75677828355269,
+  "first_validation_loss": 9.75677828355269,
+  "final_validation_loss": 9.75677828355269,
+  "corpus": {
+    "source": "/workspace/corpora/gutenberg/train.txt tokenised by Qwen2Tokenizer at /workspace/models/qwen3.8-27b-dbdc473",
+    "n_bytes": 5519074,
+    "n_sequences": 455,
+    "sequence_length": 1536,
+    "sha256": "e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d",
+    "n_train": 433,
+    "n_validation": 22,
+    "n_tokens": 700000,
+    "n_documents": 17017,
+    "n_tokens_dropped": 1120,
+    "document_separator": "blank_line",
+    "packing_version": "1.0",
+    "eos_token_id": 248046,
+    "tokenizer": {
+      "source": "/workspace/models/qwen3.8-27b-dbdc473",
+      "tokenizer_class": "Qwen2Tokenizer",
+      "vocab_size": 248077,
+      "eos_token": "<|im_end|>",
+      "eos_token_id": 248046,
+      "file_sha256": {
+        "tokenizer.json": "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3",
+        "tokenizer_config.json": "b11349aafa7cdc6a320767cf7ceb29ed82f7eda5d65e8e0819e76f0ce947bf27",
+        "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+        "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+      },
+      "teacher_model": "Qwen/Qwen3.8-27B",
+      "teacher_revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+      "is_pinned": true
+    },
+    "tokens_per_byte": 0.1268
+  },
+  "distillation": {
+    "objective": "logit_kd",
+    "kd_alpha": 1.0,
+    "kd_temperature": 2.0,
+    "kd_tail": "bucket",
+    "kd_top_k": 64,
+    "teacher": {
+      "source": "online",
+      "top_k": 64,
+      "temperature": 2.0,
+      "teacher_model": "Qwen/Qwen3.8-27B",
+      "teacher_revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2"
+    },
+    "n_logged_steps": 1,
+    "kd_loss": {
+      "first": 7.1902,
+      "final": 7.1902,
+      "mean": 7.1902
+    },
+    "ce_loss": {
+      "first": 10.9596,
+      "final": 10.9596,
+      "mean": 10.9596
+    },
+    "top1_agreement": {
+      "first": 0.0065,
+      "final": 0.0065,
+      "mean": 0.0065
+    },
+    "teacher_entropy": {
+      "first": 1.3413,
+      "final": 1.3413,
+      "mean": 1.3413
+    },
+    "teacher_tail_mass": {
+      "first": 0.7046,
+      "final": 0.7046,
+      "mean": 0.7046
+    }
+  },
+  "outcome": "completed",
+  "oom": null,
+  "persistence": {
+    "enabled": false,
+    "destination": null,
+    "persisted": [],
+    "failed": [],
+    "all_checkpoints_persisted": false
+  },
+  "memory": {
+    "cuda_available": true,
+    "device_name": "NVIDIA A40",
+    "total_vram_gib": 44.431640625,
+    "snapshots": [
+      {
+        "stage": "baseline",
+        "allocated_gib": 16.441364288330078,
+        "reserved_gib": 16.7109375,
+        "max_allocated_gib": 16.441364288330078,
+        "max_reserved_gib": 16.7109375
+      },
+      {
+        "stage": "after_model_creation",
+        "allocated_gib": 32.55912113189697,
+        "reserved_gib": 32.876953125,
+        "max_allocated_gib": 32.59666728973389,
+        "max_reserved_gib": 32.876953125
+      },
+      {
+        "stage": "after_model_to_device",
+        "allocated_gib": 32.55912113189697,
+        "reserved_gib": 32.876953125,
+        "max_allocated_gib": 32.59666728973389,
+        "max_reserved_gib": 32.876953125
+      },
+      {
+        "stage": "after_optimizer_creation",
+        "allocated_gib": 32.55912113189697,
+        "reserved_gib": 32.876953125,
+        "max_allocated_gib": 32.59666728973389,
+        "max_reserved_gib": 32.876953125
+      },
+      {
+        "stage": "after_input_allocation",
+        "allocated_gib": 32.55913257598877,
+        "reserved_gib": 32.876953125,
+        "max_allocated_gib": 32.59666728973389,
+        "max_reserved_gib": 32.876953125
+      },
+      {
+        "stage": "after_forward",
+        "allocated_gib": 34.053948402404785,
+        "reserved_gib": 36.619140625,
+        "max_allocated_gib": 36.132349491119385,
+        "max_reserved_gib": 36.619140625
+      },
+      {
+        "stage": "after_loss",
+        "allocated_gib": 36.85254096984863,
+        "reserved_gib": 38.513671875,
+        "max_allocated_gib": 38.315361976623535,
+        "max_reserved_gib": 38.513671875
+      },
+      {
+        "stage": "after_backward",
+        "allocated_gib": 33.401204109191895,
+        "reserved_gib": 40.8046875,
+        "max_allocated_gib": 40.40099573135376,
+        "max_reserved_gib": 40.8046875
+      },
+      {
+        "stage": "after_optimizer_step",
+        "allocated_gib": 33.572590827941895,
+        "reserved_gib": 40.9453125,
+        "max_allocated_gib": 40.40099573135376,
+        "max_reserved_gib": 40.9453125
+      },
+      {
+        "stage": "peak_training",
+        "allocated_gib": 33.572590827941895,
+        "reserved_gib": 40.9453125,
+        "max_allocated_gib": 40.40099573135376,
+        "max_reserved_gib": 40.9453125
+      }
+    ],
+    "components": {
+      "cuda_context_and_baseline_gib": 16.441364288330078,
+      "weights_gib": 16.117756843566895,
+      "input_batch_gib": 1.1444091796875e-05,
+      "activations_gib": 1.4948158264160156,
+      "loss_path_gib": 2.7985925674438477,
+      "gradients_net_of_freed_activations_gib": -3.4513368606567383,
+      "optimizer_state_gib": 0.17138671875,
+      "peak_allocated_gib": 40.40099573135376,
+      "peak_reserved_gib": 40.9453125,
+      "allocator_reserve_overhead_gib": 0.5443167686462402
+    },
+    "peak_allocated_gib": 40.40099573135376,
+    "peak_reserved_gib": 40.9453125,
+    "notes": []
+  },
+  "analytical_estimate": null,
+  "estimate_vs_measured": {
+    "available": false
+  },
+  "config": {
+    "name": "run002_calibration_1536",
+    "description": "real teacher-in-the-loop logit KD against the frozen canonical student",
+    "level": "",
+    "objective": {
+      "signal_source": "online"
+    },
+    "teacher": {
+      "model": "Qwen/Qwen3.8-27B",
+      "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2"
+    },
+    "model": {
+      "spec_path": null,
+      "pretrained": "/workspace/runs/pilot001/transferred",
+      "architecture": {},
+      "trust_remote_code": false
+    },
+    "data": {
+      "train_path": null,
+      "validation_path": null,
+      "synthetic": false,
+      "synthetic_examples": 256,
+      "text_corpus": false,
+      "text_path": "/workspace/corpora/gutenberg/train.txt",
+      "procedural_bytes": 2000000,
+      "validation_fraction": 0.05,
+      "max_corpus_bytes": null,
+      "max_sequence_length": 1536,
+      "streaming": false,
+      "shuffle_seed": 0,
+      "tokenized_text": true,
+      "tokenizer_path": "/workspace/models/qwen3.8-27b-dbdc473",
+      "expected_vocab_size": 248320,
+      "document_separator": "blank_line",
+      "max_documents": null,
+      "max_tokens": 700000
+    },
+    "training": {
+      "strategy": "qlora",
+      "optimizer": "adamw",
+      "precision": "bf16",
+      "objective": "logit_kd",
+      "learning_rate": 0.0002,
+      "weight_decay": 0.0,
+      "warmup_steps": 10,
+      "max_steps": 1,
+      "scheduler": "cosine",
+      "batch_size": 1,
+      "gradient_accumulation_steps": 1,
+      "gradient_checkpointing": true,
+      "lora_rank": 16,
+      "lora_alpha": 32,
+      "lora_dropout": 0.05,
+      "kd_weight": 1.0,
+      "kd_temperature": 2.0,
+      "kd_tail": "bucket",
+      "kd_top_k": 64,
+      "seed": 0,
+      "eval_every": 1,
+      "save_every": 1,
+      "log_every": 1,
+      "progress_every": null,
+      "persistent_backup": null
+    },
+    "runtime": {
+      "output_dir": "/workspace/runs/run002_calibration_1536",
+      "device": "auto",
+      "resume_from": null,
+      "reserved_vram_gib": 1.0
+    }
+  }
+}

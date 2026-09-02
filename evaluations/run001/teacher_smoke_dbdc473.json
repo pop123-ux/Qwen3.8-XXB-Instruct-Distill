@@ -1,0 +1,126 @@
+{
+  "checks": {
+    "load": {
+      "model_class": "Qwen3_5ForCausalLM",
+      "tokenizer_class": "Qwen2Tokenizer",
+      "n_missing": 0,
+      "n_unexpected": 0,
+      "n_mismatched": 0,
+      "n_ignored_unexpected": 0,
+      "missing_keys": [],
+      "unexpected_keys": [],
+      "mismatched_keys": [],
+      "error_messages": [],
+      "weights_complete": true,
+      "load_seconds": 95.71
+    },
+    "tokenizer": {
+      "tokenizer_class": "Qwen2Tokenizer",
+      "vocab_size": 248077,
+      "model_max_length": 262144,
+      "bos_token": null,
+      "bos_token_id": null,
+      "eos_token": "<|im_end|>",
+      "eos_token_id": 248046,
+      "pad_token": "<|endoftext|>",
+      "pad_token_id": 248044,
+      "adds_bos": false,
+      "think_open_id": 248068,
+      "think_close_id": 248069,
+      "exact_reasoning_split": true
+    },
+    "template": {
+      "rendered": {
+        "thinking_disabled": {
+          "sha256": "89ff82bb9a697f7d2e392290f1aba404ff74dd9b34120364a43451d834c309d2",
+          "length": 114
+        },
+        "low": {
+          "sha256": "f83f60227d5723aafe78c092913304c1d4e87d39690ae253b8073adfd9abf0ac",
+          "length": 269
+        },
+        "medium": {
+          "sha256": "8611725bfc9c7ab784b251c960e38c90ecc7ca261719152db43647e5afd9d328",
+          "length": 103
+        },
+        "xhigh": {
+          "sha256": "8011e00919a84bd7e9c5a59ef59d39d938a239c42ddfc869a508fbc54ad00cdb",
+          "length": 340
+        }
+      },
+      "collisions": [],
+      "all_distinct": true
+    },
+    "tokenize": {
+      "mode": "low",
+      "n_prompt_tokens": 56,
+      "first_ids": [
+        248045,
+        8678,
+        198,
+        24342,
+        286,
+        4879,
+        369,
+        716
+      ]
+    },
+    "generate": {
+      "generated_tokens": 62,
+      "thinking_tokens": 56,
+      "answer_tokens": 5,
+      "token_counting_method": "exact (token ids split at </think>)",
+      "finish_reason": "stop",
+      "latency_s": 7.96,
+      "answer_preview": "391"
+    }
+  },
+  "plan": {
+    "model": "Qwen/Qwen3.8-27B",
+    "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+    "dtype": "auto",
+    "device_map": "auto",
+    "quantization": "4bit",
+    "max_memory": null,
+    "offload_folder": null,
+    "trust_remote_code": false,
+    "attn_implementation": null,
+    "local_path": "/workspace/models/qwen3.8-27b-dbdc473",
+    "source": "/workspace/models/qwen3.8-27b-dbdc473"
+  },
+  "memory_estimate": {
+    "measured": false,
+    "basis": "analytical estimate from qwen_distill.architecture.memory; NOT measured on hardware. Treat as sizing guidance, not a hardware requirement.",
+    "quantization": "4bit",
+    "context": 4096,
+    "weights_gib": 14.71,
+    "kv_cache_gib": 0.25,
+    "recurrent_state_gib": 0.141,
+    "activations_gib": 0.299,
+    "runtime_overhead_gib": 0.9,
+    "total_gib": 16.31,
+    "note": "bitsandbytes NF4; ~15 GiB of weights for this teacher",
+    "student_objective_note": "The teacher's footprint does not constrain the 16 GB student target. The teacher runs once, on larger rented hardware, to produce the distillation signal; only the student has to fit 16 GB."
+  },
+  "hardware": {
+    "platform": "Linux-6.8.0-52-generic-x86_64-with-glibc2.39",
+    "python_version": "3.12.3",
+    "cuda_available": true,
+    "gpu_name": "NVIDIA A40",
+    "gpu_count": 1,
+    "total_vram_gib": 44.431640625,
+    "cuda_version": "12.8",
+    "driver_version": "570.195.03",
+    "versions": {
+      "python": "3.12.3",
+      "transformers": "5.15.1",
+      "torch": "2.8.0+cu128",
+      "tokenizers": "0.22.2",
+      "huggingface_hub": "1.29.0",
+      "accelerate": "1.14.0",
+      "vllm": "not installed"
+    },
+    "notes": []
+  },
+  "error": "logits for a prefix differ from the same positions of the full sequence; position t is not the prediction for the token the student predicts at t"
+}

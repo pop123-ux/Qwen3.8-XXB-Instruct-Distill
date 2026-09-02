@@ -17,13 +17,14 @@ from pathlib import Path
 from typing import Any
 
 from ..architecture.spec import HybridArchSpec
+from .tokenized_data import DOCUMENT_SEPARATORS
 
 #: Training strategies, cheapest first. See docs/TRAINING_ON_LIMITED_HARDWARE.md for
 #: why LoRA is a prototyping tool here rather than a route to the final model.
 STRATEGIES = ("full", "lora", "qlora")
 OPTIMIZERS = ("adamw", "adamw_8bit", "adafactor", "sgd")
 PRECISIONS = ("bf16", "fp16", "fp32")
-OBJECTIVES = ("sft", "logit_kd", "mixed_kd")
+OBJECTIVES = ("sft", "logit_kd", "mixed_kd", "layer_kd")
 
 
 @dataclass
@@ -79,14 +80,46 @@ class DataConfig:
     streaming: bool = False
     shuffle_seed: int = 0
 
+    #: Language modelling on real text through the **teacher's own tokenizer**, rather
+    #: than the byte-level encoding above. This is what the canonical student requires:
+    #: its embedding has 248,320 rows and a byte stream only ever indexes the first 256.
+    #: Reads `text_path` and needs `tokenizer_path`; loads tokenizer files only, never
+    #: teacher weights. See qwen_distill.training.tokenized_data.
+    tokenized_text: bool = False
+    #: A local teacher checkpoint directory, or any directory holding tokenizer files.
+    #: The GPU workflow points this at the pinned teacher checkout.
+    tokenizer_path: str | None = None
+    #: Fail if the tokenizer's vocabulary is not exactly this. Set it to the student's
+    #: vocab_size to turn a silent mismatch into a refusal; leave it None to accept
+    #: whatever the tokenizer reports.
+    expected_vocab_size: int | None = None
+    #: How documents are found in the corpus file: "blank_line", "line" or "file".
+    #: Each document is followed by an explicit EOS before packing.
+    document_separator: str = "blank_line"
+    #: Smoke-test limits. Both None for a real run.
+    max_documents: int | None = None
+    max_tokens: int | None = None
+
     @property
     def mode(self) -> str:
         """Which data path this config selects."""
+        if self.tokenized_text:
+            return "tokenized"
         if self.text_corpus:
             return "text"
         if self.synthetic:
             return "synthetic"
         return "distillation"
+
+    @property
+    def is_sequence_corpus(self) -> bool:
+        """Whether this config yields packed id sequences rather than JSONL records.
+
+        Both corpus paths — byte-level and tokenised — produce ``list[list[int]]`` and
+        share the trainer's sampler, validation and resume machinery. They differ only in
+        what a token *means*, which is why `mode` still distinguishes them.
+        """
+        return self.mode in ("text", "tokenized")
 
 
 @dataclass
@@ -123,6 +156,29 @@ class TrainingConfig:
     #: Teacher truncation. ``null`` keeps the full distribution — exact, but it holds a
     #: (batch, positions, 248320) tensor beside the student's own.
     kd_top_k: int | None = 64
+
+    # --- layer_kd -----------------------------------------------------
+    #: Weight on the direction (1 - cosine) term relative to the magnitude (MSE) term in
+    #: the layer objective. Both are always reported separately: a student doing the right
+    #: thing at half strength and one pushing the residual stream the wrong way are
+    #: different failures, and one blended number hides which is happening.
+    layer_kd_direction_weight: float = 1.0
+    #: Scale each hidden state to unit RMS per token before comparing. Without it the
+    #: objective is dominated by whichever mapped pairs sit deepest in the residual
+    #: stream, because their activations are simply larger.
+    layer_kd_normalise: bool = True
+    #: How the 48 student layers are mapped onto the teacher's 64. ``group`` keeps whole
+    #: 4-layer hybrid groups so a student layer always lands on a teacher layer of its own
+    #: type; see architecture.moe_init.map_layers.
+    layer_kd_map_strategy: str = "group"
+    #: How many mapped pairs' loss terms are built before their gradient is taken. The
+    #: objective is unchanged either way — the pairs, positions, normalisation, per-pair
+    #: terms and 1/n reduction are identical, and equivalence is asserted against the
+    #: unchunked form in tests/test_layer_kd.py. What changes is peak memory: `mse_loss`
+    #: saves both normalised fp32 inputs, so holding all 48 pairs at 1536 positions costs
+    #: ~4 GiB, which is what put Run 003's first calibration over its gate. ``null`` keeps
+    #: every pair live at once, which is the reference path, not a faster one.
+    layer_kd_chunk_pairs: int | None = 4
 
     seed: int = 0
     eval_every: int = 50
@@ -201,13 +257,44 @@ class ExperimentConfig:
                 "    A config shipped with `pretrained: null` is a template: choose a base "
                 "model before running it"
             )
-        if not (self.data.train_path or self.data.synthetic or self.data.text_corpus):
-            errors.append("data needs one of: train_path, synthetic: true, text_corpus: true")
-        if self.data.synthetic and self.data.text_corpus:
+        sources = [
+            name for name, on in (
+                ("train_path", bool(self.data.train_path)),
+                ("synthetic", self.data.synthetic),
+                ("text_corpus", self.data.text_corpus),
+                ("tokenized_text", self.data.tokenized_text),
+            ) if on
+        ]
+        if not sources:
             errors.append(
-                "data.synthetic and data.text_corpus are different objectives "
-                "(induction task vs byte-level language modelling); set exactly one"
+                "data needs one of: train_path, synthetic: true, text_corpus: true, "
+                "tokenized_text: true"
             )
+        elif len(sources) > 1:
+            # Each source is a different objective over different tokens. Silently
+            # preferring one would make the run something other than the config says.
+            errors.append(
+                f"data sources {', '.join(sources)} are mutually exclusive; set exactly "
+                "one (synthetic is an induction task, text_corpus is byte-level, "
+                "tokenized_text is the teacher's tokenizer, train_path is a "
+                "teacher-generated dataset)"
+            )
+        if self.data.tokenized_text:
+            if not self.data.text_path:
+                errors.append("data.tokenized_text needs data.text_path (a UTF-8 corpus file)")
+            if not self.data.tokenizer_path:
+                errors.append(
+                    "data.tokenized_text needs data.tokenizer_path: a local teacher "
+                    "checkpoint directory, or any directory holding tokenizer files. "
+                    "Only the tokenizer is read; teacher weights are never loaded."
+                )
+            if self.data.document_separator not in DOCUMENT_SEPARATORS:
+                errors.append(
+                    f"data.document_separator must be one of {DOCUMENT_SEPARATORS}, "
+                    f"got {self.data.document_separator!r}"
+                )
+            if self.data.expected_vocab_size is not None and self.data.expected_vocab_size < 1:
+                errors.append("data.expected_vocab_size must be >= 1, or null to skip the check")
         if self.training.batch_size < 1:
             errors.append("batch_size must be >= 1")
         if self.training.gradient_accumulation_steps < 1:
@@ -223,13 +310,28 @@ class ExperimentConfig:
         # to come from the records, which a text corpus has none of.
         if (
             self.training.objective != "sft"
-            and self.data.text_corpus
+            and (self.data.text_corpus or self.data.tokenized_text)
             and (self.objective.get("signal_source") or "dataset") != "online"
         ):
             errors.append(
                 "a text corpus carries no stored teacher logits; either set "
                 "objective.signal_source='online' or use a teacher-generated dataset"
             )
+        if self.training.objective == "layer_kd":
+            if self.training.layer_kd_direction_weight < 0:
+                errors.append("layer_kd_direction_weight must not be negative: a negative "
+                              "weight rewards pointing away from the teacher")
+            if (self.training.layer_kd_chunk_pairs is not None
+                    and self.training.layer_kd_chunk_pairs < 1):
+                errors.append(
+                    "layer_kd_chunk_pairs must be >= 1, or null to hold every pair at "
+                    "once; it selects how the objective is evaluated, not what it is"
+                )
+            if self.training.layer_kd_map_strategy != "group":
+                errors.append(
+                    "layer_kd_map_strategy='importance' needs a measured per-teacher-group "
+                    "score that no experiment has produced; only 'group' can run today"
+                )
         if self.training.kd_tail not in ("bucket", "renormalize"):
             errors.append(
                 f"training.kd_tail must be 'bucket' or 'renormalize', "

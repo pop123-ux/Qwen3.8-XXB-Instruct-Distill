@@ -1,0 +1,42 @@
+# Run run002_logit_kd artefact checksums
+# generated: 2026-09-02T19:30:56.826152+00:00
+# root: /workspace/runs/run002_logit_kd
+#
+# sha256  bytes  relative-path  external-location
+
+5f3c9d15ec0e62dc7943fd115329b2bae873d56e421eb3db8b9b84fef96d34b4  3159  README.md  -
+cd0a75d20b8acbebf5d43fdc7467cddacacfd6da1cf6fbc711d58142f2caefc0  168  checkpoints/latest.json  -
+4781a5d0b4b4fffa71183432c78ff10c9b75a46dc32e09d52699aeffa76befd3  49  checkpoints/step_000064/COMPLETE  -
+6ee51811b1bacc772b335fc27fdd09a56518f58163b53f514bbbc5a69323e76c  92045704  checkpoints/step_000064/adapter_model.safetensors  -
+134d5cc09b2331ab923dba0b0df22d81202b46427707457850a223ca3f89f857  1223  checkpoints/step_000064/checkpoint_manifest.json  -
+fbcc878b5a5b06205f679f6ccc4ccbcf2f642ecb060b5e282f42602efa5d1757  1857  checkpoints/step_000064/config.json  -
+15956eb48719d1badf4c40daccd87883a6467cfb53c2f5d3677d08dd6b8a3c85  1088  checkpoints/step_000064/metadata.json  -
+d0994620071473ce36afe4ccfb126dd71c0b0465f741ba2b568799f1caba1fa5  184225887  checkpoints/step_000064/optimizer.pt  -
+49af8b759c590c949dd07c7f5039aec31c9e8f31dde09faa0c66ac718918bb3c  14565  checkpoints/step_000064/rng.pt  -
+07c7431cf6005e7d8f367d79e995f63e2f9b981a37e3437b795d058f9af4308b  1261  checkpoints/step_000064/scaler.pt  -
+32aa8eb2dec3959598fe67678a57b6b72cb1150e43716ee3993143693df3bccb  1709  checkpoints/step_000064/scheduler.pt  -
+d9e9fe928ccc2afef082a35d2a526ef3a1aa6de56b70d58abfedae22f844ccd2  28606  checkpoints/step_000064/training_state.json  -
+510b3d1443781a526adcdc51b6baab60ca1376a1d3d117a908dcc2c124ff8bd6  50  checkpoints/step_000128/COMPLETE  -
+1dcae281188f1b3b7da254f81d24e7a4b2d8eebbda1a528f8be380a8eca1c0e6  92045704  checkpoints/step_000128/adapter_model.safetensors  -
+c1184b8d38626d69b1b0cefc55f35179209aecf1ea60c307ae2c65785ad3f2d0  1224  checkpoints/step_000128/checkpoint_manifest.json  -
+fbcc878b5a5b06205f679f6ccc4ccbcf2f642ecb060b5e282f42602efa5d1757  1857  checkpoints/step_000128/config.json  -
+4d3c2303bf51e46bfcfa2aca4988d45ab177fbb0effd79a5e4ec07393758024e  1091  checkpoints/step_000128/metadata.json  -
+9de68e377ec7ddca9844220f0d221ab80d97bc705c123553c568a42860f0c656  184225887  checkpoints/step_000128/optimizer.pt  -
+ce951342bf8507accb2df883ccff05d2b228421386613c987ae11d223ba2d4b6  14565  checkpoints/step_000128/rng.pt  -
+07c7431cf6005e7d8f367d79e995f63e2f9b981a37e3437b795d058f9af4308b  1261  checkpoints/step_000128/scaler.pt  -
+48f1e43c6cf04333a75d99f7448915fbfeaa1deae2b367887ffc4ea176440451  1709  checkpoints/step_000128/scheduler.pt  -
+ef716e7b285cf6b28b867c955571140e0123b086c982b832ec742972b8f243c3  57053  checkpoints/step_000128/training_state.json  -
+da2c58cc63893138385c334cd054546dcb5888bc8c99d5631f6bfe46ec873f47  709  command.txt  -
+8ffeceeb1c5b7e72dc9ce8f79ba395d8120c6d1a47b142bf4700ae0132edd810  1230  dataset_provenance.json  -
+c45d1871231b7b4165b0de9206c7122bd9e091dc76ec276274325459b85e41f6  5265  environment.txt  -
+64a06bf01b4b59083490b522fe65c23f18f31b8da791139d599e610e50475ced  474  git.txt  -
+dca668e59130a5f73b6a4815f6eb55b855e40af38ae2b3c2860f3497afcc53d9  41  git_commit.txt  -
+c2e17e85814aa886065501b41a868f73ac063baafaf8ff66de4bb9de5a23f851  1138  hardware.json  -
+2dbda5a0ad7544782749ce17b0afadd400b3f6266af764c6a82a47303587f8c6  2356  hardware.txt  -
+60331e4218698d2e1d4180d69c0353c12d5e8d344c0cd33c5c5b08aa2115a666  17355  manifest.json  -
+85718ebd18a65c866bb868bd1dce8b28b920a3b1ffe952fb8cfc6266ac1cb9c6  78610  metrics.jsonl  -
+08c4623610a1baab6704ce7b5de151b3a7f395aeeeda2a2da86d31f3ed0c7ae9  281  progress/latest.json  -
+a1b5ed49b13456f0624a0c9a1a5fbf8f03e87078cf72ba3f7fd9380cdf16d0ef  8724  summary.json  -
+048fb2a0c4dcf264e6d07319606c1f910b8ea11875fd0ffb454f3c65d93f93bb  1348  teacher_provenance.json  -
+4f33cd655c81ed7467b5c46e16fe5d7f5056d0aa510b3876f38f5fc1408f25b2  996  tokenizer_provenance.json  -
+83750713ac591a829ee9d2cc6934a05a2c1e08aa7768697e6df371950e1c85f9  16341  training.log  -

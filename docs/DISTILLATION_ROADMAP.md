@@ -101,15 +101,20 @@ Both commands below run today against small fixtures and are the same code paths
 teacher takes — only the weights differ:
 
 ```bash
+# 0. fetch the pinned checkpoint (resumable, writes a manifest)
+python scripts/download_teacher.py \
+    --revision <EXACT_QWEN_COMMIT_SHA> --output /data/models/qwen3.8-27b
+
 # 1. is the teacher operational?  (rented 24 GB card)
 #    --revision is required for a Hub load and is checked before anything downloads.
 python scripts/teacher_smoke_test.py \
+    --local-path /data/models/qwen3.8-27b \
     --quantization 4bit \
     --revision <EXACT_QWEN_COMMIT_SHA>
 
 # 2. teacher -> the canonical student. No architecture arguments exist.
 python scripts/distill_pilot.py \
-    --teacher ./qwen3.8-27b \
+    --teacher /data/models/qwen3.8-27b \
     --revision <EXACT_QWEN_COMMIT_SHA> \
     --output runs/pilot1
 
@@ -118,6 +123,9 @@ python scripts/distill_pilot.py --revision <EXACT_QWEN_COMMIT_SHA> --dry-run
 
 # the mechanism regression harness — a small dense student, not a research run
 python scripts/chain_selftest.py --stand-in --output runs/selftest
+
+# every claim this repository makes about itself, checked by running it
+python scripts/acceptance_gate.py
 ```
 
 The pilot loads the teacher through the **verified loader**, not a bare
@@ -212,12 +220,14 @@ measured — the matrix records that this is currently uncontrolled.
 
 | | blocker | blocks | resolvable here? |
 |---|---|---|---|
-| B1 | Teacher weights unreachable — ~54 GB, `huggingface.co` egress-blocked in this sandbox | every real-teacher run | no, needs rented compute |
-| B2 | **Revision unpinned** — no commit SHA supplied or resolvable | reproducibility of any dataset | yes, on the first real run: pass `--revision` |
+| B1 | ~~Teacher weights unreachable~~ | ~~every real-teacher run~~ | **closed** — 55.59 GB fetched and verified on a rented A40; loads with 0 missing / 0 unexpected / 0 mismatched tensors |
+| B2 | ~~Full revision SHA unresolved~~ | ~~reproducible provenance~~ | **closed** — and the answer was not the expected one: the pin is `dbdc473dea0d6a9763042881cc33d6058d1742d2`, **not** the weights-upload commit `72a217a`, whose chat template rejects `medium` and fails smoke-test check 3. See [REAL_TEACHER_RUN.md](REAL_TEACHER_RUN.md) |
 | B3 | Teacher needs ≥24 GB — 16.3 GiB at 4-bit vs 13.56 usable | running teacher and student on one 16 GB card | no, architectural |
-| B4 | No corpus in the teacher's vocabulary — `vendor/` has no `tokenizer.json` | KD over real text at scale | yes, once the tokenizer is downloaded with the weights |
+| B4 | ~~KD blocked on data~~ | ~~any KD step~~ | **closed** — 100 real KD steps ran against the resident teacher. Two defects had to be fixed to get there: `OnlineTeacher.signal_for` did not move ids to the model's device, and the corpus vocabulary guard demanded exact equality, which the real teacher can never satisfy (tokenizer 248,077 vs embedding 248,320 = 256 x 970, 243 alignment padding rows) |
 | B5 | No benchmark harness | every capability claim, and student selection | yes, and it is the critical path |
-| B6 | Offline logit format unchosen | training without a resident teacher | deliberately gated on B1's tail-mass number |
+| B11 | ~~The canonical 13.01B student cannot be trained on one 44 GiB card~~ | ~~Run 001 at canonical scale~~ | **closed for the parameter-efficient path, and only that path.** Full-parameter AdamW remains impossible and was not attempted: 193.8 GiB (48.5 weights + 48.5 gradients + 96.9 moments), 210.2 GiB with the resident teacher, against 44.43 GiB. What was missing was the declared-but-absent LoRA path — `lora`/`qlora` raised `NotImplementedError` and the optimizer was hardcoded `torch.optim.AdamW` regardless of config. Both are now implemented ([peft_support.py](../src/qwen_distill/training/peft_support.py)), and real teacher-in-the-loop KD ran at canonical scale: teacher 4-bit + frozen 13,008,505,728-parameter student in NF4 + 23,003,136 LoRA parameters across all 48 layers, **measured peak 37.79 GiB allocated / 38.30 GiB reserved** at sequence 1024, batch 1. See [RUN_001.md](RUN_001.md). Sequence length is the binding constraint on this path — see B12 |
+| B12 | **Sequence length above ~1850 tokens does not fit the KD path on this card.** Measured, not modelled: 32.60 GiB is sequence-independent (4-bit teacher + 4-bit student + optimizer) and the remainder scales linearly at ~5.09 MiB/token, dominated by 248,320-wide logits materialised in fp32 for both models — 5.19 GiB at sequence 1024, 10.42 GiB at 2048 (ratio 2.006). Peak allocated at 2048 is **43.014 GiB** of 44.43, which stopped Run 002's 128-step control at its 42 GiB gate | any KD run above ~1850 tokens, and every long-context training ambition | not on this card. The teacher's 16.44 GiB of residency is the item worth removing, which is B6. See [RUN_002.md](RUN_002.md) |
+| B6 | Offline logit format unchosen | training without a resident teacher, and every sequence above ~1850 tokens (B12) | gated on the tail-mass number, now measured twice: **0.654** at sequence 1024, **0.708** at 2048. Two thirds of the teacher's mass sits outside a 64-entry shortlist, so k=64 is not a viable offline format |
 | B7 | ~~Frozen student exceeds 16 GB at every release precision~~ | ~~the release itself~~ | **closed** — `num_experts` 24 → 8; fits Q4 to 131,072, Q5 to 65,536, Q6 to 32,768 |
 | B10 | 262,144-token window needs an 8-bit KV cache to fit | a full-window release claim | yes, once KV-quantised retrieval accuracy is measured |
 | B8 | MTP not built by the runtime | any MTP training or result | no; the field is kept as an extension point and no MTP result is claimed |

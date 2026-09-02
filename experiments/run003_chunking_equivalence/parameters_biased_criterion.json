@@ -1,0 +1,166 @@
+{
+  "stage": "parameters",
+  "chunk_pairs": 4,
+  "repeats_per_form": 3,
+  "sequence_length": 1536,
+  "corpus_sha256": "e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d",
+  "lora_dropout": 0.05,
+  "rng_state_restored_before_each_pass": true,
+  "why_repeats": "the student's backward is not bit-reproducible on this hardware \u2014 a 13B MoE with DeltaNet kernels and gradient checkpointing accumulates with order-dependent atomics and routing scatters \u2014 so a single unchunked pass is not a fixed reference. The comparison is between-form difference against each form's own run-to-run spread, per parameter.",
+  "layer_term": {
+    "unchunked": [
+      1.450157642364502,
+      1.450157642364502,
+      1.450157642364502
+    ],
+    "chunked": [
+      1.4501575492031407,
+      1.4501575492031407,
+      1.4501575492031407
+    ]
+  },
+  "value_relative_spread": 6.42422303413191e-08,
+  "n_parameters": 240,
+  "n_parameters_identical_everywhere": 123,
+  "gradient_within_unchunked": {
+    "worst_absolute": 0.001068115234375,
+    "worst_relative": 0.0688976377952756,
+    "worst_at_parameter": "base_model.model.model.layers.2.linear_attn.in_proj_qkv.lora_B.default.weight"
+  },
+  "gradient_within_chunked": {
+    "worst_absolute": 0.0003509521484375,
+    "worst_relative": 0.041666666666666664,
+    "worst_at_parameter": "base_model.model.model.layers.4.linear_attn.in_proj_qkv.lora_B.default.weight"
+  },
+  "gradient_between_forms": {
+    "worst_absolute": 0.00041675567626953125,
+    "worst_relative": 0.06179298642533937,
+    "worst_at_parameter": "base_model.model.model.layers.14.linear_attn.in_proj_qkv.lora_B.default.weight"
+  },
+  "n_parameters_exceeding_own_spread": 38,
+  "parameters_exceeding_own_spread": [
+    {
+      "parameter": "base_model.model.model.layers.8.linear_attn.in_proj_qkv.lora_B.default.weight",
+      "between_absolute": 0.0008544921875,
+      "floor_absolute": 0.0006103515625
+    },
+    {
+      "parameter": "base_model.model.model.layers.3.self_attn.k_proj.lora_B.default.weight",
+      "between_absolute": 0.00054931640625,
+      "floor_absolute": 0.0003662109375
+    },
+    {
+      "parameter": "base_model.model.model.layers.14.linear_attn.in_proj_qkv.lora_B.default.weight",
+      "between_absolute": 0.00041675567626953125,
+      "floor_absolute": 0.000274658203125
+    },
+    {
+      "parameter": "base_model.model.model.layers.0.linear_attn.in_proj_qkv.lora_B.default.weight",
+      "between_absolute": 0.0002593994140625,
+      "floor_absolute": 0.000213623046875
+    },
+    {
+      "parameter": "base_model.model.model.layers.20.linear_attn.in_proj_qkv.lora_B.default.weight",
+      "between_absolute": 0.0001220703125,
+      "floor_absolute": 8.392333984375e-05
+    },
+    {
+      "parameter": "base_model.model.model.layers.4.linear_attn.in_proj_qkv.lora_B.default.weight",
+      "between_absolute": 0.00042724609375,
+      "floor_absolute": 0.00038909912109375
+    },
+    {
+      "parameter": "base_model.model.model.layers.0.linear_attn.out_proj.lora_B.default.weight",
+      "between_absolute": 0.0006103515625,
+      "floor_absolute": 0.000579833984375
+    },
+    {
+      "parameter": "base_model.model.model.layers.12.linear_attn.in_proj_qkv.lora_B.default.weight",
+      "between_absolute": 0.0003509521484375,
+      "floor_absolute": 0.0003204345703125
+    },
+    {
+      "parameter": "base_model.model.model.layers.15.self_attn.q_proj.lora_B.default.weight",
+      "between_absolute": 0.0001220703125,
+      "floor_absolute": 9.1552734375e-05
+    },
+    {
+      "parameter": "base_model.model.model.layers.18.linear_attn.in_proj_qkv.lora_B.default.weight",
+      "between_absolute": 0.0001220703125,
+      "floor_absolute": 9.1552734375e-05
+    },
+    {
+      "parameter": "base_model.model.model.layers.22.linear_attn.in_proj_qkv.lora_B.default.weight",
+      "between_absolute": 9.1552734375e-05,
+      "floor_absolute": 6.103515625e-05
+    },
+    {
+      "parameter": "base_model.model.model.layers.25.linear_attn.in_proj_qkv.lora_B.default.weight",
+      "between_absolute": 6.103515625e-05,
+      "floor_absolute": 3.0517578125e-05
+    },
+    {
+      "parameter": "base_model.model.model.layers.19.self_attn.v_proj.lora_B.default.weight",
+      "between_absolute": 0.00018310546875,
+      "floor_absolute": 0.000156402587890625
+    },
+    {
+      "parameter": "base_model.model.model.layers.11.self_attn.q_proj.lora_B.default.weight",
+      "between_absolute": 0.00018310546875,
+      "floor_absolute": 0.00016021728515625
+    },
+    {
+      "parameter": "base_model.model.model.layers.19.self_attn.q_proj.lora_B.default.weight",
+      "between_absolute": 0.0001068115234375,
+      "floor_absolute": 8.392333984375e-05
+    },
+    {
+      "parameter": "base_model.model.model.layers.11.self_attn.k_proj.lora_B.default.weight",
+      "between_absolute": 0.00022125244140625,
+      "floor_absolute": 0.0002040863037109375
+    },
+    {
+      "parameter": "base_model.model.model.layers.7.self_attn.o_proj.lora_B.default.weight",
+      "between_absolute": 6.29425048828125e-05,
+      "floor_absolute": 4.673004150390625e-05
+    },
+    {
+      "parameter": "base_model.model.model.layers.23.self_attn.v_proj.lora_B.default.weight",
+      "between_absolute": 9.1552734375e-05,
+      "floor_absolute": 7.62939453125e-05
+    },
+    {
+      "parameter": "base_model.model.model.layers.8.linear_attn.out_proj.lora_B.default.weight",
+      "between_absolute": 8.0108642578125e-05,
+      "floor_absolute": 6.4849853515625e-05
+    },
+    {
+      "parameter": "base_model.model.model.layers.12.linear_attn.out_proj.lora_B.default.weight",
+      "between_absolute": 5.245208740234375e-05,
+      "floor_absolute": 3.814697265625e-05
+    }
+  ],
+  "step_peak_allocated_gib": {
+    "unchunked": [
+      42.11172151565552,
+      42.11965608596802,
+      42.11965608596802
+    ],
+    "chunked": [
+      37.330469608306885,
+      37.330469608306885,
+      37.330469608306885
+    ]
+  },
+  "tolerance": {
+    "value_relative": 1e-06
+  },
+  "elapsed_s": 341.7,
+  "equivalent": false,
+  "teacher": {
+    "model": "Qwen/Qwen3.8-27B",
+    "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+    "quantization": "4bit"
+  },
+  "student_checkpoint": "/workspace/runs/pilot001/transferred"
+}

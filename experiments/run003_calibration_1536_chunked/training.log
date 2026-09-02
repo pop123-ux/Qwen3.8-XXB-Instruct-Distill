@@ -1,0 +1,38 @@
+  canonical student : qwen38_19b_h5120_l48_moe
+                      loaded from /workspace/runs/pilot001/transferred
+  loading teacher Qwen/Qwen3.8-27B @ dbdc473dea0d6a9763042881cc33d6058d1742d2
+    quantization: 4bit
+    teacher ready: {'source': 'online', 'top_k': 64, 'temperature': 2.0, 'teacher_model': 'Qwen/Qwen3.8-27B', 'teacher_revision': 'dbdc473dea0d6a9763042881cc33d6058d1742d2', 'hidden_states': True}
+  DISTILLING 1 steps (batch 1 x 1 accum @ 1536 tokens) ...
+  device: cuda
+  objective: layer_kd  alpha 1.0  T 2.0  tail bucket
+  layer KD : pointwise hidden-state matching, map 'group', direction weight 1.0, normalise True
+  layer loss evaluated in chunks of 4 pair(s), same objective
+  teacher  : {'source': 'online', 'top_k': 64, 'temperature': 2.0, 'teacher_model': 'Qwen/Qwen3.8-27B', 'teacher_revision': 'dbdc473dea0d6a9763042881cc33d6058d1742d2', 'hidden_states': True}
+  tokenizer vocabulary 248,077 against a student embedding of 248,320: 243 alignment padding row(s) that no token id reaches. Carried, not trimmed — trimming would change the student's geometry.
+  corpus: /workspace/corpora/gutenberg/train.txt tokenised by Qwen2Tokenizer at /workspace/models/qwen3.8-27b-dbdc473
+          5,519,074 bytes, 455 sequences of 1536 (433 train / 22 validation)
+          sha256 e11ca38bb099fc89
+          tokenizer Qwen2Tokenizer vocab 248,077 eos 248046
+          700,000 tokens from 17,017 document(s), 1120 dropped in the tail
+  gradient checkpointing: ON
+  strategy: qlora (r=16, alpha=32)
+  optimizer: adamw
+  parameters: 13,031,508,864 total, 23,003,136 trainable (0.1765%)
+  precision: bf16 (autocast)
+  CHECKPOINTING
+    full checkpoint : every 1 steps -> /workspace/runs/run003_calibration_1536_chunked/checkpoints
+    progress record : every 1 steps -> metrics.jsonl + progress/latest.json
+    resume          : no (starting from step 0)
+    persistent copy : off (local only)
+                      NOTHING SURVIVES THIS RUNTIME. Set training.persistent_backup
+                      to a mounted Drive path to keep checkpoints.
+[transformers] `use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.
+  layer map: 48 pairs, 16 teacher layers unsupervised
+  step      1  loss   1.4501  layer 1.4501  (mag 0.9668  dir 0.4834)  kd 7.190  ce 10.960  agree 0.01  tail 0.705       129 tok/s  (run 129)    11.9s
+  step      1  validation   9.8513
+  checkpoint: step_000001 (periodic)
+  finished step 1 of 1 in 37.0s (1,536 tokens seen)
+  wrote /workspace/runs/run003_calibration_1536_chunked/checkpoints/step_000001 and summary.json
+  exit code 0 in 5.1 min
+  record: /workspace/runs/run003_calibration_1536_chunked

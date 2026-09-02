@@ -1,0 +1,138 @@
+{
+  "run_id": "run002_calibration",
+  "generated_at": "2026-09-02T18:15:22.401299+00:00",
+  "run_root": "/workspace/runs/run002_calibration",
+  "copied": [
+    {
+      "name": "README.md",
+      "bytes": 3147,
+      "sha256": "e8760bf87f3f31391477851aaab5b6dd101505ddbf2e1b6da43bbaf5184b1f50",
+      "source": "/workspace/runs/run002_calibration/README.md"
+    },
+    {
+      "name": "manifest.json",
+      "bytes": 18104,
+      "sha256": "143af64b1812d89fd4ceb3586023ea41970f79314318eb1f45999055f42260ec",
+      "source": "/workspace/runs/run002_calibration/manifest.json"
+    },
+    {
+      "name": "command.txt",
+      "bytes": 688,
+      "sha256": "3011a8bab76395e3e1f9a20901d928bda1cb3620a61098758b4034139249f1ce",
+      "source": "/workspace/runs/run002_calibration/command.txt"
+    },
+    {
+      "name": "environment.txt",
+      "bytes": 5265,
+      "sha256": "362c77d03b423bb0ae8a1de4105fe9cbe6d446d1d75b01b37ae865ee0536fec1",
+      "source": "/workspace/runs/run002_calibration/environment.txt"
+    },
+    {
+      "name": "hardware.txt",
+      "bytes": 2351,
+      "sha256": "5dd78a79c551f7ed5e01d6494d994dcf29ea239f5650694dbe410ebe80b75b53",
+      "source": "/workspace/runs/run002_calibration/hardware.txt"
+    },
+    {
+      "name": "git.txt",
+      "bytes": 670,
+      "sha256": "cc42a5fe63bd6758bb4c834050402a50ddbbca6414162b0bb31dab8b22fb57e0",
+      "source": "/workspace/runs/run002_calibration/git.txt"
+    },
+    {
+      "name": "teacher_provenance.json",
+      "bytes": 1348,
+      "sha256": "7f1ed1a69c8760217a7fce2d80927ee6ff57c37e572c9d4d48aadd62ec7859b6",
+      "source": "/workspace/runs/run002_calibration/teacher_provenance.json"
+    },
+    {
+      "name": "tokenizer_provenance.json",
+      "bytes": 996,
+      "sha256": "3198b4c8b722e1c646b4ed2fc91d6f9dcff5ee08976f3df97240cfc7c80206b4",
+      "source": "/workspace/runs/run002_calibration/tokenizer_provenance.json"
+    },
+    {
+      "name": "dataset_provenance.json",
+      "bytes": 1230,
+      "sha256": "11e8176902d257694ac7c2eef8c4a4db7653652b6a53840b738b30c0eb9d8276",
+      "source": "/workspace/runs/run002_calibration/dataset_provenance.json"
+    },
+    {
+      "name": "metrics.jsonl",
+      "bytes": 843,
+      "sha256": "8a216425a480f782ceb8758318525d9b54fdde1ac485a10f5999cdf2d293cfba",
+      "source": "/workspace/runs/run002_calibration/metrics.jsonl"
+    },
+    {
+      "name": "training.log",
+      "bytes": 30115,
+      "sha256": "21e440f1614cba08ec47fa7c7dbdf39753c4ce7bd222c2b40c0abf6dc4983975",
+      "source": "/workspace/runs/run002_calibration/training.log"
+    },
+    {
+      "name": "CHECKSUMS.txt",
+      "bytes": 2878,
+      "sha256": "3dda977c93903aaf9c22dacb4e046cb971647c5e557a26ea564d9d73a942800e",
+      "source": "/workspace/runs/run002_calibration/CHECKSUMS.txt"
+    },
+    {
+      "name": "summary.json",
+      "bytes": 8708,
+      "sha256": "28def31579f13e2bfd5f0abf0323e78378eaccb5ff31d95545377d772076739f",
+      "source": "/workspace/runs/run002_calibration/summary.json"
+    },
+    {
+      "name": "termination.json",
+      "bytes": 599,
+      "sha256": "e90356a69419376bd068d19d86bd6e031cf67ab577a95a43d4644c6801a9dac7",
+      "source": "/workspace/runs/run002_calibration/termination.json"
+    }
+  ],
+  "referenced_not_copied": [
+    {
+      "name": "checkpoints/step_000001",
+      "bytes": 276293749,
+      "source": "/workspace/runs/run002_calibration/checkpoints/step_000001",
+      "complete": true,
+      "metadata": {
+        "step": 1,
+        "created_at": "2026-09-02T18:04:37.586245+00:00",
+        "complete": true,
+        "parameter_count": 13031508864,
+        "trainable_parameter_count": 23003136,
+        "strategy": "qlora",
+        "architecture_sha256": null,
+        "config_sha256": "9b6a8a650053a843215c476fcbb4128c798ec557103d90230ff4d9244b1c62ac",
+        "git_commit": "779da745e615a4dcf9054116d8110fd7c24ca541",
+        "precision": "bf16",
+        "optimizer": "adamw",
+        "sequence_length": 2048,
+        "batch_size": 1,
+        "effective_batch_size": 1,
+        "gradient_checkpointing": true,
+        "tokens_seen": 2048,
+        "training_loss": 6.599729537963867,
+        "validation_loss": 9.815293536466712,
+        "validation_bits_per_byte": null,
+        "hostname": "4dfe18533fc6",
+        "platform": "Linux-6.8.0-52-generic-x86_64-with-glibc2.39",
+        "gpu_name": "NVIDIA A40",
+        "torch_version": "2.8.0+cu128",
+        "transformers_version": "5.15.1",
+        "contents": [
+          "adapter_model.safetensors",
+          "config.json",
+          "optimizer.pt",
+          "rng.pt",
+          "scaler.pt",
+          "scheduler.pt",
+          "training_state.json",
+          "metadata.json",
+          "checkpoint_manifest.json",
+          "COMPLETE"
+        ]
+      },
+      "reason": "binary checkpoint; not committed to Git"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "run_id": "kd_run_001",
+  "status": "completed",
+  "reason": "50/50 canonical KD optimizer steps completed against the real 4-bit Qwen3.8-27B teacher; both checkpoints validated at load level. The trainer's summary writer then raised NameError('param_report'), a defect introduced mid-session and since fixed; training itself completed and metrics.jsonl carries every step. summary.json here is the 1-step smoke at the identical configuration, which carries the measured memory profile.",
+  "exit_code": 0,
+  "last_step": 50,
+  "recorded_at": "2026-09-02T17:36:33.995807+00:00"
+}

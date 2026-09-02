@@ -1,0 +1,174 @@
+  canonical student : qwen38_19b_h5120_l48_moe
+                      loaded from /workspace/runs/pilot001/transferred
+
+  loading teacher Qwen/Qwen3.8-27B @ dbdc473dea0d6a9763042881cc33d6058d1742d2
+    quantization: 4bit
+
+    teacher ready: {'source': 'online', 'top_k': 64, 'temperature': 2.0, 'teacher_model': 'Qwen/Qwen3.8-27B', 'teacher_revision': 'dbdc473dea0d6a9763042881cc33d6058d1742d2'}
+
+  DISTILLING 128 steps (batch 1 x 1 accum @ 1536 tokens) ...
+
+  device: cuda
+  objective: logit_kd  alpha 1.0  T 2.0  tail bucket
+  teacher  : {'source': 'online', 'top_k': 64, 'temperature': 2.0, 'teacher_model': 'Qwen/Qwen3.8-27B', 'teacher_revision': 'dbdc473dea0d6a9763042881cc33d6058d1742d2'}
+  tokenizer vocabulary 248,077 against a student embedding of 248,320: 243 alignment padding row(s) that no token id reaches. Carried, not trimmed — trimming would change the student's geometry.
+  corpus: /workspace/corpora/gutenberg/train.txt tokenised by Qwen2Tokenizer at /workspace/models/qwen3.8-27b-dbdc473
+          5,519,074 bytes, 455 sequences of 1536 (433 train / 22 validation)
+          sha256 e11ca38bb099fc89
+          tokenizer Qwen2Tokenizer vocab 248,077 eos 248046
+          700,000 tokens from 17,017 document(s), 1120 dropped in the tail
+
+  gradient checkpointing: ON
+  strategy: qlora (r=16, alpha=32)
+  optimizer: adamw
+  parameters: 13,031,508,864 total, 23,003,136 trainable (0.1765%)
+  precision: bf16 (autocast)
+
+  CHECKPOINTING
+    full checkpoint : every 64 steps -> /workspace/runs/run002_logit_kd/checkpoints
+    progress record : every 1 steps -> metrics.jsonl + progress/latest.json
+    resume          : no (starting from step 0)
+    persistent copy : off (local only)
+                      NOTHING SURVIVES THIS RUNTIME. Set training.persistent_backup
+                      to a mounted Drive path to keep checkpoints.
+[transformers] `use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.
+  step      1  loss   7.1902  kd 7.190  ce 10.960  agree 0.01  tail 0.705       137 tok/s  (run 137)    11.2s
+  step      2  loss   8.1466  kd 8.147  ce 10.333  agree 0.00  tail 0.677       159 tok/s  (run 147)    20.9s
+  step      3  loss  11.6603  kd 11.660  ce 9.920  agree 0.00  tail 0.571       168 tok/s  (run 154)    30.0s
+  step      4  loss   5.8037  kd 5.804  ce 10.502  agree 0.00  tail 0.724       164 tok/s  (run 156)    39.4s
+  step      5  loss   7.6925  kd 7.692  ce 10.089  agree 0.00  tail 0.678       167 tok/s  (run 158)    48.6s
+  step      6  loss   7.9222  kd 7.922  ce 10.061  agree 0.00  tail 0.648       170 tok/s  (run 160)    57.6s
+  step      7  loss   8.7138  kd 8.714  ce 10.054  agree 0.00  tail 0.643       165 tok/s  (run 161)    66.9s
+  step      8  loss   5.7337  kd 5.734  ce 9.467  agree 0.01  tail 0.696       161 tok/s  (run 161)    76.4s
+  step      9  loss   8.1496  kd 8.150  ce 9.401  agree 0.08  tail 0.618       164 tok/s  (run 161)    85.8s
+  step     10  loss   4.4014  kd 4.401  ce 10.334  agree 0.08  tail 0.720       170 tok/s  (run 162)    94.8s
+  step     11  loss   5.0803  kd 5.080  ce 10.906  agree 0.08  tail 0.692       165 tok/s  (run 162)   104.2s
+  step     12  loss   4.6369  kd 4.637  ce 10.444  agree 0.09  tail 0.696       165 tok/s  (run 162)   113.5s
+  step     13  loss   4.5368  kd 4.537  ce 9.485  agree 0.09  tail 0.694       166 tok/s  (run 163)   122.8s
+  step     14  loss   3.5538  kd 3.554  ce 9.089  agree 0.09  tail 0.716       166 tok/s  (run 163)   132.0s
+  step     15  loss   4.7083  kd 4.708  ce 9.336  agree 0.07  tail 0.688       169 tok/s  (run 163)   141.1s
+  step     16  loss   3.2985  kd 3.299  ce 9.391  agree 0.06  tail 0.706       165 tok/s  (run 163)   150.4s
+  step     17  loss   5.8747  kd 5.875  ce 9.480  agree 0.07  tail 0.653       165 tok/s  (run 164)   159.7s
+  step     18  loss   5.3418  kd 5.342  ce 8.547  agree 0.06  tail 0.646       165 tok/s  (run 164)   168.9s
+  step     19  loss   3.5533  kd 3.553  ce 9.287  agree 0.08  tail 0.712       170 tok/s  (run 164)   178.0s
+  step     20  loss   5.9697  kd 5.970  ce 8.760  agree 0.07  tail 0.621       166 tok/s  (run 164)   187.2s
+  step     21  loss   2.6868  kd 2.687  ce 8.400  agree 0.06  tail 0.724       166 tok/s  (run 164)   196.5s
+  step     22  loss   2.9532  kd 2.953  ce 7.703  agree 0.08  tail 0.711       166 tok/s  (run 164)   205.8s
+  step     23  loss   3.4047  kd 3.405  ce 7.646  agree 0.09  tail 0.678       170 tok/s  (run 164)   214.8s
+  step     24  loss   3.1875  kd 3.188  ce 8.734  agree 0.10  tail 0.719       166 tok/s  (run 165)   224.0s
+  step     25  loss   7.6610  kd 7.661  ce 8.510  agree 0.08  tail 0.565       164 tok/s  (run 164)   233.4s
+  step     26  loss   2.8033  kd 2.803  ce 7.726  agree 0.11  tail 0.706       162 tok/s  (run 164)   242.8s
+  step     27  loss   3.1252  kd 3.125  ce 7.884  agree 0.10  tail 0.698       165 tok/s  (run 164)   252.2s
+  step     28  loss   5.3969  kd 5.397  ce 8.011  agree 0.08  tail 0.627       170 tok/s  (run 165)   261.2s
+  step     29  loss   5.5233  kd 5.523  ce 7.590  agree 0.13  tail 0.613       166 tok/s  (run 165)   270.5s
+  step     30  loss   2.7403  kd 2.740  ce 7.301  agree 0.17  tail 0.697       166 tok/s  (run 165)   279.7s
+  step     31  loss   5.0930  kd 5.093  ce 7.433  agree 0.15  tail 0.609       166 tok/s  (run 165)   289.0s
+  step     32  loss   2.4006  kd 2.401  ce 7.438  agree 0.15  tail 0.726       170 tok/s  (run 165)   298.0s
+  step     32  validation   7.2044
+  step     33  loss   2.4523  kd 2.452  ce 6.906  agree 0.16  tail 0.712        49 tok/s  (run 154)   329.2s
+  step     34  loss   2.7090  kd 2.709  ce 6.760  agree 0.15  tail 0.692       166 tok/s  (run 154)   338.4s
+  step     35  loss   2.5176  kd 2.518  ce 6.806  agree 0.16  tail 0.711       165 tok/s  (run 155)   347.7s
+  step     36  loss   2.3490  kd 2.349  ce 6.510  agree 0.17  tail 0.710       166 tok/s  (run 155)   356.9s
+  step     37  loss   4.4325  kd 4.433  ce 6.568  agree 0.16  tail 0.613       170 tok/s  (run 155)   366.0s
+  step     38  loss   2.9445  kd 2.945  ce 6.872  agree 0.15  tail 0.682       167 tok/s  (run 156)   375.2s
+  step     39  loss   5.5878  kd 5.588  ce 6.588  agree 0.14  tail 0.587       166 tok/s  (run 156)   384.5s
+  step     40  loss   4.1311  kd 4.131  ce 6.929  agree 0.17  tail 0.639       166 tok/s  (run 156)   393.7s
+  step     41  loss   3.7164  kd 3.716  ce 6.694  agree 0.15  tail 0.664       166 tok/s  (run 156)   403.0s
+  step     42  loss   2.1349  kd 2.135  ce 6.453  agree 0.21  tail 0.713       169 tok/s  (run 157)   412.1s
+  step     43  loss   3.7387  kd 3.739  ce 5.944  agree 0.18  tail 0.633       165 tok/s  (run 157)   421.4s
+  step     44  loss   3.2514  kd 3.251  ce 5.872  agree 0.18  tail 0.661       166 tok/s  (run 157)   430.6s
+  step     45  loss   1.8230  kd 1.823  ce 6.123  agree 0.22  tail 0.727       166 tok/s  (run 157)   439.9s
+  step     46  loss   3.1415  kd 3.142  ce 5.484  agree 0.20  tail 0.648       170 tok/s  (run 157)   448.9s
+  step     47  loss   5.9127  kd 5.913  ce 6.803  agree 0.19  tail 0.570       166 tok/s  (run 158)   458.2s
+  step     48  loss   4.4101  kd 4.410  ce 6.399  agree 0.21  tail 0.606       162 tok/s  (run 158)   467.6s
+  step     49  loss   1.8717  kd 1.872  ce 6.179  agree 0.24  tail 0.722       166 tok/s  (run 158)   476.9s
+  step     50  loss   4.1297  kd 4.130  ce 5.958  agree 0.21  tail 0.609       167 tok/s  (run 158)   486.1s
+  step     51  loss   1.9680  kd 1.968  ce 5.919  agree 0.25  tail 0.704       170 tok/s  (run 158)   495.1s
+  step     52  loss   1.6185  kd 1.619  ce 5.698  agree 0.27  tail 0.721       165 tok/s  (run 158)   504.5s
+  step     53  loss   5.3518  kd 5.352  ce 6.032  agree 0.19  tail 0.572       164 tok/s  (run 158)   513.8s
+  step     54  loss   3.1649  kd 3.165  ce 5.560  agree 0.22  tail 0.643       166 tok/s  (run 159)   523.1s
+  step     55  loss   1.7937  kd 1.794  ce 5.552  agree 0.30  tail 0.703       170 tok/s  (run 159)   532.1s
+  step     56  loss   1.9868  kd 1.987  ce 5.941  agree 0.25  tail 0.721       165 tok/s  (run 159)   541.5s
+  step     57  loss   3.9851  kd 3.985  ce 6.196  agree 0.23  tail 0.637       165 tok/s  (run 159)   550.7s
+  step     58  loss   3.6823  kd 3.682  ce 5.675  agree 0.24  tail 0.627       162 tok/s  (run 159)   560.2s
+  step     59  loss   1.6939  kd 1.694  ce 5.726  agree 0.30  tail 0.728       166 tok/s  (run 159)   569.5s
+  step     60  loss   2.3799  kd 2.380  ce 5.120  agree 0.28  tail 0.649       165 tok/s  (run 159)   578.8s
+  step     61  loss   1.3603  kd 1.360  ce 5.187  agree 0.31  tail 0.725       164 tok/s  (run 159)   588.1s
+  step     62  loss   1.3822  kd 1.382  ce 5.141  agree 0.30  tail 0.726       165 tok/s  (run 159)   597.4s
+  step     63  loss   2.6149  kd 2.615  ce 5.023  agree 0.25  tail 0.653       158 tok/s  (run 159)   607.1s
+  step     64  loss   1.5994  kd 1.599  ce 5.240  agree 0.30  tail 0.706       168 tok/s  (run 160)   616.3s
+  step     64  validation   5.3499
+  checkpoint: step_000064 (periodic)
+  step     65  loss   3.4032  kd 3.403  ce 5.055  agree 0.29  tail 0.630        45 tok/s  (run 154)   650.6s
+  step     66  loss   1.6371  kd 1.637  ce 5.111  agree 0.28  tail 0.696       164 tok/s  (run 154)   660.0s
+  step     67  loss   1.4656  kd 1.466  ce 5.242  agree 0.32  tail 0.726       165 tok/s  (run 154)   669.3s
+  step     68  loss   1.5512  kd 1.551  ce 5.219  agree 0.31  tail 0.716       168 tok/s  (run 154)   678.4s
+  step     69  loss   1.6064  kd 1.606  ce 5.268  agree 0.30  tail 0.716       161 tok/s  (run 154)   687.9s
+  step     70  loss   3.5632  kd 3.563  ce 5.225  agree 0.27  tail 0.610       159 tok/s  (run 154)   697.6s
+  step     71  loss   1.9293  kd 1.929  ce 5.130  agree 0.31  tail 0.685       162 tok/s  (run 154)   707.1s
+  step     72  loss   1.2843  kd 1.284  ce 4.922  agree 0.30  tail 0.718       168 tok/s  (run 154)   716.2s
+  step     73  loss   3.4553  kd 3.455  ce 5.028  agree 0.24  tail 0.606       162 tok/s  (run 154)   725.7s
+  step     74  loss   1.7248  kd 1.725  ce 5.957  agree 0.29  tail 0.760       164 tok/s  (run 155)   735.1s
+  step     75  loss   1.6164  kd 1.616  ce 4.820  agree 0.32  tail 0.682       161 tok/s  (run 155)   744.6s
+  step     76  loss   3.7853  kd 3.785  ce 5.522  agree 0.25  tail 0.617       164 tok/s  (run 155)   754.0s
+  step     77  loss   1.9012  kd 1.901  ce 5.160  agree 0.29  tail 0.689       168 tok/s  (run 155)   763.1s
+  step     78  loss   1.4976  kd 1.498  ce 4.818  agree 0.35  tail 0.688       164 tok/s  (run 155)   772.5s
+  step     79  loss   2.5928  kd 2.593  ce 5.138  agree 0.26  tail 0.675       163 tok/s  (run 155)   781.9s
+  step     80  loss   3.5007  kd 3.501  ce 5.139  agree 0.24  tail 0.626       166 tok/s  (run 155)   791.2s
+  step     81  loss   3.2987  kd 3.299  ce 5.223  agree 0.24  tail 0.622       167 tok/s  (run 155)   800.4s
+  step     82  loss   1.6719  kd 1.672  ce 5.299  agree 0.27  tail 0.710       164 tok/s  (run 156)   809.7s
+  step     83  loss   3.1491  kd 3.149  ce 5.247  agree 0.24  tail 0.634       166 tok/s  (run 156)   819.0s
+  step     84  loss   4.0120  kd 4.012  ce 5.336  agree 0.24  tail 0.599       163 tok/s  (run 156)   828.4s
+  step     85  loss   3.2225  kd 3.223  ce 4.877  agree 0.28  tail 0.624       166 tok/s  (run 156)   837.7s
+  step     86  loss   3.0140  kd 3.014  ce 5.596  agree 0.27  tail 0.665       167 tok/s  (run 156)   846.9s
+  step     87  loss   3.2582  kd 3.258  ce 5.083  agree 0.26  tail 0.609       162 tok/s  (run 156)   856.4s
+  step     88  loss   3.8507  kd 3.851  ce 5.443  agree 0.25  tail 0.594       163 tok/s  (run 156)   865.8s
+  step     89  loss   3.1649  kd 3.165  ce 5.315  agree 0.28  tail 0.651       165 tok/s  (run 156)   875.1s
+  step     90  loss   4.0628  kd 4.063  ce 4.971  agree 0.27  tail 0.544       169 tok/s  (run 156)   884.2s
+  step     91  loss   1.8789  kd 1.879  ce 5.108  agree 0.32  tail 0.687       166 tok/s  (run 156)   893.4s
+  step     92  loss   1.4599  kd 1.460  ce 5.134  agree 0.33  tail 0.706       165 tok/s  (run 156)   902.8s
+  step     93  loss   1.7052  kd 1.705  ce 4.889  agree 0.33  tail 0.680       165 tok/s  (run 157)   912.0s
+  step     94  loss   1.6173  kd 1.617  ce 5.276  agree 0.32  tail 0.712       169 tok/s  (run 157)   921.1s
+  step     95  loss   3.1702  kd 3.170  ce 5.583  agree 0.26  tail 0.639       164 tok/s  (run 157)   930.5s
+  step     96  loss   2.6643  kd 2.664  ce 4.830  agree 0.29  tail 0.645       166 tok/s  (run 157)   939.7s
+  step     96  validation   5.1348
+  step     97  loss   1.5868  kd 1.587  ce 5.087  agree 0.30  tail 0.695        50 tok/s  (run 154)   970.6s
+  step     98  loss   5.9910  kd 5.991  ce 4.577  agree 0.28  tail 0.498       166 tok/s  (run 154)   979.9s
+  step     99  loss   2.5787  kd 2.579  ce 4.826  agree 0.26  tail 0.637       170 tok/s  (run 154)   988.9s
+  step    100  loss   2.1371  kd 2.137  ce 4.661  agree 0.30  tail 0.660       165 tok/s  (run 154)   998.2s
+  step    101  loss   1.6535  kd 1.653  ce 5.135  agree 0.30  tail 0.698       165 tok/s  (run 154)  1007.5s
+  step    102  loss   3.8942  kd 3.894  ce 5.149  agree 0.28  tail 0.587       165 tok/s  (run 154)  1016.8s
+  step    103  loss   4.4242  kd 4.424  ce 5.231  agree 0.27  tail 0.562       169 tok/s  (run 154)  1025.9s
+  step    104  loss   2.7074  kd 2.707  ce 5.117  agree 0.25  tail 0.650       166 tok/s  (run 154)  1035.2s
+  step    105  loss   1.9328  kd 1.933  ce 5.147  agree 0.30  tail 0.679       166 tok/s  (run 154)  1044.4s
+  step    106  loss   1.7056  kd 1.706  ce 5.160  agree 0.31  tail 0.695       165 tok/s  (run 154)  1053.7s
+  step    107  loss   1.4346  kd 1.435  ce 4.993  agree 0.31  tail 0.717       166 tok/s  (run 155)  1063.0s
+  step    108  loss   1.6605  kd 1.661  ce 4.820  agree 0.35  tail 0.692       169 tok/s  (run 155)  1072.1s
+  step    109  loss   3.0300  kd 3.030  ce 4.862  agree 0.28  tail 0.617       166 tok/s  (run 155)  1081.3s
+  step    110  loss   4.2726  kd 4.273  ce 4.959  agree 0.28  tail 0.570       166 tok/s  (run 155)  1090.5s
+  step    111  loss   1.5998  kd 1.600  ce 4.723  agree 0.35  tail 0.684       166 tok/s  (run 155)  1099.8s
+  step    112  loss   1.3946  kd 1.395  ce 4.891  agree 0.35  tail 0.716       166 tok/s  (run 155)  1109.1s
+  step    113  loss   2.1878  kd 2.188  ce 4.757  agree 0.28  tail 0.681       167 tok/s  (run 155)  1118.3s
+  step    114  loss   1.2969  kd 1.297  ce 5.041  agree 0.35  tail 0.720       165 tok/s  (run 155)  1127.6s
+  step    115  loss   1.5450  kd 1.545  ce 4.896  agree 0.33  tail 0.694       166 tok/s  (run 155)  1136.8s
+  step    116  loss   1.9802  kd 1.980  ce 5.194  agree 0.33  tail 0.684       163 tok/s  (run 155)  1146.2s
+  step    117  loss   1.5354  kd 1.535  ce 5.642  agree 0.28  tail 0.755       169 tok/s  (run 156)  1155.3s
+  step    118  loss   5.2877  kd 5.288  ce 4.735  agree 0.26  tail 0.501       162 tok/s  (run 156)  1164.8s
+  step    119  loss   1.7479  kd 1.748  ce 4.926  agree 0.31  tail 0.695       162 tok/s  (run 156)  1174.2s
+  step    120  loss   1.6105  kd 1.611  ce 4.711  agree 0.34  tail 0.684       164 tok/s  (run 156)  1183.6s
+  step    121  loss   2.9818  kd 2.982  ce 5.228  agree 0.29  tail 0.647       164 tok/s  (run 156)  1193.0s
+  step    122  loss   2.4313  kd 2.431  ce 4.634  agree 0.28  tail 0.648       169 tok/s  (run 156)  1202.1s
+  step    123  loss   3.1314  kd 3.131  ce 5.059  agree 0.25  tail 0.613       162 tok/s  (run 156)  1211.6s
+  step    124  loss   1.3942  kd 1.394  ce 5.049  agree 0.33  tail 0.722       164 tok/s  (run 156)  1220.9s
+  step    125  loss   1.5421  kd 1.542  ce 5.297  agree 0.32  tail 0.723       162 tok/s  (run 156)  1230.4s
+  step    126  loss   1.6244  kd 1.624  ce 4.933  agree 0.31  tail 0.704       164 tok/s  (run 156)  1239.7s
+  step    127  loss   2.4778  kd 2.478  ce 4.780  agree 0.28  tail 0.662       166 tok/s  (run 156)  1249.0s
+  step    128  loss   1.4101  kd 1.410  ce 4.879  agree 0.34  tail 0.708       164 tok/s  (run 156)  1258.3s
+  step    128  validation   5.0334
+  checkpoint: step_000128 (periodic)
+
+  finished step 128 of 128 in 1283.2s (196,608 tokens seen)
+  wrote /workspace/runs/run002_logit_kd/checkpoints/step_000128 and summary.json
+
+  exit code 0 in 29.3 min
+  record: /workspace/runs/run002_logit_kd

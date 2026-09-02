@@ -5,12 +5,17 @@ a real forward/backward/optimizer loop with checkpointing, resume, validation an
 logging, on the hybrid architecture. That is what Levels 0–2 require, and what must
 work before any larger run is worth attempting.
 
-The distillation objectives (`logit_kd`, `mixed_kd`) and PEFT strategies are declared in
-the config schema and validated, but their implementations are deliberately staged: a
-KD loss without a measured SFT baseline to compare against is not an experiment, and
-this phase's instruction was to get `--dry-run` correct rather than to start training.
-Where a path is not implemented, it raises with a clear message rather than silently
-doing something else.
+The distillation objectives `logit_kd` and `mixed_kd` are implemented, as are the
+`lora` and `qlora` strategies (see :mod:`qwen_distill.training.peft_support`) and the
+four members of `OPTIMIZERS`. `strategy` and `optimizer` were previously declared in the
+config schema, validated, written into every run summary — and ignored by this module,
+which raised for any strategy but `full` and always built `torch.optim.AdamW`. Both are
+now honoured, because the canonical 13.01B student cannot be trained with
+full-parameter AdamW on one 48 GB card and a run summary should name the optimizer that
+actually ran.
+
+Where a path is still not implemented it raises with a clear message rather than
+silently doing something else.
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from ..architecture.spec import HybridArchSpec
+from ..distillation.behavioral import behavioral_loss, behavioral_loss_chunked
 from ..distillation.kd_loss import distillation_loss
 from .checkpoints import (
     CheckpointMetadata,
@@ -50,6 +56,13 @@ from .memory_probe import (
     reset_peak,
     take,
 )
+from .peft_support import (
+    PEFT_STRATEGIES,
+    apply_peft,
+    build_quantization_config,
+    require_peft,
+    trainable_parameter_report,
+)
 from .progress import ProgressWriter
 from .resume_compat import (
     check_resume_compatibility,
@@ -64,6 +77,7 @@ from .text_data import (
     prepare_corpus_from_files,
 )
 from .throughput import ThroughputTracker
+from .tokenized_data import prepare_tokenized_corpus
 
 
 @dataclass
@@ -122,6 +136,57 @@ def load_examples(config: ExperimentConfig) -> tuple[list[DistillationExample], 
     return train, validation
 
 
+def _is_quantized(model: Any) -> bool:
+    """True when bitsandbytes placed and quantised this model during construction."""
+    return bool(
+        getattr(model, "is_loaded_in_4bit", False)
+        or getattr(model, "is_loaded_in_8bit", False)
+        or getattr(getattr(model, "base_model", None), "is_loaded_in_4bit", False)
+        or getattr(getattr(model, "base_model", None), "is_loaded_in_8bit", False)
+    )
+
+
+def build_optimizer(config: ExperimentConfig, trainable: list[Any]) -> Any:
+    """Construct the optimizer the config actually names.
+
+    ``training.optimizer`` has been part of the schema, validated against
+    ``OPTIMIZERS`` and written into every run summary since the first experiment, while
+    the trainer unconditionally built ``torch.optim.AdamW``. Any run recording
+    ``adamw_8bit`` was therefore reporting an optimizer it did not use, and its memory
+    figures could not be compared against the estimator's, which does branch on this
+    field. Honouring it is what makes those records true.
+    """
+    import torch
+
+    name = config.training.optimizer
+    lr = config.training.learning_rate
+    decay = config.training.weight_decay
+
+    if name == "adamw":
+        return torch.optim.AdamW(trainable, lr=lr, weight_decay=decay)
+    if name == "adamw_8bit":
+        try:
+            import bitsandbytes as bnb
+        except ImportError as exc:  # pragma: no cover - depends on the environment
+            raise NotImplementedError(
+                "optimizer 'adamw_8bit' needs `bitsandbytes`, which is not installed. "
+                "Install it, or set training.optimizer to 'adamw'."
+            ) from exc
+        return bnb.optim.AdamW8bit(trainable, lr=lr, weight_decay=decay)
+    if name == "adafactor":
+        # Adafactor's factored second moment is the point of choosing it, so betas must
+        # stay off; transformers' implementation is the one the estimator models.
+        from transformers.optimization import Adafactor
+
+        return Adafactor(
+            trainable, lr=lr, weight_decay=decay,
+            scale_parameter=False, relative_step=False, warmup_init=False,
+        )
+    if name == "sgd":
+        return torch.optim.SGD(trainable, lr=lr, weight_decay=decay, momentum=0.9)
+    raise NotImplementedError(f"optimizer {name!r} is not implemented in the trainer.")
+
+
 def build_model(config: ExperimentConfig, spec: HybridArchSpec | None):
     """Instantiate the student from a spec or a pretrained checkpoint."""
     import torch
@@ -133,11 +198,23 @@ def build_model(config: ExperimentConfig, spec: HybridArchSpec | None):
         dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[
             config.training.precision
         ]
-        return AutoModelForCausalLM.from_pretrained(
+        strategy = config.training.strategy
+        quantization = build_quantization_config(strategy, dtype)
+        extra: dict[str, Any] = {}
+        if quantization is not None:
+            # A quantised model is built directly on the target device: bitsandbytes
+            # quantises during placement, and a 4-bit module cannot be `.to()`d
+            # afterwards. `train()` skips its own move for exactly this reason.
+            extra = {"quantization_config": quantization, "device_map": {"": 0}}
+        model = AutoModelForCausalLM.from_pretrained(
             config.model.pretrained,
             trust_remote_code=config.model.trust_remote_code,
             dtype=dtype,
+            **extra,
         )
+        if strategy in PEFT_STRATEGIES:
+            model = apply_peft(model, config)
+        return model
     if spec is None:
         raise ValueError("no architecture: set model.spec_path, model.architecture, or model.pretrained")
 
@@ -148,7 +225,7 @@ def build_model(config: ExperimentConfig, spec: HybridArchSpec | None):
 
 def _require_supported(config: ExperimentConfig, teacher: Any = None) -> None:
     """Fail clearly on paths this trainer does not yet implement."""
-    if config.training.objective not in ("sft", "logit_kd", "mixed_kd"):
+    if config.training.objective not in ("sft", "logit_kd", "mixed_kd", "layer_kd"):
         raise NotImplementedError(
             f"objective {config.training.objective!r} is defined in the config schema but "
             "not yet implemented in the trainer."
@@ -169,11 +246,19 @@ def _require_supported(config: ExperimentConfig, teacher: Any = None) -> None:
             "qwen_distill.distillation.teacher_signal.build_provider. Without one this "
             "would silently be SFT."
         )
-    if config.training.strategy != "full":
+    if config.training.strategy in PEFT_STRATEGIES:
+        # Raises with an actionable message if `peft` is absent, before anything loads.
+        require_peft()
+        if not config.model.pretrained:
+            raise ValueError(
+                f"strategy {config.training.strategy!r} adapts an existing checkpoint, "
+                "but model.pretrained is unset. LoRA on a freshly initialised model "
+                "would train ~0.2% of random weights and mean nothing."
+            )
+    elif config.training.strategy != "full":
         raise NotImplementedError(
-            f"strategy {config.training.strategy!r} needs `peft` and is not yet wired in. "
-            "Full training of a small student is implemented and is what the Level 1 "
-            "prototype uses."
+            f"strategy {config.training.strategy!r} is in the config schema but is not "
+            "implemented in the trainer."
         )
 
 
@@ -233,7 +318,18 @@ def train(
     # --- distillation objective ---------------------------------------
     kd_temperature = config.training.kd_temperature
     kd_tail = config.training.kd_tail
-    kd_alpha = 1.0 if config.training.objective == "logit_kd" else config.training.kd_weight
+    layer_kd = config.training.objective == "layer_kd"
+    #: How many mapped pairs' loss terms are built before their gradient is taken. ``None``
+    #: holds every pair live to one backward — the reference path, and the one whose peak
+    #: memory scales with the pair count. The objective is the same either way; see
+    #: behavioral.behavioral_loss_chunked.
+    layer_chunk_pairs = config.training.layer_kd_chunk_pairs if layer_kd else None
+    # Pure objectives report alpha 1.0: logit_kd optimises the KD divergence alone, and
+    # layer_kd optimises the layer term alone with the divergence kept as a diagnostic.
+    kd_alpha = 1.0 if config.training.objective in ("logit_kd", "layer_kd") \
+        else config.training.kd_weight
+    #: Built on the first step from the depths the models actually report.
+    layer_map = None
     if teacher is not None:
         provider_temperature = getattr(teacher, "temperature", kd_temperature)
         if abs(provider_temperature - kd_temperature) > 1e-9:
@@ -248,6 +344,24 @@ def train(
         describe = getattr(teacher, "describe", None)
         print(f"  objective: {config.training.objective}  alpha {kd_alpha}  "
               f"T {kd_temperature}  tail {kd_tail}")
+        if layer_kd:
+            print(f"  layer KD : pointwise hidden-state matching, map "
+                  f"'{config.training.layer_kd_map_strategy}', direction weight "
+                  f"{config.training.layer_kd_direction_weight}, "
+                  f"normalise {config.training.layer_kd_normalise}")
+            print(f"  layer loss evaluated in chunks of "
+                  f"{layer_chunk_pairs} pair(s), same objective"
+                  if layer_chunk_pairs else
+                  "  layer loss: all pairs held to one backward (unchunked reference)")
+            if not getattr(teacher, "capture_hidden_states", False):
+                # The failure this prevents: a teacher that returns only logits would make
+                # behavioral_loss raise a thousand tokens in, or — worse, if anything ever
+                # caught it — leave layer_kd quietly running as logit KD.
+                raise ValueError(
+                    "objective 'layer_kd' needs the teacher's hidden states, but the "
+                    "signal provider was built without capture_hidden_states=True. "
+                    "Build it with build_provider(..., capture_hidden_states=True)."
+                )
         if describe is not None:
             print(f"  teacher  : {describe()}")
 
@@ -257,8 +371,29 @@ def train(
 
     # --- data ---------------------------------------------------------
     corpus_stats = None
+    # Two distinctions, deliberately separate. `sequence_mode` is about the *plumbing*:
+    # both corpus paths yield packed id sequences and share the sampler, the validation
+    # loop and the resume position. `text_mode` is about what a token *means*: only the
+    # byte-level path may report bits per byte, because on BPE ids that number would be
+    # bits per token wearing the wrong name.
+    sequence_mode = config.data.is_sequence_corpus
     text_mode = config.data.mode == "text"
-    if text_mode:
+    if config.data.mode == "tokenized":
+        train_sequences, validation_sequences, corpus_stats = prepare_tokenized_corpus(
+            text_path=config.data.text_path,
+            tokenizer_path=config.data.tokenizer_path,
+            sequence_length=config.data.max_sequence_length,
+            validation_fraction=config.data.validation_fraction,
+            document_separator=config.data.document_separator,
+            max_documents=config.data.max_documents,
+            max_tokens=config.data.max_tokens,
+            max_bytes=config.data.max_corpus_bytes,
+            expected_vocab_size=config.data.expected_vocab_size,
+            teacher_model=config.teacher.get("model"),
+            teacher_revision=config.teacher.get("revision"),
+            trust_remote_code=config.model.trust_remote_code,
+        )
+    elif text_mode:
         if config.data.text_path and config.data.validation_path:
             # Level 2R: train and validation are separate, document-level-split files.
             # The split lives in the files, so it cannot drift between sessions.
@@ -277,11 +412,19 @@ def train(
                 seed=config.data.shuffle_seed,
                 max_bytes=config.data.max_corpus_bytes,
             )
+    if sequence_mode:
         print(f"  corpus: {corpus_stats.source}")
         print(f"          {corpus_stats.n_bytes:,} bytes, {corpus_stats.n_sequences} sequences "
               f"of {corpus_stats.sequence_length} "
               f"({corpus_stats.n_train} train / {corpus_stats.n_validation} validation)")
         print(f"          sha256 {corpus_stats.sha256[:16]}")
+        if config.data.mode == "tokenized":
+            facts = corpus_stats.tokenizer
+            print(f"          tokenizer {facts['tokenizer_class']} vocab "
+                  f"{facts['vocab_size']:,} eos {facts['eos_token_id']}")
+            print(f"          {corpus_stats.n_tokens:,} tokens from "
+                  f"{corpus_stats.n_documents:,} document(s), "
+                  f"{corpus_stats.n_tokens_dropped} dropped in the tail")
         batches = ResumableBatchSampler(
             train_sequences, config.training.batch_size, seed=config.training.seed
         )
@@ -291,7 +434,10 @@ def train(
 
     model = build_model(config, spec)
     take(profile, "after_model_creation")
-    model = model.to(device)
+    # A bitsandbytes-quantised model was placed by `device_map` during construction and
+    # raises if moved; everything else still needs the explicit move.
+    if not _is_quantized(model):
+        model = model.to(device)
     if config.training.gradient_checkpointing and hasattr(model, "gradient_checkpointing_enable"):
         # Non-reentrant checkpointing composes correctly with autocast and does not
         # require the inputs to have requires_grad, unlike the legacy reentrant path.
@@ -303,9 +449,15 @@ def train(
     take(profile, "after_model_to_device")
 
     trainable = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.AdamW(
-        trainable, lr=config.training.learning_rate, weight_decay=config.training.weight_decay
-    )
+    optimizer = build_optimizer(config, trainable)
+    param_report = trainable_parameter_report(model)
+    print(f"  strategy: {config.training.strategy}"
+          + (f" (r={config.training.lora_rank}, alpha={config.training.lora_alpha})"
+             if config.training.strategy in PEFT_STRATEGIES else ""))
+    print(f"  optimizer: {config.training.optimizer}")
+    print(f"  parameters: {param_report['total_parameters']:,} total, "
+          f"{param_report['trainable_parameters']:,} trainable "
+          f"({param_report['trainable_fraction'] * 100:.4f}%)")
     scheduler = make_schedule(
         optimizer, total_steps=config.training.max_steps,
         max_lr=config.training.learning_rate,
@@ -378,7 +530,7 @@ def train(
                 max_lr=config.training.learning_rate,
             )
         rng_restored = restore_rng_state(loaded["rng_state"])
-        if text_mode and state.data_state:
+        if sequence_mode and state.data_state:
             batches.load_state_dict(state.data_state)
         print("\n  RESUMED")
         print(f"    resume requested   : {config.runtime.resume_from}")
@@ -386,7 +538,7 @@ def train(
         print(f"    restored step      : {state.step} of {config.training.max_steps}")
         print(f"    restored           : {', '.join(loaded['restored']) or 'nothing'}")
         print(f"    RNG restored       : {', '.join(rng_restored) or 'none'}")
-        if text_mode:
+        if sequence_mode:
             print(f"    data position      : epoch {batches.epoch}, batch {batches.index}")
         print(f"    tokens seen        : {state.tokens_seen:,}")
         if compatibility.extends_schedule or compatibility.notable:
@@ -447,7 +599,7 @@ def train(
 
     def write_checkpoint(step: int, *, reason: str) -> Path | None:
         """Persist everything needed to resume, atomically. Returns the directory."""
-        state.data_state = batches.state_dict() if text_mode else {}
+        state.data_state = batches.state_dict() if sequence_mode else {}
         state.elapsed_seconds = resumed_elapsed + (time.perf_counter() - started)
         last_loss = next(
             (h["loss"] for h in reversed(state.history) if "loss" in h), None
@@ -459,6 +611,9 @@ def train(
             config_sha256=config_digest,
             precision=precision,
             optimizer=config.training.optimizer,
+            # Without this a reader cannot tell an adapter checkpoint from a full one
+            # except by which weights file happens to be present.
+            strategy=config.training.strategy,
             sequence_length=config.data.max_sequence_length,
             batch_size=config.training.batch_size,
             effective_batch_size=config.training.effective_batch_size,
@@ -531,13 +686,19 @@ def train(
             accumulated = 0.0
             kd_records: list[dict[str, float]] = []
             for _ in range(config.training.gradient_accumulation_steps):
-                if text_mode:
+                if sequence_mode:
+                    # The trainer's batch contract: a rectangular (B, L) tensor used as
+                    # both input and label. The causal shift lives inside the model, so
+                    # the data layer never builds a separate label tensor.
                     batch = torch.tensor(next(batches), dtype=torch.long, device=device)
                 else:
                     batch = _synthetic_batch(
                         config.training.batch_size, config.data.max_sequence_length,
                         vocab, generator,
                     ).to(device)
+                # Set by the chunked layer objective, which computes the loss's own
+                # gradient during the loss phase and leaves the student's traversal here.
+                layer_backward = None
                 phase[0] = "input allocation"
                 if first_step:
                     take(profile, "after_input_allocation")
@@ -560,23 +721,95 @@ def train(
                         # for its SIGTERM handler, and shadowing it makes every path fail.
                         teacher_signal = teacher.signal_for(batch)
                         phase[0] = "forward pass"
-                        outputs = model(input_ids=batch)
+                        outputs = model(input_ids=batch, output_hidden_states=layer_kd)
                         if first_step:
                             take(profile, "after_forward")
                         phase[0] = "distillation loss"
-                        kd_output = distillation_loss(
-                            outputs.logits, batch, teacher_signal,
-                            alpha=kd_alpha, temperature=kd_temperature, tail=kd_tail,
-                        )
-                        kd_records.append(kd_output.to_log())
-                        loss = kd_output.total / config.training.gradient_accumulation_steps
+                        if layer_kd:
+                            if teacher_signal.hidden_states is None:
+                                raise ValueError(
+                                    "the teacher returned no hidden states, so layer_kd "
+                                    "has nothing to match against"
+                                )
+                            if layer_map is None:
+                                layer_map = _layer_mapping(
+                                    len(outputs.hidden_states) - 1,
+                                    len(teacher_signal.hidden_states) - 1,
+                                    config.training.layer_kd_map_strategy,
+                                )
+                                print(f"  layer map: {len(layer_map.mapping)} pairs, "
+                                      f"{len(layer_map.removed_teacher_layers)} teacher "
+                                      f"layers unsupervised")
+                            if layer_chunk_pairs is None:
+                                layer_output = behavioral_loss(
+                                    outputs.hidden_states, teacher_signal.hidden_states,
+                                    layer_map.mapping, mode="pointwise",
+                                    direction_weight=(
+                                        config.training.layer_kd_direction_weight),
+                                    normalise=config.training.layer_kd_normalise,
+                                )
+                            else:
+                                # Same objective, same pairs, same positions. The gradient
+                                # with respect to the student's hidden states is taken here
+                                # instead, a chunk at a time, so the loss never holds all
+                                # 48 pairs' saved fp32 inputs at once. The student's own
+                                # graph is not touched until the backward phase below,
+                                # which still traverses it exactly once.
+                                layer_backward = behavioral_loss_chunked(
+                                    outputs.hidden_states, teacher_signal.hidden_states,
+                                    layer_map.mapping, mode="pointwise",
+                                    direction_weight=(
+                                        config.training.layer_kd_direction_weight),
+                                    normalise=config.training.layer_kd_normalise,
+                                    chunk_pairs=layer_chunk_pairs,
+                                    loss_scale=(
+                                        1.0
+                                        / config.training.gradient_accumulation_steps),
+                                    backward=lambda t: scaler.scale(t).backward(),
+                                )
+                                layer_output = layer_backward.output
+                            # The raw teacher tuple is ~1 GiB at this sequence length and
+                            # nothing needs it now: the graph holds the normalised copies
+                            # of the mapped pairs, and the unmapped entries are dead.
+                            teacher_hidden_states = teacher_signal.hidden_states
+                            teacher_signal.hidden_states = None
+                            del teacher_hidden_states
+                            with torch.no_grad():
+                                # Diagnostics, not the objective: reported so Run 003 can
+                                # be read against Run 002 on the same axes, and computed
+                                # without a graph so they cost no gradient memory.
+                                kd_output = distillation_loss(
+                                    outputs.logits, batch, teacher_signal,
+                                    alpha=1.0, temperature=kd_temperature, tail=kd_tail,
+                                )
+                            kd_records.append({**kd_output.to_log(),
+                                               **_layer_log(layer_output)})
+                            loss = (layer_output.total
+                                    / config.training.gradient_accumulation_steps)
+                        else:
+                            kd_output = distillation_loss(
+                                outputs.logits, batch, teacher_signal,
+                                alpha=kd_alpha, temperature=kd_temperature, tail=kd_tail,
+                            )
+                            kd_records.append(kd_output.to_log())
+                            loss = (kd_output.total
+                                    / config.training.gradient_accumulation_steps)
                 if first_step:
                     # The loss path holds the logits three times over, so it gets its
                     # own stage rather than being folded into the forward pass.
                     take(profile, "after_loss")
                 phase[0] = "backward pass"
-                scaler.scale(loss).backward()
-                accumulated += float(loss.item())
+                if layer_backward is not None:
+                    # The loss gradient already exists; this propagates it into the student
+                    # in one traversal. `loss` is a float here, not a graph tensor.
+                    layer_backward.backward()
+                    accumulated += float(loss)
+                    # Releases the held per-layer gradient tensors before the next
+                    # micro-batch's forward allocates.
+                    layer_backward = None
+                else:
+                    scaler.scale(loss).backward()
+                    accumulated += float(loss.item())
                 throughput.add_tokens(batch.numel())
                 state.tokens_seen += batch.numel()
                 if first_step:
@@ -607,7 +840,7 @@ def train(
                     "tokens_per_second": rates["tokens_per_second"],
                     "interval_tokens_per_second": rates["interval_tokens_per_second"],
                     "session_tokens_per_second": rates["session_tokens_per_second"],
-                    "epoch": batches.epoch if text_mode else state.epoch,
+                    "epoch": batches.epoch if sequence_mode else state.epoch,
                 }
                 if text_mode:
                     record["bits_per_byte"] = round(bits_per_byte(accumulated), 4)
@@ -615,14 +848,22 @@ def train(
                     # Reported per step, not per run: teacher entropy near zero, or a top-1
                     # agreement already at 1.0, both mean the KD term has stopped carrying
                     # more than the argmax and the objective has quietly become SFT.
+                    keys = ("kd_loss", "ce_loss", "teacher_entropy", "top1_agreement",
+                            "teacher_tail_mass")
+                    if layer_kd:
+                        keys += ("layer_kd_loss", "layer_magnitude", "layer_direction",
+                                 "layer_norm_ratio", "layer_pairs")
                     record.update({
-                        key: round(sum(r[key] for r in kd_records) / len(kd_records), 4)
-                        for key in ("kd_loss", "ce_loss", "teacher_entropy",
-                                    "top1_agreement", "teacher_tail_mass")
+                        key: round(sum(r[key] for r in kd_records) / len(kd_records), 6)
+                        for key in keys if all(r.get(key) is not None for r in kd_records)
                     })
                 state.history.append(record)
                 extra = f"  bpb {record['bits_per_byte']:.3f}" if text_mode else ""
                 if kd_records:
+                    if layer_kd:
+                        extra += (f"  layer {record['layer_kd_loss']:.4f}"
+                                  f"  (mag {record['layer_magnitude']:.4f}"
+                                  f"  dir {record['layer_direction']:.4f})")
                     extra += (f"  kd {record['kd_loss']:.3f}  ce {record['ce_loss']:.3f}"
                               f"  agree {record['top1_agreement']:.2f}"
                               f"  tail {record['teacher_tail_mass']:.3f}")
@@ -643,7 +884,7 @@ def train(
             if state.step % config.training.eval_every == 0:
                 validation_loss = (
                     _validate_text(model, validation_sequences, config, device)
-                    if text_mode
+                    if sequence_mode
                     else _validate(model, config, vocab, device)
                 )
                 record = {"step": state.step, "validation_loss": validation_loss}
@@ -715,9 +956,12 @@ def train(
         output, config, spec, state, profile, corpus_stats,
         elapsed=elapsed, tokens_seen=throughput.total_tokens, device=device,
         text_mode=text_mode, throughput=throughput_summary,
+        data_mode=config.data.mode,
         effective_precision=precision, precision_note=precision_note, oom=oom,
         persisted=persisted, persistent_destination=config.training.persistent_backup,
-        distillation=_distillation_summary(config, state, teacher, kd_alpha, kd_tail),
+        distillation=_distillation_summary(config, state, teacher, kd_alpha, kd_tail,
+                                           layer_map),
+        parameter_counts=param_report,
     )
     if oom is not None:
         print(f"  wrote {output / 'summary.json'} recording the OOM.")
@@ -758,6 +1002,17 @@ SYNTHETIC_PERIOD = 8
 SYNTHETIC_ALPHABET = 64
 
 
+def _sft_label(text_mode: bool, data_mode: str) -> str:
+    """How a non-KD run over this data is described in the summary.
+
+    A tokenised run is not "byte-level causal LM"; calling it that would misreport both
+    the vocabulary and the unit the loss is in.
+    """
+    if data_mode == "tokenized":
+        return "tokenized causal LM"
+    return "byte-level causal LM" if text_mode else "sft"
+
+
 def _validate_text(model, sequences: list[list[int]], config: ExperimentConfig, device: str) -> float:
     """Mean cross-entropy over the held-out byte sequences.
 
@@ -796,8 +1051,151 @@ def _parameter_count(spec: HybridArchSpec | None) -> int | None:
     return count_parameters(spec).total
 
 
+def _layer_log(output) -> dict[str, float]:
+    """The layer term and the two diagnostics that say *how* it is failing.
+
+    Magnitude and direction are reported separately, never blended: a student doing the
+    right thing at half strength and one pushing the residual stream the wrong way need
+    different fixes, and a single number cannot tell them apart. ``layer_norm_ratio`` is
+    the student's mean activation norm over the teacher's, which is the earliest sign of
+    the first failure.
+    """
+    def scalar(value: Any) -> float:
+        # These tensors are still attached to the graph the optimizer will walk. Detaching
+        # before reading keeps the log from holding a reference to it — and silences the
+        # warning that would otherwise appear once per step for the whole run.
+        detach = getattr(value, "detach", None)
+        return round(float(detach() if detach else value), 6)
+
+    return {
+        "layer_kd_loss": scalar(output.total),
+        "layer_magnitude": scalar(output.magnitude),
+        "layer_direction": scalar(output.direction),
+        "layer_norm_ratio": round(output.student_norm / output.teacher_norm, 6)
+        if output.teacher_norm else 0.0,
+        "layer_pairs": float(output.n_pairs),
+    }
+
+
+def _layer_mapping(student_layers: int, teacher_layers: int, strategy: str):
+    """The teacher->student layer correspondence ``layer_kd`` supervises.
+
+    Built from the depths the two models actually reported this step, not from a constant:
+    a mapping that assumed 64 teacher layers and got 40 would silently supervise the wrong
+    pairs, and every number downstream would look fine.
+
+    The rule is the project's documented one — whole 4-layer hybrid groups selected evenly
+    across the teacher's depth, so a student layer always lands on a teacher layer of its
+    own block type. :func:`~qwen_distill.architecture.moe_init.map_layers` raises when the
+    depths are not whole groups rather than falling back to an arbitrary correspondence.
+    """
+    import dataclasses
+
+    from ..architecture.moe_init import map_layers
+    from ..architecture.moe_student import FROZEN_STUDENT
+
+    spec = (FROZEN_STUDENT if student_layers == FROZEN_STUDENT.num_hidden_layers
+            else dataclasses.replace(FROZEN_STUDENT, num_hidden_layers=student_layers))
+    mapping = map_layers(spec, teacher_layers=teacher_layers, strategy=strategy)
+    if mapping.problems:
+        raise ValueError(
+            "the layer mapping puts student layers onto teacher layers of a different "
+            "block type, which would train DeltaNet against attention: "
+            + "; ".join(mapping.problems)
+        )
+    return mapping
+
+
+def _layer_kd_definition(config: ExperimentConfig, mapping) -> dict[str, Any]:
+    """The exact objective, written into the run record.
+
+    A layer-KD result is uninterpretable without this: which representations were taken
+    from each side, how they were paired, what alignment was applied, and how the pairs
+    were reduced to one number.
+    """
+    return {
+        "objective": "layer_kd",
+        "implementation": "qwen_distill.distillation.behavioral.behavioral_loss",
+        "mode": "pointwise",
+        "teacher_representation": (
+            "hidden_states[m(l) + 1] — the output of teacher layer m(l), from the same "
+            "no_grad forward that produced the logits (output_hidden_states=True)"
+        ),
+        "student_representation": (
+            "hidden_states[l + 1] — the output of student layer l "
+            "(output_hidden_states=True)"
+        ),
+        "mapping_strategy": mapping.strategy,
+        "mapping": {str(k): v for k, v in sorted(mapping.mapping.items())},
+        "removed_teacher_layers": list(mapping.removed_teacher_layers),
+        "n_supervised_pairs": len(mapping.mapping),
+        "projection": (
+            "none — teacher and student share hidden_size, so the comparison needs no "
+            "learned projection and behavioral_loss raises if the widths disagree"
+        ),
+        "normalisation": (
+            "per-token RMS scaling to unit norm before comparison"
+            if config.training.layer_kd_normalise else "none"
+        ),
+        "loss": (
+            "mean over mapped pairs of [ MSE(h_s, h_t) + direction_weight * "
+            "(1 - mean cosine similarity(h_s, h_t)) ], on normalised hidden states"
+        ),
+        "direction_weight": config.training.layer_kd_direction_weight,
+        "evaluation": (
+            {
+                "form": "chunked",
+                "chunk_pairs": config.training.layer_kd_chunk_pairs,
+                "implementation": (
+                    "qwen_distill.distillation.behavioral.behavioral_loss_chunked"
+                ),
+                "note": (
+                    "an evaluation strategy, not a change to the objective. The same "
+                    f"{len(mapping.mapping)} pairs are supervised over the whole sequence "
+                    "with the same normalisation, the same per-pair terms and the same "
+                    "1/n reduction; only the point at which the gradient is taken moves, "
+                    "so no more than chunk_pairs pairs' saved fp32 loss inputs are live "
+                    "at once. The gradient lands on detached stand-ins for the student's "
+                    "hidden states and is propagated into the student in a single "
+                    "traversal, so the student's graph is walked exactly once per "
+                    "micro-batch, as in the unchunked form"
+                ),
+                "equivalence": (
+                    "validated against the unchunked reference on this run's own "
+                    "calibration batch; see docs/LAYER_KD_CHUNKING.md and "
+                    "experiments/run003_chunking_equivalence/"
+                ),
+            }
+            if config.training.layer_kd_chunk_pairs is not None else
+            {
+                "form": "unchunked",
+                "chunk_pairs": None,
+                "implementation": (
+                    "qwen_distill.distillation.behavioral.behavioral_loss"
+                ),
+                "note": (
+                    "every pair's loss tensors are held live to a single backward; peak "
+                    "memory scales with the pair count"
+                ),
+            }
+        ),
+        "loss_weight": (
+            "1.0 — pure layer KD. The logit KD divergence and the cross-entropy are "
+            "computed under no_grad as diagnostics and contribute no gradient, mirroring "
+            "Run 002's pure logit KD, where CE was likewise reported and not optimised"
+        ),
+        "topology_mismatch": (
+            f"{len(mapping.removed_teacher_layers)} teacher layers have no student anchor "
+            "and are not supervised. That is what conventional layer matching does with a "
+            "depth change, and it is the limitation this control exists to measure — not a "
+            "defect of the implementation"
+        ),
+    }
+
+
 def _distillation_summary(
-    config: ExperimentConfig, state: TrainingState, teacher: Any, alpha: float, tail: str
+    config: ExperimentConfig, state: TrainingState, teacher: Any, alpha: float, tail: str,
+    layer_map: Any = None,
 ) -> dict[str, Any] | None:
     """What the teacher contributed, or ``None`` when there was no teacher.
 
@@ -820,7 +1218,7 @@ def _distillation_summary(
         }
 
     describe = getattr(teacher, "describe", None)
-    return {
+    summary = {
         "objective": config.training.objective,
         "kd_alpha": alpha,
         "kd_temperature": config.training.kd_temperature,
@@ -834,6 +1232,16 @@ def _distillation_summary(
         "teacher_entropy": endpoints("teacher_entropy"),
         "teacher_tail_mass": endpoints("teacher_tail_mass"),
     }
+    if config.training.objective == "layer_kd":
+        summary["layer_kd_loss"] = endpoints("layer_kd_loss")
+        summary["layer_magnitude"] = endpoints("layer_magnitude")
+        summary["layer_direction"] = endpoints("layer_direction")
+        summary["layer_norm_ratio"] = endpoints("layer_norm_ratio")
+        summary["layer_kd_definition"] = (
+            _layer_kd_definition(config, layer_map) if layer_map is not None
+            else {"error": "no layer mapping was built — the run took no step"}
+        )
+    return summary
 
 
 def _write_summary(
@@ -848,6 +1256,7 @@ def _write_summary(
     tokens_seen: int,
     device: str,
     text_mode: bool,
+    data_mode: str = "text",
     throughput: dict[str, Any] | None = None,
     effective_precision: str,
     precision_note: str | None,
@@ -855,6 +1264,7 @@ def _write_summary(
     persisted: dict[str, list[str]] | None = None,
     persistent_destination: str | None = None,
     distillation: dict[str, Any] | None = None,
+    parameter_counts: dict[str, Any] | None = None,
 ) -> None:
     """Write the full artifact set: summary, hardware, git commit, resolved config.
 
@@ -922,9 +1332,16 @@ def _write_summary(
         "objective": (
             config.training.objective
             if config.training.objective != "sft"
-            else ("byte-level causal LM" if text_mode else "sft")
+            else _sft_label(text_mode, data_mode)
         ),
         "parameters": count_parameters(spec).as_dict() if spec else None,
+        # Counted off the live model rather than derived from a spec, so it is available
+        # for a `pretrained` run (where `spec` is None) and so it states how many
+        # parameters actually received gradients. Under LoRA the difference between
+        # these two numbers is the whole character of the run.
+        "parameter_counts": parameter_counts,
+        "strategy": config.training.strategy,
+        "optimizer": config.training.optimizer,
         "steps": state.step,
         "runtime_s": round(elapsed, 2),
         "tokens_seen": tokens_seen,

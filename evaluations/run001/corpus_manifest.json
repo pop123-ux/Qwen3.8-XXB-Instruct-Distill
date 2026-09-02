@@ -1,0 +1,207 @@
+{
+  "name": "level2r_public_domain_english",
+  "preparation_version": "1.0",
+  "created_at": "2026-09-02T15:03:17.789127+00:00",
+  "documents": [
+    {
+      "identifier": "103",
+      "title": "Around the World in Eighty Days",
+      "author": "Jules Verne",
+      "source_url": "https://www.gutenberg.org/ebooks/103.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "validation",
+      "n_bytes": 375801,
+      "sha256": "e5728684d179a0cac5e13dacf3f2a1c2030d83db0ad71505a853bed221d8e9a2"
+    },
+    {
+      "identifier": "1250",
+      "title": "Anthem",
+      "author": "Ayn Rand",
+      "source_url": "https://www.gutenberg.org/ebooks/1250.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "validation",
+      "n_bytes": 108693,
+      "sha256": "cd391633b0b715045c0973e2d19723435fbc6428519890a88d13ee34c7066db9"
+    },
+    {
+      "identifier": "1257",
+      "title": "The three musketeers",
+      "author": "Alexandre Dumas",
+      "source_url": "https://www.gutenberg.org/ebooks/1257.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "validation",
+      "n_bytes": 1337507,
+      "sha256": "813b03b1b048f9438d1f60314a1c610ce727e81de6ea6032228dc4c6cef488bf"
+    },
+    {
+      "identifier": "1342",
+      "title": "Pride and Prejudice",
+      "author": "Jane Austen",
+      "source_url": "https://www.gutenberg.org/ebooks/1342.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "train",
+      "n_bytes": 737465,
+      "sha256": "896070cb35e9edae5649c0904066f67b778f5cd315d1f0731842169f7f34776a"
+    },
+    {
+      "identifier": "158",
+      "title": "Emma",
+      "author": "Jane Austen",
+      "source_url": "https://www.gutenberg.org/ebooks/158.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "train",
+      "n_bytes": 897229,
+      "sha256": "6335fdb1bfdb0aa08280b32433b214948f29164c3bf15f7d403d7093c32ff1a7"
+    },
+    {
+      "identifier": "161",
+      "title": "Sense and Sensibility",
+      "author": "Jane Austen",
+      "source_url": "https://www.gutenberg.org/ebooks/161.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "train",
+      "n_bytes": 680190,
+      "sha256": "000f768060df1e9c893ca7273a0a80fae5837f5963b155d41af5c5bb72c3909c"
+    },
+    {
+      "identifier": "164",
+      "title": "Twenty Thousand Leagues under the Sea",
+      "author": "Jules Verne",
+      "source_url": "https://www.gutenberg.org/ebooks/164.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "validation",
+      "n_bytes": 605976,
+      "sha256": "e39430305c5d77e09aa859564a1e42d417756117e8eb723d5b70177817e2fbc4"
+    },
+    {
+      "identifier": "1661",
+      "title": "The Adventures of Sherlock Holmes",
+      "author": "Arthur Conan Doyle",
+      "source_url": "https://www.gutenberg.org/ebooks/1661.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "train",
+      "n_bytes": 575729,
+      "sha256": "e79b7c0c6341d620d5716eb48bb2631138c881409231aa5e26c20ed2fb79631a"
+    },
+    {
+      "identifier": "2097",
+      "title": "The Sign of the Four",
+      "author": "Arthur Conan Doyle",
+      "source_url": "https://www.gutenberg.org/ebooks/2097.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "train",
+      "n_bytes": 236787,
+      "sha256": "e6089df442de06861e7971c381485df7f588772fccd9ae1a6eb4ed771c4367f4"
+    },
+    {
+      "identifier": "2542",
+      "title": "A Doll's House : a play",
+      "author": "Henrik Ibsen",
+      "source_url": "https://www.gutenberg.org/ebooks/2542.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "validation",
+      "n_bytes": 144040,
+      "sha256": "73bc9e402358627dc4db4149b85325f6a9a219cedaa97c3369b7f59b87f27740"
+    },
+    {
+      "identifier": "2701",
+      "title": "Moby Dick; Or, The Whale",
+      "author": "Herman Melville",
+      "source_url": "https://www.gutenberg.org/ebooks/2701.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "train",
+      "n_bytes": 1234292,
+      "sha256": "68407ec911039f97e7b4fd6898f8b325800f5ecbf3d92b2c27380acb04cb9595"
+    },
+    {
+      "identifier": "4300",
+      "title": "Ulysses",
+      "author": "James Joyce",
+      "source_url": "https://www.gutenberg.org/ebooks/4300.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "validation",
+      "n_bytes": 1533593,
+      "sha256": "f87da7af758e8edace84dc17ac72bc4cc16af18274a2d667a02886e9feaac317"
+    },
+    {
+      "identifier": "55",
+      "title": "The Wonderful Wizard of Oz",
+      "author": "L. Frank Baum",
+      "source_url": "https://www.gutenberg.org/ebooks/55.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "validation",
+      "n_bytes": 212594,
+      "sha256": "5cf8fc965dd4f4f516f771c5dc95dd3cbb2ecdbbe99cee5d902bfa93643a5122"
+    },
+    {
+      "identifier": "84",
+      "title": "Frankenstein; or, the modern prometheus",
+      "author": "Mary Wollstonecraft Shelley",
+      "source_url": "https://www.gutenberg.org/ebooks/84.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "train",
+      "n_bytes": 421388,
+      "sha256": "3fef5c99657c90b1ba1ada7453d8800c5a7d2ebe9899b9ff01f0022dab682bd2"
+    },
+    {
+      "identifier": "844",
+      "title": "The Importance of Being Earnest: A Trivial Comedy for Serious People",
+      "author": "Oscar Wilde",
+      "source_url": "https://www.gutenberg.org/ebooks/844.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "validation",
+      "n_bytes": 117976,
+      "sha256": "8af13b359c3390bd5fe8b94b0414338497c3d182591c115493671889e5ff6c75"
+    },
+    {
+      "identifier": "98",
+      "title": "A Tale of Two Cities",
+      "author": "Charles Dickens",
+      "source_url": "https://www.gutenberg.org/ebooks/98.txt.utf-8",
+      "public_domain_basis": "Project Gutenberg distributes these works as public domain in the United States; all are pre-1929 publications whose copyright has expired.",
+      "split": "train",
+      "n_bytes": 771305,
+      "sha256": "482c81edc576c0883702716101b19fd4be87ff6018527a80da721757b369f0c4"
+    }
+  ],
+  "n_documents": 16,
+  "n_train_documents": 8,
+  "n_validation_documents": 8,
+  "total_bytes": 9990607,
+  "train_bytes": 5554406,
+  "validation_bytes": 4436201,
+  "train_sha256": "bc5972d9a52580ff14ab1b3b1753f9cd68c726c63cc625a7ed3913ec3c5dc5c5",
+  "validation_sha256": "ad34c19250a46fde189e1fcbeabc66aa3e66c0f63da6cd657e0a28b723b83961",
+  "split_rule": "Document-level. Whole works are assigned to train or validation by explicit catalogue id and never split across the two, so validation measures generalisation to unseen prose rather than continuation of a passage already being read. The assignment is fixed in this script and written once into train.txt/validation.txt, so no seed, fraction or ordering can change it between sessions.",
+  "normalisation": [
+    "Project Gutenberg licence header and footer removed",
+    "residual metadata lines (Title/Author/Release Date/...) dropped from the top",
+    "Unicode NFC",
+    "CRLF and CR converted to LF",
+    "trailing whitespace stripped per line",
+    "runs of 3+ blank lines collapsed to 2",
+    "documents ordered by identifier, joined by a blank-line separator",
+    "NOT done: lowercasing, punctuation stripping, sentence splitting"
+  ],
+  "contamination_notes": [
+    "Source is Project Gutenberg literary prose only. No benchmark dataset, question bank, exam set or evaluation suite was included, deliberately.",
+    "Gutenberg licence headers and footers are removed: they are identical across every book and would otherwise be the most predictable text in the corpus.",
+    "Validation works are by authors held out of training wherever possible, so a low validation BPB cannot be explained by having learned one author's style.",
+    "These are famous works that a large pretrained model would likely have memorised. That is irrelevant here \u2014 this model is trained from scratch on this corpus alone \u2014 but it would matter if these texts were ever reused to evaluate a distilled student whose teacher saw them."
+  ],
+  "warnings": [],
+  "overlap_check": {
+    "checked": 64,
+    "overlaps": 0,
+    "ok": true
+  },
+  "run_estimate": {
+    "corpus_bytes": 5554406,
+    "tokens_per_step": 16384,
+    "steps_per_epoch": 339.0,
+    "seconds_per_1000_steps": 7841.1,
+    "hours_per_1000_steps": 2.18,
+    "measured_tokens_per_second": 2089.5,
+    "basis": "Level 2 measured 2,089 tok/s at seq 1024, batch 4, checkpointing ON"
+  }
+}

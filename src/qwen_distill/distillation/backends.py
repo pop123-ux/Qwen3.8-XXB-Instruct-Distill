@@ -292,7 +292,8 @@ class TransformersTeacher:
         """Full teacher logits for ids the student will see, aligned position for position."""
         return teacher_logits(self._require_loaded(), input_ids)
 
-    def signal_provider(self, *, top_k: int | None = 64, temperature: float = 1.0) -> Any:
+    def signal_provider(self, *, top_k: int | None = 64, temperature: float = 1.0,
+                        capture_hidden_states: bool = False) -> Any:
         """An :class:`~.teacher_signal.OnlineTeacher` over these weights.
 
         Returned rather than reimplemented: the KD path already has one signal format and
@@ -304,6 +305,7 @@ class TransformersTeacher:
         loaded = self._require_loaded()
         return OnlineTeacher(
             model=loaded.model, top_k=top_k, temperature=temperature,
+            capture_hidden_states=capture_hidden_states,
             teacher_model=self.model, teacher_revision=self.revision,
         )
 

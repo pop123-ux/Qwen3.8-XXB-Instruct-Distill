@@ -1,0 +1,8 @@
+{
+  "run_id": "run002_calibration",
+  "status": "completed",
+  "reason": "The calibration itself completed: one 2048-token pure-logit-KD optimizer step, exit 0, checkpoint written and validated at structure, manifest and load level. Its purpose was to decide whether the 128-step control could launch, and the answer was no: peak allocated 43.014 GiB exceeded the 42.0 GiB gate declared before the run. The 128-step control was therefore NOT started, and the sequence length was not reduced to force a fit.",
+  "exit_code": 0,
+  "last_step": 1,
+  "recorded_at": "2026-09-02T18:15:14.003996+00:00"
+}

@@ -19,6 +19,14 @@ Status:
 * ``mixed_kd`` — **implemented**. ``kd_weight`` of the KD term, the rest cross-entropy.
   ``kd_weight=0`` reduces exactly to SFT through the same code path, which is what makes
   it usable as the control.
+* ``layer_kd`` — **implemented**
+  (:func:`qwen_distill.distillation.behavioral.behavioral_loss` in ``pointwise`` mode).
+  Conventional intermediate/layer matching: each student layer's output hidden state
+  against the output of the teacher layer it is mapped to. Pure, like ``logit_kd``: the
+  layer term is the whole objective and the logit KD divergence and cross-entropy are
+  computed under ``no_grad`` as diagnostics only. It needs the teacher's hidden states,
+  so its signal source must be ``online`` — a stored top-k logit corpus cannot serve it,
+  and asking for it says so rather than falling back to logit KD.
 
 The rule at the top still holds, and now has teeth in a second place: an objective is only
 available when the *signal source* it needs is, so "KD" cannot silently become SFT because
@@ -34,6 +42,7 @@ from typing import Any
 SFT = "sft"
 LOGIT_KD = "logit_kd"
 MIXED_KD = "mixed_kd"
+LAYER_KD = "layer_kd"
 
 IMPLEMENTED = "IMPLEMENTED"
 NOT_IMPLEMENTED = "NOT_IMPLEMENTED"
@@ -90,6 +99,17 @@ OBJECTIVES: dict[str, ObjectiveSpec] = {
         name=MIXED_KD,
         status=IMPLEMENTED,
         description="weighted combination of cross-entropy and logit KD",
+        required_fields=(),
+    ),
+    LAYER_KD: ObjectiveSpec(
+        name=LAYER_KD,
+        status=IMPLEMENTED,
+        description=(
+            "intermediate/layer knowledge distillation: each student layer's output "
+            "hidden state is matched to the output of its mapped teacher layer "
+            "(behavioral.behavioral_loss, mode='pointwise'). Pure — logit KD and CE are "
+            "reported as diagnostics, not optimised"
+        ),
         required_fields=(),
     ),
 }
@@ -157,7 +177,13 @@ class ObjectiveConfig:
                 "kd_temperature/kd_alpha are set but the objective is sft, where they "
                 "do nothing — this usually means the objective was not switched"
             )
-        if self.type in (LOGIT_KD, MIXED_KD):
+        if self.type == LAYER_KD and self.signal_source != ONLINE:
+            problems.append(
+                "layer_kd needs the teacher's hidden states, which only a resident "
+                f"teacher can produce; signal_source={self.signal_source!r} supplies "
+                "stored top-k logits and cannot serve it"
+            )
+        if self.type in (LOGIT_KD, MIXED_KD, LAYER_KD):
             if self.kd_temperature is not None and self.kd_temperature <= 0:
                 problems.append("kd_temperature must be positive")
             if self.kd_alpha is not None and not 0.0 <= self.kd_alpha <= 1.0:
@@ -228,7 +254,7 @@ def check_dataset_supports(config: ObjectiveConfig, dataset: Any) -> list[str]:
 def describe_objectives() -> str:
     """A human-readable status table. Used by --list-objectives and the docs."""
     lines = [f"  {'objective':<12}{'status':<18}notes"]
-    for name in (SFT, LOGIT_KD, MIXED_KD):
+    for name in (SFT, LOGIT_KD, MIXED_KD, LAYER_KD):
         spec = OBJECTIVES[name]
         lines.append(f"  {name:<12}{spec.status:<18}{spec.description}")
         if spec.blocking_reason:

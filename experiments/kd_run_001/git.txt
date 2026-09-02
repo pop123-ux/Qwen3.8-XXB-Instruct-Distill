@@ -1,0 +1,8 @@
+repository   : git@github.com:pop123-ux/Qwen3.8-XXB-Instruct-Distill.git
+branch       : claude/qwen38-16gb-distill-t6d0gy
+commit       : 258b00bf73a43d4a98b6168895cecd64f3a8f25e
+subject      : Integrate real teacher KD pilot and Run 001 infrastructure
+commit date  : 2026-09-02T16:31:03+00:00
+state        : DIRTY
+modified     : cripts/kd_run.py, src/qwen_distill/training/checkpoint_validation.py, src/qwen_distill/training/checkpoints.py, src/qwen_distill/training/trainer.py, src/qwen_distill/training/peft_support.py
+captured at  : 2026-09-02T17:17:30.900742+00:00

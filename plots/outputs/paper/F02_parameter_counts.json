@@ -1,0 +1,21 @@
+{
+  "data_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
+  "experiments": [],
+  "extra": {
+    "student_active_per_token": 9611119488,
+    "student_total": 13008505728,
+    "teacher_total": 26895998464
+  },
+  "figure_id": "F02",
+  "metrics": [
+    "exact_parameter_count",
+    "active_parameters_per_token"
+  ],
+  "note": "",
+  "plotting_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
+  "sources": [
+    "qwen_distill.architecture.moe_student:audit",
+    "qwen_distill.architecture.presets:get_spec('teacher')"
+  ],
+  "value_kind": "audited"
+}

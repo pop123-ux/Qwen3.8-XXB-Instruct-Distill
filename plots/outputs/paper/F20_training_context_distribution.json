@@ -1,0 +1,53 @@
+{
+  "data_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
+  "experiments": [],
+  "extra": {
+    "arms": {
+      "B0": {
+        "16384": 0.18823529411764706,
+        "262144": 0.011764705882352941,
+        "4096": 0.7529411764705882,
+        "65536": 0.047058823529411764
+      },
+      "B1": {
+        "4096": 1.0
+      },
+      "B2": {
+        "16384": 0.3,
+        "262144": 0.1,
+        "4096": 0.4,
+        "65536": 0.2
+      },
+      "B3": {
+        "16384": 0.3,
+        "262144": 0.1,
+        "4096": 0.4,
+        "65536": 0.2
+      },
+      "B4": {
+        "16384": 0.2,
+        "262144": 0.3,
+        "4096": 0.15,
+        "65536": 0.35
+      },
+      "B5": {
+        "16384": 0.5,
+        "262144": 0.02,
+        "4096": 0.4,
+        "65536": 0.08
+      }
+    },
+    "fraction_sum_problems": []
+  },
+  "figure_id": "F20",
+  "metrics": [
+    "stages.sequence_length",
+    "stages.fraction"
+  ],
+  "note": "declared curricula; none has been trained",
+  "plotting_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
+  "sources": [
+    "qwen_distill.research.context:CURRICULA"
+  ],
+  "value_kind": "design"
+}

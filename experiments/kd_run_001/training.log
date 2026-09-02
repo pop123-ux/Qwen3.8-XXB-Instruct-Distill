@@ -1,0 +1,81 @@
+  canonical student : qwen38_19b_h5120_l48_moe
+                      loaded from /workspace/runs/pilot001/transferred
+
+  loading teacher Qwen/Qwen3.8-27B @ dbdc473dea0d6a9763042881cc33d6058d1742d2
+    quantization: 4bit
+
+    teacher ready: {'source': 'online', 'top_k': 64, 'temperature': 2.0, 'teacher_model': 'Qwen/Qwen3.8-27B', 'teacher_revision': 'dbdc473dea0d6a9763042881cc33d6058d1742d2'}
+
+  DISTILLING 50 steps (batch 1 x 1 accum @ 1024 tokens) ...
+
+  device: cuda
+  objective: mixed_kd  alpha 0.5  T 2.0  tail bucket
+  teacher  : {'source': 'online', 'top_k': 64, 'temperature': 2.0, 'teacher_model': 'Qwen/Qwen3.8-27B', 'teacher_revision': 'dbdc473dea0d6a9763042881cc33d6058d1742d2'}
+  tokenizer vocabulary 248,077 against a student embedding of 248,320: 243 alignment padding row(s) that no token id reaches. Carried, not trimmed — trimming would change the student's geometry.
+  corpus: /workspace/corpora/gutenberg/train.txt tokenised by Qwen2Tokenizer at /workspace/models/qwen3.8-27b-dbdc473
+          5,519,074 bytes, 195 sequences of 1024 (186 train / 9 validation)
+          sha256 0c666fd429e3729d
+          tokenizer Qwen2Tokenizer vocab 248,077 eos 248046
+          200,000 tokens from 17,017 document(s), 320 dropped in the tail
+
+  gradient checkpointing: ON
+  strategy: qlora (r=16, alpha=32)
+  optimizer: adamw
+  parameters: 13,031,508,864 total, 23,003,136 trainable (0.1765%)
+  precision: bf16 (autocast)
+
+  CHECKPOINTING
+    full checkpoint : every 25 steps -> /workspace/runs/run001_kd_pilot/checkpoints
+    progress record : every 2 steps -> metrics.jsonl + progress/latest.json
+    resume          : no (starting from step 0)
+    persistent copy : off (local only)
+                      NOTHING SURVIVES THIS RUNTIME. Set training.persistent_backup
+                      to a mounted Drive path to keep checkpoints.
+[transformers] `use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.
+  step      2  loss   9.9119  kd 9.515  ce 10.309  agree 0.00  tail 0.635       156 tok/s  (run 156)    13.1s
+  step      4  loss   9.4219  kd 8.445  ce 10.399  agree 0.00  tail 0.655       171 tok/s  (run 163)    25.1s
+  step      6  loss   7.7396  kd 6.195  ce 9.284  agree 0.06  tail 0.680       171 tok/s  (run 166)    37.1s
+  step      8  loss   6.4661  kd 4.504  ce 8.428  agree 0.03  tail 0.689       170 tok/s  (run 167)    49.1s
+  step     10  loss   7.5690  kd 6.706  ce 8.432  agree 0.05  tail 0.643       171 tok/s  (run 168)    61.1s
+  step     12  loss   6.2805  kd 4.821  ce 7.739  agree 0.04  tail 0.687       169 tok/s  (run 168)    73.3s
+  step     12  validation   7.6873
+  step     14  loss   7.0301  kd 6.503  ce 7.557  agree 0.05  tail 0.634       110 tok/s  (run 156)    91.9s
+  step     16  loss   6.5190  kd 5.379  ce 7.659  agree 0.06  tail 0.666       171 tok/s  (run 158)   103.9s
+  step     18  loss   7.5748  kd 7.870  ce 7.280  agree 0.07  tail 0.590       167 tok/s  (run 159)   116.1s
+  step     20  loss   7.3419  kd 6.995  ce 7.689  agree 0.08  tail 0.616       169 tok/s  (run 160)   128.3s
+  step     22  loss   5.7019  kd 4.476  ce 6.928  agree 0.09  tail 0.673        77 tok/s  (run 145)   155.0s
+  step     24  loss   6.4460  kd 5.754  ce 7.138  agree 0.09  tail 0.652        31 tok/s  (run 112)   220.4s
+  step     24  validation   6.8782
+  checkpoint: step_000025 (periodic)
+  step     26  loss   5.7879  kd 4.877  ce 6.699  agree 0.10  tail 0.658        22 tok/s  (run 85)   314.0s
+  step     28  loss   5.4384  kd 3.963  ce 6.914  agree 0.12  tail 0.676       122 tok/s  (run 87)   330.8s
+  step     30  loss   5.6834  kd 4.615  ce 6.752  agree 0.11  tail 0.651       110 tok/s  (run 88)   349.5s
+  step     32  loss   5.9411  kd 5.127  ce 6.755  agree 0.12  tail 0.647        93 tok/s  (run 88)   371.4s
+  step     34  loss   6.3193  kd 5.995  ce 6.644  agree 0.14  tail 0.617        81 tok/s  (run 88)   396.7s
+  step     36  loss   6.3110  kd 6.203  ce 6.419  agree 0.12  tail 0.584       142 tok/s  (run 90)   411.1s
+  step     36  validation   6.4255
+  step     38  loss   4.9730  kd 3.815  ce 6.131  agree 0.12  tail 0.683        58 tok/s  (run 87)   446.6s
+  step     40  loss   6.5557  kd 7.011  ce 6.101  agree 0.10  tail 0.572       169 tok/s  (run 89)   458.7s
+  step     42  loss   5.1034  kd 2.915  ce 7.292  agree 0.17  tail 0.754       169 tok/s  (run 91)   470.8s
+  step     44  loss   5.1380  kd 4.138  ce 6.138  agree 0.15  tail 0.670       166 tok/s  (run 93)   483.1s
+  step     46  loss   4.9995  kd 3.825  ce 6.174  agree 0.13  tail 0.666       168 tok/s  (run 95)   495.3s
+  step     48  loss   5.6766  kd 5.031  ce 6.322  agree 0.12  tail 0.639       162 tok/s  (run 97)   507.9s
+  step     48  validation   6.3664
+  step     50  loss   4.9593  kd 3.662  ce 6.256  agree 0.14  tail 0.681        25 tok/s  (run 87)   589.6s
+  checkpoint: step_000050 (periodic)
+
+  finished step 50 of 50 in 598.8s (51,200 tokens seen)
+Traceback (most recent call last):
+  File "/workspace/Qwen3.8-XXB-Instruct-Distill/scripts/kd_run.py", line 268, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/workspace/Qwen3.8-XXB-Instruct-Distill/scripts/kd_run.py", line 259, in main
+    exit_code = train(config, None, teacher=teacher)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/Qwen3.8-XXB-Instruct-Distill/src/qwen_distill/training/trainer.py", line 839, in train
+    print(f"  interrupted by {stopping['signal']}. Resume with:\n"
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/Qwen3.8-XXB-Instruct-Distill/src/qwen_distill/training/trainer.py", line 1070, in _write_summary
+    "parameters": count_parameters(spec).as_dict() if spec else None,
+                        ^^^^^^^^^^^^
+NameError: name 'param_report' is not defined

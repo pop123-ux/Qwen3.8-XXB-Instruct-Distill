@@ -88,6 +88,10 @@ OPTIONAL = "optional"
 #: parameter count can explain". Negligible against a real checkpoint.
 SERIALIZATION_OVERHEAD_BYTES = 1_048_576
 
+#: Filename a parameter-efficient run writes its trained weights to, in place of
+#: ``model.safetensors``. Named once so the validator and the writer cannot drift.
+ADAPTER_WEIGHTS = "adapter_model.safetensors"
+
 
 @dataclass(frozen=True)
 class Artifact:
@@ -126,6 +130,13 @@ class Artifact:
 ARTIFACTS: tuple[Artifact, ...] = (
     Artifact("model.safetensors", CORE, 64, (0.5, 6.0),
              "model weights; safetensors, fp32 unless the run says otherwise"),
+    # A parameter-efficient run writes this *instead of* `model.safetensors`: the base
+    # is frozen, so the adapter is the entire trained result. No `bytes_per_param`
+    # band -- it is sized by the adapter, which is a fraction of a percent of the
+    # parameter count the checkpoint records, so the model band would reject every
+    # valid one of these.
+    Artifact("adapter_model.safetensors", OPTIONAL, 64, None,
+             "LoRA adapter weights; the whole of what a lora/qlora run changed"),
     Artifact("training_state.json", CORE, 2, None, "step, epoch, data position, history"),
     Artifact("metadata.json", CORE, 2, None, "what this checkpoint is, self-contained"),
     Artifact(COMPLETE_MARKER, CORE, 1, None, "written last; carries a line of text"),
@@ -401,6 +412,18 @@ def _expected_files(
     optional extra, it is a checkpoint that has been damaged.
     """
     expected: dict[str, str] = {name: "core artifact" for name in CORE_FILES}
+
+    # Weights are core, but which file holds them depends on the strategy. A
+    # parameter-efficient checkpoint carries `adapter_model.safetensors` and no
+    # `model.safetensors`, because its base weights are frozen and already on disk as
+    # the materialised student. Requiring the full-training filename would mark every
+    # LoRA checkpoint damaged; requiring neither would stop detecting deletion. So the
+    # rule is "exactly the one this checkpoint says it wrote".
+    declared = [n for n in ((metadata or {}).get("contents") or []) if isinstance(n, str)]
+    if ADAPTER_WEIGHTS in declared:
+        expected.pop("model.safetensors", None)
+        expected[ADAPTER_WEIGHTS] = "core artifact (parameter-efficient run)"
+
     if require_resumable:
         for name in RESUME_FILES:
             expected[name] = "needed to resume training"
@@ -500,6 +523,15 @@ def validate_checkpoint_dir(
     if result.parameter_count is None:
         result.parameter_count = expected_parameter_count
 
+    # Under LoRA the artifacts in this directory are sized by the *trainable* count, not
+    # by the 13B base that stays frozen on disk. Scaling the bands by the full count
+    # would demand a multi-gigabyte optimizer state for 23M adapter parameters and
+    # reject every valid parameter-efficient checkpoint.
+    size_reference = result.parameter_count
+    if (directory / ADAPTER_WEIGHTS).is_file():
+        trainable = (metadata or {}).get("trainable_parameter_count")
+        size_reference = trainable if isinstance(trainable, int) else None
+
     expected = _expected_files(metadata, manifest, require_resumable=require_resumable)
     recorded = (manifest or {}).get("files", {}) or {}
 
@@ -522,7 +554,7 @@ def validate_checkpoint_dir(
             continue
 
         result.implausible_sizes.extend(
-            _check_size_plausibility(check, artifact, result.parameter_count)
+            _check_size_plausibility(check, artifact, size_reference)
         )
 
         record = recorded.get(name)
@@ -651,13 +683,19 @@ def _verify_by_loading(
         result.warnings.append("safetensors is not installed; the load check was skipped")
         return
 
+    # Whichever file this checkpoint actually used for its trained weights.
+    weights_name = (
+        ADAPTER_WEIGHTS if (directory / ADAPTER_WEIGHTS).is_file() else "model.safetensors"
+    )
+    is_adapter = weights_name == ADAPTER_WEIGHTS
+
     total_parameters = 0
     try:
-        with safe_open(str(directory / "model.safetensors"), framework="pt") as handle:
+        with safe_open(str(directory / weights_name), framework="pt") as handle:
             keys = list(handle.keys())
             if not keys:
                 result.valid = False
-                result.load_failure = "model.safetensors contains no tensors"
+                result.load_failure = f"{weights_name} contains no tensors"
                 result.invalid_reason = result.load_failure
                 return
             for key in keys:
@@ -667,11 +705,15 @@ def _verify_by_loading(
                 total_parameters += int(handle.get_tensor(key).numel())
     except Exception as exc:  # noqa: BLE001 - the failure is the result
         result.valid = False
-        result.load_failure = f"model.safetensors will not load: {type(exc).__name__}: {exc}"
+        result.load_failure = f"{weights_name} will not load: {type(exc).__name__}: {exc}"
         result.invalid_reason = result.load_failure
         return
 
-    reference = expected_parameter_count or result.parameter_count
+    # The parameter-count comparison below asks "do these weights describe the model
+    # this checkpoint claims?". For an adapter the answer is legitimately "no" -- it
+    # holds a fraction of a percent of them -- so the check does not apply. The tensors
+    # were still all materialised above, which is the part that detects truncation.
+    reference = None if is_adapter else (expected_parameter_count or result.parameter_count)
     if reference:
         drift = abs(total_parameters - reference) / reference
         if drift > ARCHITECTURE_TOLERANCE:

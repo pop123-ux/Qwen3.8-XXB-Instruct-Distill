@@ -1,0 +1,25 @@
+{
+  "load_seconds": 175.9,
+  "model_class": "Qwen3_5MoeForCausalLM",
+  "n_params": 13008505728,
+  "param_dtype": "torch.bfloat16",
+  "weights_gib": 24.23,
+  "batch_shape": [
+    1,
+    1024
+  ],
+  "batch_dtype": "torch.int64",
+  "forward_seconds": 1.18,
+  "loss": 9.269997596740723,
+  "logits_shape": [
+    1,
+    1024,
+    248320
+  ],
+  "loss_finite": true,
+  "logits_finite": true,
+  "peak_vram_gib": 26.75,
+  "reserved_gib": 27.23,
+  "total_vram_gib": 44.43,
+  "ppl": 10614.7
+}

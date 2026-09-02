@@ -1,0 +1,34 @@
+  LAYER-KD CHUNKING EQUIVALENCE  stage 'parameters'  device cuda
+  objective : layer_kd, pointwise, direction weight 1.0, normalise True
+  tokenizer vocabulary 248,077 against a student embedding of 248,320: 243 alignment padding row(s) that no token id reaches. Carried, not trimmed — trimming would change the student's geometry.
+  corpus  : 5,519,074 bytes, sha256 e11ca38bb099fc89, 455 sequences of 1536
+  batch   : (1, 1536), first ids [279, 51811, 78830, 13, 248046, 2278, 264, 6321]
+  student : 10,065,554,304 parameters, 23,003,136 trainable
+  unchunked pass 1 of 4
+[transformers] `use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.
+    layer term 1.450158   step peak 42.1117 GiB allocated
+  unchunked pass 2 of 4
+    layer term 1.450158   step peak 42.1197 GiB allocated
+  unchunked pass 3 of 4
+    layer term 1.450158   step peak 42.1197 GiB allocated
+  unchunked pass 4 of 4
+    layer term 1.450158   step peak 42.1197 GiB allocated
+  chunked pass 1 of 4  (4 pair(s) per gradient)
+    layer term 1.450158   step peak 37.3305 GiB allocated
+  chunked pass 2 of 4  (4 pair(s) per gradient)
+    layer term 1.450158   step peak 37.3305 GiB allocated
+  chunked pass 3 of 4  (4 pair(s) per gradient)
+    layer term 1.450158   step peak 37.3305 GiB allocated
+  chunked pass 4 of 4  (4 pair(s) per gradient)
+    layer term 1.450158   step peak 37.3305 GiB allocated
+  gradient: 240 LoRA parameters, 123 identical in all 8 passes
+    the student's backward is not bit-reproducible: two identical unchunked passes differ by up to 9.766e-03
+    true split (unchunked | chunked)   max 1.074219e-02   mean 2.641230e-04
+    over all 35 3/3 splits of the same six passes:
+      rank of the true split by max   1 of 35  (p = 0.57)
+      rank of the true split by mean  10 of 35  (p = 0.29)
+  value   : layer term spread 6.424e-08 relative over all 8 passes
+  memory  : 42.1117 -> 37.3305 GiB allocated (-4.7813)
+  verdict : value ok, gradients indistinguishable from the hardware's own non-reproducibility
+  wrote experiments/run003_chunking_equivalence/parameters.json
+  EQUIVALENT within the declared tolerance.

@@ -1,0 +1,30 @@
+{
+  "stage": "parameters",
+  "chunk_pairs": 4,
+  "sequence_length": 1536,
+  "corpus_sha256": "e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d",
+  "n_parameters_compared": 240,
+  "n_parameters_zero_in_both": 120,
+  "reference_layer_term": 1.450157642364502,
+  "chunked_layer_term": 1.4501575492031407,
+  "value_relative_difference": 6.42422303413191e-08,
+  "gradient_worst_absolute_difference": 0.003509521484375,
+  "gradient_worst_relative_difference": 0.5424528301886793,
+  "gradient_worst_at_parameter": "base_model.model.model.layers.23.self_attn.k_proj.lora_B.default.weight",
+  "step_peak_allocated_gib": {
+    "reference": 42.11172151565552,
+    "chunked": 37.330469608306885
+  },
+  "tolerance": {
+    "value_relative": 1e-06,
+    "gradient_relative": 1e-05
+  },
+  "elapsed_s": 286.8,
+  "equivalent": false,
+  "teacher": {
+    "model": "Qwen/Qwen3.8-27B",
+    "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+    "quantization": "4bit"
+  },
+  "student_checkpoint": "/workspace/runs/pilot001/transferred"
+}

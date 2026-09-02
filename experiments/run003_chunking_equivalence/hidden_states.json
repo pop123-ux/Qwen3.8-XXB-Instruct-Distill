@@ -1,0 +1,54 @@
+{
+  "stage": "hidden",
+  "chunk_pairs": 4,
+  "n_chunks": 12,
+  "n_pairs": 48,
+  "n_gradients_compared": 48,
+  "sequence_length": 1536,
+  "corpus_sha256": "e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d",
+  "hidden_dtype": "torch.bfloat16",
+  "reference": {
+    "total": 1.450157642364502,
+    "magnitude": 0.966771125793457,
+    "direction": 0.48338645696640015,
+    "student_norm": 2003.2148303985596,
+    "teacher_norm": 3823.8540534973145
+  },
+  "chunked": {
+    "total": 1.4501575492031407,
+    "magnitude": 0.9667710885114502,
+    "direction": 0.48338646069169044,
+    "student_norm": 2003.2148303985596,
+    "teacher_norm": 3823.8540534973145
+  },
+  "value_absolute_difference": {
+    "total": 9.316136129200459e-08,
+    "magnitude": 3.7282006815075874e-08,
+    "direction": 3.725290298461914e-09
+  },
+  "value_relative_difference": {
+    "total": 6.42422303413191e-08,
+    "magnitude": 3.8563426048205e-08,
+    "direction": 7.706650123879776e-09
+  },
+  "per_layer_worst_absolute_difference": 0.0,
+  "gradient_worst_absolute_difference": 0.0,
+  "gradient_worst_relative_difference": 0.0,
+  "gradient_worst_at_hidden_state": null,
+  "loss_peak_allocated_gib": {
+    "reference": 28.86451292037964,
+    "chunked": 23.882911682128906
+  },
+  "tolerance": {
+    "value_relative": 1e-06,
+    "gradient_relative": 1e-05
+  },
+  "elapsed_s": 355.6,
+  "equivalent": true,
+  "teacher": {
+    "model": "Qwen/Qwen3.8-27B",
+    "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+    "quantization": "4bit"
+  },
+  "student_checkpoint": "/workspace/runs/pilot001/transferred"
+}

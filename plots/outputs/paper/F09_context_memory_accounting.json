@@ -1,0 +1,41 @@
+{
+  "data_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
+  "experiments": [],
+  "extra": {
+    "context_ladder": [
+      4096,
+      8192,
+      16384,
+      32768,
+      65536,
+      131072,
+      262144
+    ],
+    "totals_gib": [
+      9.03234716039151,
+      9.12609716039151,
+      9.31359716039151,
+      9.68859716039151,
+      10.43859716039151,
+      11.93859716039151,
+      14.93859716039151
+    ]
+  },
+  "figure_id": "F09",
+  "metrics": [
+    "weights",
+    "quantisation_overhead",
+    "kv_cache",
+    "recurrent_state",
+    "conv_state",
+    "activations",
+    "runtime_overhead"
+  ],
+  "note": "quantisation q4_k_m; usable capacity 13.56 GiB (14.56 measured total less 1.0 reserved)",
+  "plotting_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
+  "sources": [
+    "qwen_distill.research.memory:account",
+    "qwen_distill.architecture.moe_student:audit"
+  ],
+  "value_kind": "analytical"
+}
