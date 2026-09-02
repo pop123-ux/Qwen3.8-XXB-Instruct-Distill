@@ -1,0 +1,34 @@
+{
+  "captured_at": "2026-09-02T15:28:35.644764+00:00",
+  "local_path": "/workspace/models/qwen3.8-27b-dbdc473",
+  "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+  "model": "Qwen/Qwen3.8-27B",
+  "downloaded_at": "2026-09-02T15:21:26Z",
+  "n_files": 96,
+  "total_bytes": 55586049591,
+  "huggingface_hub_version": "1.29.0",
+  "download_manifest_sha256": "bcd0cbce9f4ff74b07491e79af633ae8c5ab1c2d6794c78b9678c3617ef2708c",
+  "metadata_sha256": {
+    "config.json": {
+      "bytes": 4312,
+      "sha256": "191e0af232104ed8b65258cf3fb2b842e288008baca7633c11b82a1ac7203aab"
+    },
+    "generation_config.json": {
+      "bytes": 202,
+      "sha256": "e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e"
+    },
+    "tokenizer_config.json": {
+      "bytes": 17928,
+      "sha256": "b11349aafa7cdc6a320767cf7ceb29ed82f7eda5d65e8e0819e76f0ce947bf27"
+    },
+    "model.safetensors.index.json": {
+      "bytes": 112216,
+      "sha256": "77042094076611b69791a610065f28b7013b8c621795fa86ddccc8bac7d1b9df"
+    },
+    "chat_template.jinja": {
+      "bytes": 8952,
+      "sha256": "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041"
+    }
+  },
+  "weights_not_archived": "The teacher checkpoint is ~55 GB and is never committed or uploaded. It is re-obtainable from its pinned revision; that revision is the archived artefact."
+}

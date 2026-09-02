@@ -1,0 +1,17 @@
+# Run kd_run_001 artefact checksums
+# generated: 2026-09-02T15:28:46.359028+00:00
+# root: /workspace/runs/kd_run_001
+#
+# sha256  bytes  relative-path  external-location
+
+7f3c111fb9262e08fdf65870533cb385b495b8bd960370803b889344fbde51a4  2439  README.md  -
+a4107406dcc584eea63b639622cbf41c93a85c6df8dac0477bc677138790f911  1230  dataset_provenance.json  -
+f5e61044e98f7da1729b3065486b8d81a98eeb787a5704ba425b3b4846e67e84  5241  environment.txt  -
+e69317bb18fe5854289ccc126cd133b947e0a3c2fe1ce0076b54af0043e088f5  506  git.txt  -
+de5ab4191ebf071310910d4c068d8ceba15cff468f66e63ce3154bb16a4b762e  3541  gpu_monitor.csv  -
+4d71f4d7dd7461a0039be1e23f277691d6ea9e833b4ab923e264d2059e9e84ce  2356  hardware.txt  -
+273e747ce90e27e550ed5a8bdbbd7a30c97d9bdb803b8f73b6a36a99632c88e9  16923  manifest.json  -
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  0  metrics.jsonl  -
+d141c78a6dfa56c45ab6a77dd68d3dd177be1d20c1af57ad04697ca7d2a4d543  1348  teacher_provenance.json  -
+728cb0dc7ce461f58b756bbc1ad1c4dd8c69b4ee255eb0f0e7b99aa7be9e7bc1  996  tokenizer_provenance.json  -
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  0  training.log  -
