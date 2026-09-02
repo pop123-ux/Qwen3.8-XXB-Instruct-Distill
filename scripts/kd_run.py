@@ -111,6 +111,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     run.add_argument("--lora-alpha", type=int, default=32)
     run.add_argument("--precision", choices=("bf16", "fp16", "fp32"), default="bf16")
     run.add_argument("--seed", type=int, default=0)
+    run.add_argument("--log-every", type=int, default=None,
+                     help="metrics/progress interval; defaults to steps//20. Set to 1 to "
+                          "persist every optimizer step -- a controlled comparison needs a "
+                          "per-step series to be comparable across arms, and at these step "
+                          "counts the whole stream is kilobytes.")
+    run.add_argument("--eval-every", type=int, default=None,
+                     help="validation interval; defaults to steps//4")
+    run.add_argument("--save-every", type=int, default=None,
+                     help="full checkpoint interval; defaults to steps//2")
     run.add_argument("--output", type=Path, default=Path("runs/kd_run"))
     run.add_argument("--name", default=None, help="experiment name for the record")
     run.add_argument("--dry-run", action="store_true",
@@ -212,9 +221,9 @@ def main(argv: list[str] | None = None) -> int:
             kd_temperature=args.kd_temperature,
             kd_top_k=args.kd_top_k,
             seed=args.seed,
-            eval_every=max(1, args.steps // 4),
-            save_every=max(1, args.steps // 2),
-            log_every=max(1, args.steps // 20),
+            eval_every=args.eval_every or max(1, args.steps // 4),
+            save_every=args.save_every or max(1, args.steps // 2),
+            log_every=args.log_every or max(1, args.steps // 20),
         ),
         runtime=RuntimeConfig(output_dir=str(args.output)),
     )
@@ -228,6 +237,9 @@ def main(argv: list[str] | None = None) -> int:
              "kd_top_k": args.kd_top_k, "kd_temperature": args.kd_temperature,
              "objective": args.objective, "kd_weight": args.kd_weight,
              "strategy": args.strategy, "optimizer": args.optimizer,
+             "log_every": args.log_every or max(1, args.steps // 20),
+             "eval_every": args.eval_every or max(1, args.steps // 4),
+             "save_every": args.save_every or max(1, args.steps // 2),
              "lora_rank": args.lora_rank, "lora_alpha": args.lora_alpha,
              "expected_vocab_size": FROZEN_STUDENT.vocab_size},
             indent=2))

@@ -41,10 +41,12 @@ experiments/**/*.pt
 experiments/**/*.safetensors
 experiments/**/*.bin
 experiments/**/metrics.jsonl
-# ...except the archived Run 001 record, where the per-step metrics stream IS the
-# evidence and is a few KB for a controlled pilot. Re-included by name rather than
-# `git add -f`'d, for the reason given above: a forgotten flag loses the record.
-!experiments/kd_run_001/metrics.jsonl
+# ...except in an archived run record, where the per-step metrics stream IS the evidence
+# and is a few KB for a controlled run. Re-included by pattern rather than `git add -f`'d,
+# for the reason given above: a forgotten flag loses the record. By pattern rather than by
+# name because it was named for Run 001 alone, and the next run's record would have been
+# silently dropped by a rule nobody thought to update.
+!experiments/*/metrics.jsonl
 evaluations/**/raw/
 # Generations can be hundreds of MB; the summaries next to them are what we commit.
 **/generations.jsonl
@@ -53,10 +55,10 @@ evaluations/**/raw/
 **/student_generations.jsonl
 wandb/
 *.log
-# ...except the archived Run 001 training log: 6 KB of the run's own stdout, and the
+# ...except an archived run's training log: tens of KB of the run's own stdout, and the
 # only place its per-step console trace survives. Must come after `*.log`, because the
 # last matching rule wins.
-!experiments/kd_run_001/training.log
+!experiments/*/training.log
 
 # Local environment
 .env

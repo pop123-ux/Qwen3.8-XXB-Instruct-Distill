@@ -1,0 +1,34 @@
+captured at   : 2026-09-02T18:15:01.806012+00:00
+cpu count     : 96
+total RAM GiB : 503.514
+
+# gpus
+{"name": "NVIDIA A40", "memory_total": "46068 MiB", "driver_version": "570.195.03", "compute_capability": "8.6"}
+torch gpu     : {"name": "NVIDIA A40", "total_memory_gib": 44.432, "multi_processor_count": 84}
+
+# filesystems
+{"mount": "/workspace", "total_gib": 987864.07, "used_gib": 777213.07, "free_gib": 210651.0}
+{"mount": "/", "total_gib": 50.0, "used_gib": 2.2, "free_gib": 47.8}
+{"mount": "/root", "total_gib": 50.0, "used_gib": 2.2, "free_gib": 47.8}
+
+# nvidia-smi
+Wed Sep  2 18:15:02 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 570.195.03             Driver Version: 570.195.03     CUDA Version: 12.8     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A40                     On  |   00000000:D1:00.0 Off |                    0 |
+|  0%   44C    P0             71W /  300W |       3MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+

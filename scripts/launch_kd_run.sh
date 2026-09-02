@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launch Run 001 so that neither the SSH session, the terminal, nor Claude Code owns it.
+# Launch a KD run so that neither the SSH session, the terminal, nor Claude Code owns it.
 #
 # Three things kill a rented-GPU run that has nothing wrong with it: the SSH connection
 # drops, the terminal closes, or the agent that started it exits and takes its process
@@ -23,6 +23,9 @@
 set -uo pipefail
 
 RUN_ROOT="${RUN_ROOT:-/workspace/runs/kd_run_001}"
+# Names this run in its own log banner. Defaults to the directory it writes to, so a
+# second run through this launcher cannot inherit the first one's label.
+RUN_LABEL="${RUN_LABEL:-$(basename "${RUN_ROOT}")}"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG="${RUN_ROOT}/training.log"
 PIDFILE="${RUN_ROOT}/run.pid"
@@ -51,7 +54,7 @@ printf '%s\n' "$*" > "${RUN_ROOT}/command.txt"
 {
     echo ""
     echo "=============================================================================="
-    echo "RUN 001 launch  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "${RUN_LABEL} launch  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "  command : $*"
     echo "  cwd     : ${REPO}"
     echo "  commit  : $(git -C "${REPO}" rev-parse HEAD 2>/dev/null || echo unknown)"
@@ -100,7 +103,7 @@ PY
 ' _ "${REPO}" "${RUN_ROOT}" "$@" </dev/null >/dev/null 2>&1 &
 
 echo $! > "${PIDFILE}"
-echo "Run 001 launched detached: pid $(cat "${PIDFILE}")"
+echo "${RUN_LABEL} launched detached: pid $(cat "${PIDFILE}")"
 echo "  log     : ${LOG}"
 echo "  follow  : tail -f ${LOG}"
 echo "  status  : python scripts/run_record.py verify"

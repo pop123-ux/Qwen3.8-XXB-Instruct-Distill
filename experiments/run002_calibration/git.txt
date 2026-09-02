@@ -1,0 +1,8 @@
+repository   : git@github.com:pop123-ux/Qwen3.8-XXB-Instruct-Distill.git
+branch       : claude/qwen38-16gb-distill-t6d0gy
+commit       : 779da745e615a4dcf9054116d8110fd7c24ca541
+subject      : Implement the parameter-efficient path and run canonical KD on the A40
+commit date  : 2026-09-02T17:46:08+00:00
+state        : DIRTY
+modified     : gitignore, docs/DISTILLATION_ROADMAP.md, experiments/ledger.jsonl, scripts/kd_run.py, scripts/launch_kd_run.sh, scripts/run_record.py, src/qwen_distill/training/run_record.py, CLAUDE_CLI_RUNS/Run001.md, docs/RUN_002.md, experiments/run002_calibration/, scripts/record_run002_kd.py
+captured at  : 2026-09-02T18:14:37.691724+00:00

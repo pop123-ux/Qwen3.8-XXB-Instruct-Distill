@@ -33,13 +33,12 @@ from pathlib import Path
 import _bootstrap  # noqa: F401
 
 from qwen_distill.training.run_record import (
-    ARCHIVE_ROOT,
     DEFAULT_RUN_ROOT,
-    RUN_ID,
     archive_to_repository,
     build_manifest,
     initialise_run,
     record_termination,
+    run_id_for,
     verify_record,
     write_checksums,
 )
@@ -74,7 +73,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                            help="record where a large artefact was backed up; repeatable")
 
     archive = sub.add_parser("archive", help="copy the text record into the repository")
-    archive.add_argument("--into", type=Path, default=REPOSITORY / ARCHIVE_ROOT)
+    # Defaults to `experiments/<run directory name>`: archiving a second run into the
+    # first one's directory would overwrite its record.
+    archive.add_argument("--into", type=Path, default=None)
 
     terminate = sub.add_parser("terminate", help="record how the run ended")
     terminate.add_argument("--status", required=True,
@@ -115,9 +116,10 @@ def do_init(args: argparse.Namespace) -> int:
         repository=REPOSITORY, config=config, config_path=Path(config_path) if config_path else None,
         teacher_directory=args.teacher, tokenizer_path=tokenizer,
         corpus_manifest=args.corpus, command=command, notes=notes,
+        run_id=run_id_for(args.root),
     )
     written = initialise_run(args.root, manifest, config=config, command=command)
-    print(f"{RULE}\nRUN RECORD: {RUN_ID}\n{RULE}\n")
+    print(f"{RULE}\nRUN RECORD: {manifest['run_id']}\n{RULE}\n")
     print(f"  root : {args.root}")
     for path in written:
         print(f"    wrote {path.relative_to(args.root)}")
@@ -149,8 +151,9 @@ def do_checksums(args: argparse.Namespace) -> int:
 
 
 def do_archive(args: argparse.Namespace) -> int:
-    index = archive_to_repository(args.root, args.into)
-    print(f"  archived into {args.into}")
+    into = args.into or (REPOSITORY / "experiments" / run_id_for(args.root))
+    index = archive_to_repository(args.root, into)
+    print(f"  archived into {into}")
     for entry in index["copied"]:
         print(f"    copied     {entry['name']:<28} {entry['bytes']:>10,} bytes")
     for entry in index["referenced_not_copied"]:
@@ -170,7 +173,7 @@ def do_terminate(args: argparse.Namespace) -> int:
 
 def do_verify(args: argparse.Namespace) -> int:
     report = verify_record(args.root)
-    print(f"{RULE}\nPRE-TERMINATION VERIFICATION: {RUN_ID}\n{RULE}\n")
+    print(f"{RULE}\nPRE-TERMINATION VERIFICATION: {run_id_for(args.root)}\n{RULE}\n")
     for item in report["items"]:
         mark = "[x]" if item["ok"] else "[ ]"
         print(f"  {mark} {item['item']:<34} {item['detail']}")

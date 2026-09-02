@@ -1,4 +1,4 @@
-"""The experiment record for Run 001, written before the run starts.
+"""The experiment record for one KD run, written before the run starts.
 
 A conversation is not an experiment record. Neither is a terminal scrollback, nor a
 RunPod Pod: `/workspace` survives a process dying, but not the Pod being destroyed, and
@@ -11,7 +11,7 @@ So the record is written in three places, each answering a different failure:
     an external object store      survives GitHub's file-size limits (large artefacts)
 
 This module writes the first and prepares the second. It records *what would let someone
-else reproduce Run 001*: the exact commit, the exact teacher revision, the exact
+else reproduce the run*: the exact commit, the exact teacher revision, the exact
 tokenizer, the exact corpus bytes, the exact hardware, the exact command. Every field is
 captured from the machine rather than restated from a document, because a document can
 drift from the thing it describes and a captured field cannot.
@@ -35,15 +35,17 @@ from pathlib import Path
 from typing import Any
 
 __all__ = [
-    "RUN_ID", "DEFAULT_RUN_ROOT", "ARCHIVE_ROOT", "SUBDIRECTORIES", "ARCHIVED_FILES",
+    "RUN_ID", "run_id_for", "DEFAULT_RUN_ROOT", "ARCHIVE_ROOT", "SUBDIRECTORIES", "ARCHIVED_FILES",
     "capture_git", "capture_environment", "capture_hardware", "capture_teacher",
     "capture_tokenizer", "capture_dataset", "build_manifest", "initialise_run",
     "write_checksums", "record_termination", "archive_to_repository", "verify_record",
     "sha256_file",
 ]
 
-#: The one run this record describes. A second run gets a second directory, never a
-#: reuse of this one: overwriting a run destroys the only copy of what it did.
+#: The default run, used only to derive :data:`DEFAULT_RUN_ROOT` and
+#: :data:`ARCHIVE_ROOT`. A run's actual identity comes from :func:`run_id_for`, i.e. the
+#: directory it writes to. A second run gets a second directory, never a reuse of this
+#: one: overwriting a run destroys the only copy of what it did.
 RUN_ID = "kd_run_001"
 
 DEFAULT_RUN_ROOT = Path("/workspace/runs") / RUN_ID
@@ -56,6 +58,18 @@ SUBDIRECTORIES = ("checkpoints", "artifacts", "final", "progress")
 
 #: What is small enough, and textual enough, to belong in ordinary Git history. Weights
 #: and optimizer state are deliberately absent: they are referenced by checksum instead.
+def run_id_for(root: Path | str) -> str:
+    """The run's identity: the name of the directory it writes to.
+
+    ``RUN_ID`` was a module constant while the project had exactly one run, and every
+    record it wrote said ``kd_run_001`` regardless of where it was written. A second run
+    through the same code would have produced a record, a README, a checksum header and a
+    termination entry all claiming to be the first run -- the precise failure the record
+    exists to prevent. Deriving it from the root means a record cannot misname itself.
+    """
+    return Path(root).name or RUN_ID
+
+
 ARCHIVED_FILES = (
     "README.md", "manifest.json", "config.json", "command.txt", "environment.txt",
     "hardware.txt", "git.txt", "teacher_provenance.json", "tokenizer_provenance.json",
@@ -376,13 +390,14 @@ def build_manifest(
     student_id: str | None = None,
     student_parameters: dict[str, Any] | None = None,
     notes: list[str] | None = None,
+    run_id: str = RUN_ID,
 ) -> dict[str, Any]:
-    """Everything needed to say what Run 001 was, assembled from captured facts."""
+    """Everything needed to say what one run was, assembled from captured facts."""
     training = (config or {}).get("training", {})
     runtime = (config or {}).get("runtime", {})
     data = (config or {}).get("data", {})
     manifest: dict[str, Any] = {
-        "run_id": RUN_ID,
+        "run_id": run_id,
         "schema_version": 1,
         "created_at": _utc_now(),
         "started_at": None,
@@ -449,13 +464,13 @@ def build_manifest(
 # ------------------------------------------------------------------ initialisation
 
 
-README_TEMPLATE = """# Run 001 — knowledge distillation
+README_TEMPLATE = """# Run `{run_id}` — knowledge distillation
 
 Run ID: `{run_id}`
 Created: {created}
 Status: see `manifest.json` -> `status`
 
-This directory, not any terminal scrollback or chat transcript, is the record of Run 001.
+This directory, not any terminal scrollback or chat transcript, is the record of this run.
 
 ## What is here
 
@@ -505,7 +520,7 @@ def initialise_run(
     *,
     config: dict[str, Any] | None = None,
     command: str | None = None,
-    archival_note: str = "See the repository's `experiments/kd_run_001/` directory.",
+    archival_note: str | None = None,
 ) -> list[Path]:
     """Create the run directory and write every record that is knowable up front.
 
@@ -596,8 +611,11 @@ def initialise_run(
             written.append(path)
 
     teacher = manifest["teacher"]
+    identity = manifest.get("run_id") or run_id_for(root)
+    if archival_note is None:
+        archival_note = f"See the repository's `experiments/{identity}/` directory."
     emit("README.md", lambda p: _write(p, README_TEMPLATE.format(
-        run_id=RUN_ID,
+        run_id=identity,
         created=manifest["created_at"],
         archival=archival_note,
         repository=git.get("repository") or "<repository>",
@@ -626,7 +644,7 @@ def write_checksums(
     root = Path(root)
     external_locations = external_locations or {}
     lines = [
-        f"# Run {RUN_ID} artefact checksums",
+        f"# Run {run_id_for(root)} artefact checksums",
         f"# generated: {_utc_now()}",
         f"# root: {root}",
         "#",
@@ -662,7 +680,7 @@ def record_termination(
     """
     root = Path(root)
     payload = {
-        "run_id": RUN_ID, "status": status, "reason": reason,
+        "run_id": run_id_for(root), "status": status, "reason": reason,
         "exit_code": exit_code, "last_step": last_step,
         "recorded_at": _utc_now(), **(extra or {}),
     }
@@ -722,7 +740,7 @@ def archive_to_repository(
                 "reason": "binary checkpoint; not committed to Git",
             })
     index = {
-        "run_id": RUN_ID, "generated_at": _utc_now(), "run_root": str(root),
+        "run_id": run_id_for(root), "generated_at": _utc_now(), "run_root": str(root),
         "copied": copied, "referenced_not_copied": referenced,
     }
     _write_json(archive / "ARCHIVE_INDEX.json", index)
@@ -815,7 +833,7 @@ def verify_record(root: Path) -> dict[str, Any]:
 
     failed = [r["item"] for r in results if not r["ok"]]
     return {
-        "run_id": RUN_ID, "root": str(root), "checked_at": _utc_now(),
+        "run_id": run_id_for(root), "root": str(root), "checked_at": _utc_now(),
         "items": results, "failed": failed, "verified": not failed,
         "status": "PERSISTENCE / BACKUP STATUS: VERIFIED" if not failed
         else "PERSISTENCE / BACKUP STATUS: FAILED — DO NOT TERMINATE POD",
