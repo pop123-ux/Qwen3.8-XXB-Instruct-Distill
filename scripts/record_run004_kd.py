@@ -3,8 +3,8 @@
 
 The recorder is deliberately separate from training. It accepts only the trainer summary
 plus the Run 004 manifest, verifies that the summary actually reports ``mode=delta`` and
-that the frozen protocol fields are present, then writes one measured ledger entry. It
-never invents missing metrics and never upgrades a calibration into a result.
+that the frozen protocol fields are present, then writes one measured ledger entry.
+It never invents missing metrics and never upgrades a calibration into a result.
 """
 
 from __future__ import annotations
@@ -69,7 +69,12 @@ def payload(summary: dict, run_dir: Path, manifest: dict) -> dict:
         "student": manifest["student"],
         "summary": str(run_dir / "summary.json"),
         "definition": definition,
-        "metrics": summary.get("metrics", {}),
+        "metrics": {
+            "initial": distillation.get("initial", {}),
+            "final": distillation.get("final", {}),
+            "mean": distillation.get("mean", {}),
+            "trajectory": distillation.get("trajectory", {}),
+        },
     }
 
 
@@ -96,7 +101,13 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("Run 004 validation failed:\n- " + "\n- ".join(problems))
 
     ledger = Ledger(args.ledger)
-    ledger.append(payload(summary, args.run_dir, manifest))
+    ledger.measured(
+        kind="training_run",
+        title="Run 004 behavioural/delta KD",
+        payload=payload(summary, args.run_dir, manifest),
+        arm="behavioral_kd",
+        tags=["run004", "behavioral_kd", "delta", "rq1"],
+    )
     print(f"Recorded Run 004 in {args.ledger}")
     return 0
 
