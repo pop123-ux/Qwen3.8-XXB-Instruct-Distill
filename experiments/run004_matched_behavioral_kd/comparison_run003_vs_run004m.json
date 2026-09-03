@@ -1,0 +1,148 @@
+{
+  "artifact": "run003_vs_run004m_comparison",
+  "generated_from": [
+    "experiments/run003_layer_kd/summary.json",
+    "experiments/run004_matched_behavioral_kd/summary.json"
+  ],
+  "control": {
+    "id": "run003_layer_kd",
+    "objective": "layer_kd",
+    "mode": "pointwise",
+    "git_commit": "10b45e44ddcc8dd61fe1b528154aa832250cb140"
+  },
+  "treatment": {
+    "id": "run004_matched_behavioral_kd",
+    "objective": "behavioral_kd",
+    "mode": "delta",
+    "git_commit": "05788d9d22b2aa189f305e6c5ae2711efad7c26a"
+  },
+  "matched": {
+    "corpus_sha256": [
+      "e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d",
+      "e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d"
+    ],
+    "corpus_identical": true,
+    "n_train_n_val": [
+      [
+        433,
+        22
+      ],
+      [
+        433,
+        22
+      ]
+    ],
+    "step1_kd_divergence": [
+      7.314312,
+      7.314312
+    ],
+    "step1_ce": [
+      10.932184,
+      10.932184
+    ],
+    "step1_identical": true,
+    "cosmetic_nonmatch": {
+      "config.training.kd_weight": [
+        1.0,
+        0.5
+      ],
+      "note": "kd_alpha forced to 1.0 for layer_kd path in both; no training effect"
+    }
+  },
+  "intended_variable": "student target h_s[l+1] (pointwise) vs h_s[l+1]-h_s[l] (delta); teacher target mapped-layer output vs telescoped span contribution",
+  "final_metrics": {
+    "own_objective_term": {
+      "run003": 0.6229611364542507,
+      "run004m": 1.6246251810225658,
+      "comparable": false,
+      "reason": "different objectives"
+    },
+    "kd_divergence": {
+      "run003": 3.980836,
+      "run004m": 4.698282,
+      "favours": "run003",
+      "delta_treatment_minus_control": 0.7174
+    },
+    "kd_divergence_mean": {
+      "run003": 5.547523,
+      "run004m": 6.444684,
+      "favours": "run003"
+    },
+    "ce_diagnostic": {
+      "run003_first_final": [
+        10.932184,
+        9.402632
+      ],
+      "run004m_first_final": [
+        10.932184,
+        11.646762
+      ],
+      "favours": "run003",
+      "note": "run003 CE falls, run004m CE rises"
+    },
+    "top1_agreement": {
+      "run003": 0.162215,
+      "run004m": 0.122476,
+      "favours": "run003",
+      "delta_treatment_minus_control": -0.0397
+    },
+    "top1_agreement_mean": {
+      "run003": 0.11196,
+      "run004m": 0.099929,
+      "favours": "run003"
+    },
+    "validation_loss_final": {
+      "run003": 8.959928772666238,
+      "run004m": 11.580880815332586,
+      "favours": "run003",
+      "delta_treatment_minus_control": 2.621
+    },
+    "validation_loss_best": {
+      "run003": 8.770483233711936,
+      "run004m": 11.580880815332586,
+      "favours": "run003"
+    }
+  },
+  "systems": {
+    "peak_allocated_gib": {
+      "run003": 38.94548988342285,
+      "run004m": 38.94548988342285,
+      "identical": true
+    },
+    "peak_reserved_gib": {
+      "run003": 40.765625,
+      "run004m": 40.765625,
+      "identical": true
+    },
+    "throughput_tok_s": {
+      "run003": 179.0,
+      "run004m": 197.6
+    },
+    "runtime_s": {
+      "run003": 1098.34,
+      "run004m": 994.79
+    },
+    "vram_guard": {
+      "ceiling_gib": 45.0,
+      "samples": 1193,
+      "max_used_gib": 41.284,
+      "breaches": 0
+    },
+    "exit_code": {
+      "run003": 0,
+      "run004m": 0
+    }
+  },
+  "classification": "NEGATIVE",
+  "classification_basis": "behavioral/delta KD trainable (objective -36%, agreement 0->0.12) but consistently inferior to pointwise on KD divergence, CE, top-1 agreement, and validation under matched conditions; no compensating advantage",
+  "scale_up_gate": "NOT CLEARED (campaign requires matched result positive_or_noninferior for run004_behavioral_scale_1024)",
+  "justifies_next_longer_behavioral_run": false,
+  "indicated_next_step": "composite-objective follow-up (behavioral + CE + logit KD), per docs/RUN_004.md \u2014 targets the observed absolute-residual drift",
+  "limitations": [
+    "single seed",
+    "128-step mechanistic regime, not capability",
+    "one behavioral formulation only",
+    "QLoRA r=16",
+    "does not disprove RQ1 in general"
+  ]
+}

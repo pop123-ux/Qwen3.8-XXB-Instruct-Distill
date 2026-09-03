@@ -1,0 +1,87 @@
+{
+  "run_id": "run004_matched_behavioral_kd",
+  "generated_at": "2026-09-03T21:26:33.839033+00:00",
+  "run_root": "/workspace/runs/run004_matched_behavioral_kd",
+  "launch_commit": "05788d9d22b2aa189f305e6c5ae2711efad7c26a",
+  "objective": "behavioral_kd / delta (residual-contribution KD)",
+  "control": "run003_layer_kd (pointwise intermediate KD) \u2014 matched protocol, identical corpus sha256 e11ca38b, identical 22-seq validation split, identical step-1 KD/CE",
+  "intended_variable": "representation target: h_s[l+1] (pointwise) -> h_s[l+1]-h_s[l] (residual contribution)",
+  "vram_guard": "scripts/guard_vram.py --max-vram-gib 45 --interval 1.0; 1193 samples, max used 41.284 GiB, 0 breaches",
+  "ledger_entry_id": "a4fe1f43c01f0d2f",
+  "exit_code": 0,
+  "copied": [
+    {
+      "name": "summary.json",
+      "bytes": 12936,
+      "sha256": "2467f37d49c1843e4a733fa4ab92b206d1962676e90a0a63b6ad0e445d79e468"
+    },
+    {
+      "name": "metrics.jsonl",
+      "bytes": 97419,
+      "sha256": "bc67c67f0c97d510b1eae0135983f9ab0f31fa10f73ffa9f7355fde7358ad7aa"
+    },
+    {
+      "name": "run004_behavioral_manifest.json",
+      "bytes": 2152,
+      "sha256": "19274930f78b77d30740a24e65f42d3126731eff1d6383a284026b1aa0e20458"
+    },
+    {
+      "name": "hardware.json",
+      "bytes": 1139,
+      "sha256": "291ef4e38bfabb0d0a2ba64da223ced8d4cf0105f2fa6840b4495996b92fc470"
+    },
+    {
+      "name": "git_commit.txt",
+      "bytes": 41,
+      "sha256": "865dcc55a71db806f83f1b4f03bd8c69dcfa01a009ef7430a4a44ab236c9aec2"
+    },
+    {
+      "name": "training.log",
+      "bytes": 22328,
+      "sha256": "47e4e20ffeffa0ac3573dc45463f5ed115ab31b5966cba6466959af70ba3a341"
+    },
+    {
+      "name": "LAUNCH_STATE.txt",
+      "bytes": 322,
+      "sha256": "7831559386734dfd6c1d800c7ab52b5bc11ba7384178f7db981e89e9cef4aa66"
+    },
+    {
+      "name": "command.txt",
+      "bytes": 721,
+      "sha256": "11cd7f75cc71572d81ab543a2f1f5df880f89fba144c4466e5c886b8cc18126c"
+    },
+    {
+      "name": "guarded_command.txt",
+      "bytes": 788,
+      "sha256": "e98ab28c567c044ce3b1ef2e818dce6ea064d8df9597124c8011468fd88aa07b"
+    },
+    {
+      "name": "compare_run003_vs_run004m.json",
+      "bytes": 4717,
+      "sha256": "fb122238e0988df116734c84fa99156d858e54433b3499b99ec377cf6a0b33fe"
+    },
+    {
+      "name": "vram_guard_sampled.log",
+      "bytes": 603,
+      "sha256": "4fb2702198c5a88842c372d743e58945a4190868ff6965621627873c80c5fa67"
+    }
+  ],
+  "checkpoints_referenced_not_copied": {
+    "step_000064": {
+      "source": "/workspace/runs/run004_matched_behavioral_kd/checkpoints/step_000064",
+      "complete": true,
+      "adapter_sha256": "ccdd355ab95e9058dc250cb521f8e8c8f9d3c2aba4a464a31910ee55e974e7b3"
+    },
+    "step_000128": {
+      "source": "/workspace/runs/run004_matched_behavioral_kd/checkpoints/step_000128",
+      "complete": true,
+      "adapter_sha256": "9690d0ccd24711448ba8a2a04558cfbe0a2ed2cb9d0fa90063360ce27bd4d715"
+    }
+  },
+  "classification": "NEGATIVE (128-step matched scale, single seed)",
+  "notes": [
+    "training.log has teacher weight-loading progress frames and per-second VRAM-guard readings stripped.",
+    "kd_weight config field reads 0.5 (kd_run default; launcher cannot pass it) vs Run 003's explicit 1.0 \u2014 cosmetic only, kd_alpha is forced to 1.0 for the layer_kd path in both, so the optimized objective and gradients are identical.",
+    "compare_runs.py withholds the validation delta by design (it cannot read summary.json corpus sha); the corpora are in fact identical, so the delta IS meaningful here and is reported in COMPARISON.md."
+  ]
+}

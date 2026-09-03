@@ -56,24 +56,64 @@ def validate(summary: dict, manifest: dict) -> list[str]:
     return problems
 
 
+#: The per-metric series the trainer actually writes under ``summary["distillation"]``.
+#: Each is a ``{"first": ..., "final": ..., "mean": ...}`` dict. There is no
+#: ``initial``/``final``/``mean``/``trajectory`` grouping — reading those keys yields
+#: nothing, which is the bug this list fixes.
+_DISTILLATION_SERIES = (
+    "kd_loss", "ce_loss", "top1_agreement", "teacher_entropy", "teacher_tail_mass",
+    "layer_kd_loss", "layer_magnitude", "layer_direction", "layer_norm_ratio",
+)
+
+
 def payload(summary: dict, run_dir: Path, manifest: dict) -> dict:
     distillation = summary["distillation"]
     definition = distillation["layer_kd_definition"]
+    memory = summary.get("memory") or {}
+    config = summary.get("config") or {}
+    data_cfg = config.get("data") or {}
+    training_cfg = config.get("training") or {}
     return {
         "arm": "behavioral_kd",
         "objective": EXPECTED_OBJECTIVE,
         "mode": EXPECTED_MODE,
         "run_dir": str(run_dir),
+        "summary": str(run_dir / "summary.json"),
+        # -- provenance so the run is reproducible from the ledger entry alone --------
+        "git_commit": summary.get("git_commit"),
         "teacher": manifest["teacher"],
         "teacher_revision": manifest["teacher_revision"],
         "student": manifest["student"],
-        "summary": str(run_dir / "summary.json"),
+        "student_parameter_counts": summary.get("parameter_counts") or {},
+        "sequence_length": data_cfg.get("max_sequence_length"),
+        "max_tokens": manifest.get("max_tokens", data_cfg.get("max_tokens")),
+        "seed": training_cfg.get("seed"),
+        "kd_temperature": distillation.get("kd_temperature"),
+        "kd_top_k": distillation.get("kd_top_k"),
+        "corpus": summary.get("corpus") or {},
         "definition": definition,
+        # -- measured metrics, read from the structure the trainer actually writes ----
         "metrics": {
-            "initial": distillation.get("initial", {}),
-            "final": distillation.get("final", {}),
-            "mean": distillation.get("mean", {}),
-            "trajectory": distillation.get("trajectory", {}),
+            "first_loss": summary.get("first_loss"),
+            "final_loss": summary.get("final_loss"),
+            "first_validation_loss": summary.get("first_validation_loss"),
+            "final_validation_loss": summary.get("final_validation_loss"),
+            "best_validation_loss": summary.get("best_validation_loss"),
+            "series": {
+                name: distillation[name]
+                for name in _DISTILLATION_SERIES
+                if name in distillation
+            },
+        },
+        "throughput": {
+            "tokens_per_second": summary.get("tokens_per_second"),
+            "runtime_s": summary.get("runtime_s"),
+            "tokens_seen": summary.get("tokens_seen"),
+            "steps": summary.get("steps"),
+        },
+        "vram": {
+            "peak_allocated_gib": memory.get("peak_allocated_gib"),
+            "peak_reserved_gib": memory.get("peak_reserved_gib"),
         },
     }
 

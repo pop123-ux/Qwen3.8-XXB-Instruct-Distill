@@ -1,0 +1,364 @@
+Run 004 manifest: /workspace/runs/run004_matched_behavioral_kd/run004_behavioral_manifest.json
+Experiment: run004_matched_behavioral_kd
+Objective: behavioral_kd / delta
+Teacher contribution: h_t[b] - h_t[a]
+Student contribution: h_s[l + 1] - h_s[l]
+Chunk pairs: 4
+Max tokens: 700000
+  canonical student : qwen38_19b_h5120_l48_moe
+                      loaded from /workspace/runs/pilot001/transferred
+
+  loading teacher Qwen/Qwen3.8-27B @ dbdc473dea0d6a9763042881cc33d6058d1742d2
+    quantization: 4bit
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    teacher ready: {'source': 'online', 'top_k': 64, 'temperature': 2.0, 'teacher_model': 'Qwen/Qwen3.8-27B', 'teacher_revision': 'dbdc473dea0d6a9763042881cc33d6058d1742d2', 'hidden_states': True}
+
+  DISTILLING 128 steps (batch 1 x 1 accum @ 1536 tokens) ...
+
+  device: cuda
+  objective: layer_kd  alpha 1.0  T 2.0  tail bucket
+  layer KD : pointwise hidden-state matching, map 'group', direction weight 1.0, normalise True
+  layer loss evaluated in chunks of 4 pair(s), same objective
+  teacher  : {'source': 'online', 'top_k': 64, 'temperature': 2.0, 'teacher_model': 'Qwen/Qwen3.8-27B', 'teacher_revision': 'dbdc473dea0d6a9763042881cc33d6058d1742d2', 'hidden_states': True}
+  tokenizer vocabulary 248,077 against a student embedding of 248,320: 243 alignment padding row(s) that no token id reaches. Carried, not trimmed — trimming would change the student's geometry.
+  corpus: /workspace/corpora/gutenberg/train.txt tokenised by Qwen2Tokenizer at /workspace/models/qwen3.8-27b-dbdc473
+          5,519,074 bytes, 455 sequences of 1536 (433 train / 22 validation)
+          sha256 e11ca38bb099fc89
+          tokenizer Qwen2Tokenizer vocab 248,077 eos 248046
+          700,000 tokens from 17,017 document(s), 1120 dropped in the tail
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  gradient checkpointing: ON
+  strategy: qlora (r=16, alpha=32)
+  optimizer: adamw
+  parameters: 13,031,508,864 total, 23,003,136 trainable (0.1765%)
+  precision: bf16 (autocast)
+
+  CHECKPOINTING
+    full checkpoint : every 64 steps -> /workspace/runs/run004_matched_behavioral_kd/checkpoints
+    progress record : every 1 steps -> metrics.jsonl + progress/latest.json
+    resume          : no (starting from step 0)
+    persistent copy : off (local only)
+                      NOTHING SURVIVES THIS RUNTIME. Set training.persistent_backup
+                      to a mounted Drive path to keep checkpoints.
+[transformers] `use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.
+  layer map: 48 pairs, 16 teacher layers unsupervised
+  step      1  loss   2.5386  layer 2.5386  (mag 1.6924  dir 0.8462)  kd 7.314  ce 10.932  agree 0.00  tail 0.704       192 tok/s  (run 192)     8.0s
+  step      2  loss   2.5250  layer 2.5250  (mag 1.6834  dir 0.8417)  kd 8.349  ce 10.378  agree 0.00  tail 0.677       222 tok/s  (run 206)    14.9s
+  step      3  loss   2.5379  layer 2.5379  (mag 1.6920  dir 0.8460)  kd 12.480  ce 10.647  agree 0.00  tail 0.569       214 tok/s  (run 208)    22.1s
+  step      4  loss   2.5184  layer 2.5184  (mag 1.6789  dir 0.8395)  kd 5.896  ce 10.119  agree 0.00  tail 0.724       218 tok/s  (run 211)    29.2s
+  step      5  loss   2.5126  layer 2.5126  (mag 1.6750  dir 0.8375)  kd 8.214  ce 10.509  agree 0.00  tail 0.678       214 tok/s  (run 211)    36.4s
+  step      6  loss   2.5194  layer 2.5194  (mag 1.6796  dir 0.8398)  kd 8.039  ce 10.094  agree 0.00  tail 0.648       211 tok/s  (run 211)    43.6s
+  step      7  loss   2.5012  layer 2.5012  (mag 1.6674  dir 0.8337)  kd 9.132  ce 10.057  agree 0.00  tail 0.643       177 tok/s  (run 206)    52.3s
+  step      8  loss   2.4849  layer 2.4849  (mag 1.6566  dir 0.8283)  kd 6.041  ce 9.075  agree 0.02  tail 0.696       214 tok/s  (run 207)    59.5s
+  step      9  loss   2.4707  layer 2.4707  (mag 1.6471  dir 0.8236)  kd 8.894  ce 8.871  agree 0.04  tail 0.619       213 tok/s  (run 207)    66.7s
+  step     10  loss   2.4375  layer 2.4375  (mag 1.6250  dir 0.8125)  kd 4.886  ce 8.774  agree 0.07  tail 0.720       216 tok/s  (run 208)    73.8s
+  step     11  loss   2.4073  layer 2.4073  (mag 1.6048  dir 0.8024)  kd 5.693  ce 8.837  agree 0.08  tail 0.693       220 tok/s  (run 209)    80.8s
+  step     12  loss   2.3843  layer 2.3843  (mag 1.5896  dir 0.7948)  kd 5.216  ce 8.909  agree 0.08  tail 0.696       217 tok/s  (run 210)    87.9s
+  step     13  loss   2.3503  layer 2.3503  (mag 1.5669  dir 0.7834)  kd 5.304  ce 8.699  agree 0.09  tail 0.694       216 tok/s  (run 210)    95.0s
+  step     14  loss   2.2836  layer 2.2836  (mag 1.5224  dir 0.7612)  kd 4.202  ce 8.394  agree 0.08  tail 0.715       217 tok/s  (run 211)   102.1s
+  step     15  loss   2.2617  layer 2.2617  (mag 1.5078  dir 0.7539)  kd 5.577  ce 8.589  agree 0.07  tail 0.688       222 tok/s  (run 211)   109.0s
+  step     16  loss   2.2026  layer 2.2026  (mag 1.4684  dir 0.7342)  kd 4.250  ce 8.374  agree 0.09  tail 0.706       213 tok/s  (run 211)   116.2s
+  step     17  loss   2.2001  layer 2.2001  (mag 1.4667  dir 0.7334)  kd 6.985  ce 9.143  agree 0.06  tail 0.654       215 tok/s  (run 212)   123.4s
+  step     18  loss   2.1587  layer 2.1587  (mag 1.4391  dir 0.7196)  kd 6.332  ce 9.568  agree 0.07  tail 0.645       216 tok/s  (run 212)   130.5s
+  step     19  loss   2.1312  layer 2.1312  (mag 1.4208  dir 0.7104)  kd 4.360  ce 10.173  agree 0.07  tail 0.712       222 tok/s  (run 212)   137.4s
+  step     20  loss   2.1042  layer 2.1042  (mag 1.4028  dir 0.7014)  kd 7.267  ce 9.483  agree 0.07  tail 0.621       212 tok/s  (run 212)   144.6s
+  step     21  loss   2.0694  layer 2.0694  (mag 1.3796  dir 0.6898)  kd 3.542  ce 9.446  agree 0.06  tail 0.724       215 tok/s  (run 212)   151.8s
+  step     22  loss   2.0337  layer 2.0337  (mag 1.3558  dir 0.6779)  kd 4.041  ce 8.561  agree 0.10  tail 0.711       217 tok/s  (run 213)   158.9s
+  step     23  loss   2.0233  layer 2.0233  (mag 1.3488  dir 0.6744)  kd 4.500  ce 9.350  agree 0.07  tail 0.678       223 tok/s  (run 213)   165.8s
+  step     24  loss   1.9867  layer 1.9867  (mag 1.3245  dir 0.6622)  kd 3.986  ce 9.882  agree 0.06  tail 0.719       190 tok/s  (run 212)   173.8s
+  step     25  loss   2.0721  layer 2.0721  (mag 1.3814  dir 0.6907)  kd 8.886  ce 10.347  agree 0.06  tail 0.567       213 tok/s  (run 212)   181.1s
+  step     26  loss   1.9500  layer 1.9500  (mag 1.3000  dir 0.6500)  kd 3.965  ce 10.305  agree 0.07  tail 0.706       214 tok/s  (run 212)   188.2s
+  step     27  loss   1.9482  layer 1.9482  (mag 1.2988  dir 0.6494)  kd 4.357  ce 10.906  agree 0.07  tail 0.697       221 tok/s  (run 212)   195.2s
+  step     28  loss   1.9459  layer 1.9459  (mag 1.2972  dir 0.6486)  kd 6.735  ce 10.984  agree 0.06  tail 0.627       214 tok/s  (run 212)   202.4s
+  step     29  loss   1.9304  layer 1.9304  (mag 1.2869  dir 0.6435)  kd 7.074  ce 10.896  agree 0.08  tail 0.613       214 tok/s  (run 213)   209.6s
+  step     30  loss   1.9139  layer 1.9139  (mag 1.2759  dir 0.6380)  kd 4.030  ce 10.702  agree 0.10  tail 0.697       213 tok/s  (run 213)   216.8s
+  step     31  loss   1.9739  layer 1.9739  (mag 1.3160  dir 0.6580)  kd 6.977  ce 11.645  agree 0.08  tail 0.610       224 tok/s  (run 213)   223.6s
+  step     32  loss   1.8793  layer 1.8793  (mag 1.2529  dir 0.6264)  kd 4.003  ce 12.055  agree 0.10  tail 0.727       214 tok/s  (run 213)   230.8s
+  step     32  validation  12.2713
+  step     33  loss   1.8730  layer 1.8730  (mag 1.2487  dir 0.6244)  kd 4.411  ce 12.082  agree 0.11  tail 0.712        58 tok/s  (run 197)   257.4s
+  step     34  loss   1.8601  layer 1.8601  (mag 1.2401  dir 0.6200)  kd 4.963  ce 12.435  agree 0.11  tail 0.692       214 tok/s  (run 197)   264.5s
+  step     35  loss   1.8490  layer 1.8490  (mag 1.2326  dir 0.6163)  kd 4.788  ce 12.730  agree 0.12  tail 0.711       224 tok/s  (run 198)   271.4s
+  step     36  loss   1.8378  layer 1.8378  (mag 1.2252  dir 0.6126)  kd 5.034  ce 13.235  agree 0.12  tail 0.710       217 tok/s  (run 199)   278.5s
+  step     37  loss   1.8263  layer 1.8263  (mag 1.2175  dir 0.6088)  kd 7.658  ce 13.139  agree 0.11  tail 0.614       214 tok/s  (run 199)   285.6s
+  step     38  loss   1.8169  layer 1.8169  (mag 1.2113  dir 0.6056)  kd 5.841  ce 13.443  agree 0.09  tail 0.682       214 tok/s  (run 199)   292.8s
+  step     39  loss   1.8261  layer 1.8261  (mag 1.2174  dir 0.6087)  kd 9.936  ce 13.748  agree 0.09  tail 0.586       219 tok/s  (run 200)   299.8s
+  step     40  loss   1.9174  layer 1.9174  (mag 1.2782  dir 0.6391)  kd 7.518  ce 13.788  agree 0.11  tail 0.639       213 tok/s  (run 200)   307.0s
+  step     41  loss   1.8075  layer 1.8075  (mag 1.2050  dir 0.6025)  kd 7.272  ce 13.626  agree 0.11  tail 0.663       213 tok/s  (run 200)   314.2s
+  step     42  loss   1.8150  layer 1.8150  (mag 1.2100  dir 0.6050)  kd 4.978  ce 13.367  agree 0.11  tail 0.712       221 tok/s  (run 201)   321.1s
+  step     43  loss   1.7745  layer 1.7745  (mag 1.1830  dir 0.5915)  kd 7.896  ce 13.870  agree 0.10  tail 0.634       211 tok/s  (run 201)   328.4s
+  step     44  loss   1.7665  layer 1.7665  (mag 1.1777  dir 0.5888)  kd 7.213  ce 13.589  agree 0.09  tail 0.661       211 tok/s  (run 201)   335.7s
+  step     45  loss   1.7907  layer 1.7907  (mag 1.1938  dir 0.5969)  kd 5.172  ce 13.728  agree 0.12  tail 0.726       211 tok/s  (run 202)   343.0s
+  step     46  loss   1.7492  layer 1.7492  (mag 1.1662  dir 0.5831)  kd 7.012  ce 13.192  agree 0.11  tail 0.649       220 tok/s  (run 202)   350.0s
+  step     47  loss   1.8548  layer 1.8548  (mag 1.2365  dir 0.6183)  kd 10.787  ce 14.512  agree 0.10  tail 0.572       214 tok/s  (run 202)   357.2s
+  step     48  loss   1.8402  layer 1.8402  (mag 1.2268  dir 0.6134)  kd 9.237  ce 14.757  agree 0.10  tail 0.605       213 tok/s  (run 202)   364.4s
+  step     49  loss   1.7825  layer 1.7825  (mag 1.1883  dir 0.5942)  kd 5.673  ce 14.044  agree 0.10  tail 0.723       214 tok/s  (run 203)   371.5s
+  step     50  loss   1.7416  layer 1.7416  (mag 1.1611  dir 0.5805)  kd 9.316  ce 14.342  agree 0.10  tail 0.611       214 tok/s  (run 203)   378.7s
+  step     51  loss   1.7643  layer 1.7643  (mag 1.1762  dir 0.5881)  kd 5.839  ce 14.017  agree 0.10  tail 0.703       220 tok/s  (run 203)   385.7s
+  step     52  loss   1.7415  layer 1.7415  (mag 1.1610  dir 0.5805)  kd 5.326  ce 13.837  agree 0.13  tail 0.721       212 tok/s  (run 203)   392.9s
+  step     53  loss   1.8371  layer 1.8371  (mag 1.2248  dir 0.6124)  kd 10.208  ce 14.041  agree 0.09  tail 0.573       214 tok/s  (run 204)   400.1s
+  step     54  loss   1.7301  layer 1.7301  (mag 1.1534  dir 0.5767)  kd 7.578  ce 13.646  agree 0.12  tail 0.644       211 tok/s  (run 204)   407.4s
+  step     55  loss   1.7321  layer 1.7321  (mag 1.1547  dir 0.5774)  kd 5.993  ce 14.141  agree 0.11  tail 0.702       218 tok/s  (run 204)   414.4s
+  step     56  loss   1.7458  layer 1.7458  (mag 1.1639  dir 0.5820)  kd 5.986  ce 13.788  agree 0.14  tail 0.721       212 tok/s  (run 204)   421.6s
+  step     57  loss   1.8085  layer 1.8085  (mag 1.2056  dir 0.6028)  kd 8.149  ce 14.064  agree 0.10  tail 0.636       214 tok/s  (run 204)   428.8s
+  step     58  loss   1.8090  layer 1.8090  (mag 1.2060  dir 0.6030)  kd 8.080  ce 13.720  agree 0.10  tail 0.628       213 tok/s  (run 204)   436.0s
+  step     59  loss   1.7120  layer 1.7120  (mag 1.1414  dir 0.5707)  kd 5.148  ce 13.024  agree 0.14  tail 0.728       220 tok/s  (run 205)   443.0s
+  step     60  loss   1.7173  layer 1.7173  (mag 1.1449  dir 0.5725)  kd 7.203  ce 13.510  agree 0.11  tail 0.649       215 tok/s  (run 205)   450.1s
+  step     61  loss   1.6842  layer 1.6842  (mag 1.1228  dir 0.5614)  kd 4.705  ce 13.078  agree 0.12  tail 0.725       216 tok/s  (run 205)   457.3s
+  step     62  loss   1.6893  layer 1.6893  (mag 1.1262  dir 0.5631)  kd 5.133  ce 13.351  agree 0.13  tail 0.726       216 tok/s  (run 205)   464.4s
+  step     63  loss   1.6754  layer 1.6754  (mag 1.1169  dir 0.5585)  kd 6.784  ce 13.281  agree 0.10  tail 0.652       224 tok/s  (run 205)   471.2s
+  step     64  loss   1.6828  layer 1.6828  (mag 1.1219  dir 0.5609)  kd 5.360  ce 12.965  agree 0.13  tail 0.706       217 tok/s  (run 206)   478.3s
+  step     64  validation  13.1384
+  checkpoint: step_000064 (periodic)
+  step     65  loss   1.8751  layer 1.8751  (mag 1.2501  dir 0.6250)  kd 10.463  ce 16.110  agree 0.03  tail 0.630        54 tok/s  (run 197)   506.7s
+  step     66  loss   1.6859  layer 1.6859  (mag 1.1239  dir 0.5620)  kd 5.780  ce 13.074  agree 0.12  tail 0.696       216 tok/s  (run 197)   513.8s
+  step     67  loss   1.6802  layer 1.6802  (mag 1.1201  dir 0.5601)  kd 5.439  ce 13.313  agree 0.15  tail 0.726       222 tok/s  (run 198)   520.7s
+  step     68  loss   1.6827  layer 1.6827  (mag 1.1218  dir 0.5609)  kd 5.310  ce 13.278  agree 0.10  tail 0.716       216 tok/s  (run 198)   527.8s
+  step     69  loss   1.6774  layer 1.6774  (mag 1.1182  dir 0.5591)  kd 5.378  ce 13.086  agree 0.14  tail 0.716       216 tok/s  (run 198)   535.0s
+  step     70  loss   1.8079  layer 1.8079  (mag 1.2052  dir 0.6026)  kd 7.802  ce 13.218  agree 0.09  tail 0.610       221 tok/s  (run 198)   541.9s
+  step     71  loss   1.6756  layer 1.6756  (mag 1.1170  dir 0.5585)  kd 5.998  ce 12.666  agree 0.15  tail 0.685       216 tok/s  (run 199)   549.0s
+  step     72  loss   1.6487  layer 1.6487  (mag 1.0992  dir 0.5496)  kd 5.049  ce 12.806  agree 0.12  tail 0.718       215 tok/s  (run 199)   556.2s
+  step     73  loss   1.6745  layer 1.6745  (mag 1.1163  dir 0.5582)  kd 7.666  ce 12.543  agree 0.11  tail 0.607       213 tok/s  (run 199)   563.4s
+  step     74  loss   1.8059  layer 1.8059  (mag 1.2040  dir 0.6020)  kd 4.788  ce 13.116  agree 0.13  tail 0.760       221 tok/s  (run 199)   570.3s
+  step     75  loss   1.6623  layer 1.6623  (mag 1.1082  dir 0.5541)  kd 5.538  ce 12.530  agree 0.12  tail 0.682       214 tok/s  (run 200)   577.5s
+  step     76  loss   1.7850  layer 1.7850  (mag 1.1900  dir 0.5950)  kd 7.828  ce 12.608  agree 0.11  tail 0.615       215 tok/s  (run 200)   584.6s
+  step     77  loss   1.6611  layer 1.6611  (mag 1.1074  dir 0.5537)  kd 5.578  ce 12.124  agree 0.12  tail 0.689       216 tok/s  (run 200)   591.8s
+  step     78  loss   1.6483  layer 1.6483  (mag 1.0989  dir 0.5494)  kd 4.953  ce 11.811  agree 0.14  tail 0.689       222 tok/s  (run 200)   598.7s
+  step     79  loss   1.6618  layer 1.6618  (mag 1.1079  dir 0.5539)  kd 6.225  ce 12.046  agree 0.12  tail 0.675       214 tok/s  (run 200)   605.9s
+  step     80  loss   1.6650  layer 1.6650  (mag 1.1100  dir 0.5550)  kd 7.677  ce 12.484  agree 0.10  tail 0.623       212 tok/s  (run 200)   613.1s
+  step     81  loss   1.7499  layer 1.7499  (mag 1.1666  dir 0.5833)  kd 7.365  ce 12.054  agree 0.11  tail 0.622       213 tok/s  (run 201)   620.3s
+  step     82  loss   1.6619  layer 1.6619  (mag 1.1079  dir 0.5540)  kd 5.150  ce 12.131  agree 0.13  tail 0.711       222 tok/s  (run 201)   627.2s
+  step     83  loss   1.6547  layer 1.6547  (mag 1.1031  dir 0.5516)  kd 7.315  ce 12.234  agree 0.11  tail 0.634       215 tok/s  (run 201)   634.4s
+  step     84  loss   1.6653  layer 1.6653  (mag 1.1102  dir 0.5551)  kd 8.483  ce 12.420  agree 0.10  tail 0.600       214 tok/s  (run 201)   641.5s
+  step     85  loss   1.6592  layer 1.6592  (mag 1.1061  dir 0.5531)  kd 7.653  ce 12.218  agree 0.11  tail 0.624       215 tok/s  (run 201)   648.7s
+  step     86  loss   1.7617  layer 1.7617  (mag 1.1745  dir 0.5872)  kd 6.674  ce 12.327  agree 0.11  tail 0.664       221 tok/s  (run 202)   655.6s
+  step     87  loss   1.6441  layer 1.6441  (mag 1.0961  dir 0.5481)  kd 7.412  ce 11.974  agree 0.11  tail 0.609       214 tok/s  (run 202)   662.8s
+  step     88  loss   1.7533  layer 1.7533  (mag 1.1689  dir 0.5845)  kd 8.147  ce 12.145  agree 0.10  tail 0.594       216 tok/s  (run 202)   669.9s
+  step     89  loss   1.7426  layer 1.7426  (mag 1.1618  dir 0.5809)  kd 7.316  ce 11.964  agree 0.12  tail 0.651       213 tok/s  (run 202)   677.1s
+  step     90  loss   1.7055  layer 1.7055  (mag 1.1370  dir 0.5685)  kd 8.571  ce 11.757  agree 0.10  tail 0.545       223 tok/s  (run 202)   684.0s
+  step     91  loss   1.6789  layer 1.6789  (mag 1.1192  dir 0.5596)  kd 5.891  ce 12.444  agree 0.11  tail 0.687       214 tok/s  (run 202)   691.2s
+  step     92  loss   1.6655  layer 1.6655  (mag 1.1103  dir 0.5552)  kd 5.026  ce 11.884  agree 0.13  tail 0.706       215 tok/s  (run 202)   698.3s
+  step     93  loss   1.6528  layer 1.6528  (mag 1.1019  dir 0.5509)  kd 5.457  ce 11.683  agree 0.13  tail 0.680       211 tok/s  (run 202)   705.6s
+  step     94  loss   1.6775  layer 1.6775  (mag 1.1183  dir 0.5592)  kd 5.366  ce 12.273  agree 0.14  tail 0.712       220 tok/s  (run 203)   712.6s
+  step     95  loss   1.7461  layer 1.7461  (mag 1.1641  dir 0.5820)  kd 6.961  ce 12.086  agree 0.12  tail 0.639       202 tok/s  (run 203)   720.2s
+  step     96  loss   1.6217  layer 1.6217  (mag 1.0811  dir 0.5406)  kd 6.959  ce 11.980  agree 0.10  tail 0.646       214 tok/s  (run 203)   727.3s
+  step     96  validation  11.6792
+  step     97  loss   1.6631  layer 1.6631  (mag 1.1087  dir 0.5544)  kd 5.132  ce 11.962  agree 0.13  tail 0.695        59 tok/s  (run 198)   753.5s
+  step     98  loss   1.6682  layer 1.6683  (mag 1.1122  dir 0.5561)  kd 11.749  ce 11.952  agree 0.08  tail 0.499       211 tok/s  (run 198)   760.8s
+  step     99  loss   1.6413  layer 1.6413  (mag 1.0942  dir 0.5471)  kd 6.505  ce 11.677  agree 0.12  tail 0.635       214 tok/s  (run 198)   767.9s
+  step    100  loss   1.6436  layer 1.6436  (mag 1.0957  dir 0.5479)  kd 6.004  ce 11.741  agree 0.11  tail 0.660       212 tok/s  (run 198)   775.2s
+  step    101  loss   1.6492  layer 1.6492  (mag 1.0995  dir 0.5497)  kd 5.498  ce 12.074  agree 0.13  tail 0.698       219 tok/s  (run 198)   782.2s
+  step    102  loss   1.6988  layer 1.6988  (mag 1.1325  dir 0.5663)  kd 8.361  ce 12.126  agree 0.09  tail 0.586       216 tok/s  (run 198)   789.3s
+  step    103  loss   1.7339  layer 1.7339  (mag 1.1559  dir 0.5780)  kd 8.962  ce 12.097  agree 0.10  tail 0.564       216 tok/s  (run 199)   796.4s
+  step    104  loss   1.6406  layer 1.6406  (mag 1.0937  dir 0.5469)  kd 6.786  ce 12.100  agree 0.12  tail 0.650       216 tok/s  (run 199)   803.5s
+  step    105  loss   1.6550  layer 1.6550  (mag 1.1033  dir 0.5517)  kd 6.146  ce 11.943  agree 0.14  tail 0.680       222 tok/s  (run 199)   810.5s
+  step    106  loss   1.6413  layer 1.6413  (mag 1.0942  dir 0.5471)  kd 5.453  ce 11.991  agree 0.14  tail 0.695       215 tok/s  (run 199)   817.6s
+  step    107  loss   1.6450  layer 1.6450  (mag 1.0967  dir 0.5483)  kd 4.509  ce 11.761  agree 0.12  tail 0.717       215 tok/s  (run 199)   824.7s
+  step    108  loss   1.6549  layer 1.6549  (mag 1.1033  dir 0.5517)  kd 5.524  ce 11.819  agree 0.14  tail 0.692       215 tok/s  (run 199)   831.9s
+  step    109  loss   1.6303  layer 1.6303  (mag 1.0869  dir 0.5434)  kd 7.604  ce 12.026  agree 0.10  tail 0.618       220 tok/s  (run 200)   838.9s
+  step    110  loss   1.7236  layer 1.7236  (mag 1.1490  dir 0.5745)  kd 8.759  ce 11.556  agree 0.11  tail 0.570       214 tok/s  (run 200)   846.0s
+  step    111  loss   1.6305  layer 1.6305  (mag 1.0870  dir 0.5435)  kd 5.225  ce 11.558  agree 0.13  tail 0.683       216 tok/s  (run 200)   853.1s
+  step    112  loss   1.6305  layer 1.6305  (mag 1.0870  dir 0.5435)  kd 4.486  ce 11.433  agree 0.14  tail 0.716       216 tok/s  (run 200)   860.3s
+  step    113  loss   1.6258  layer 1.6258  (mag 1.0839  dir 0.5420)  kd 5.980  ce 11.548  agree 0.12  tail 0.681       222 tok/s  (run 200)   867.2s
+  step    114  loss   1.6264  layer 1.6264  (mag 1.0843  dir 0.5421)  kd 4.623  ce 11.918  agree 0.12  tail 0.720       218 tok/s  (run 200)   874.2s
+  step    115  loss   1.6290  layer 1.6290  (mag 1.0860  dir 0.5430)  kd 4.971  ce 11.385  agree 0.13  tail 0.694       216 tok/s  (run 200)   881.4s
+  step    116  loss   1.6363  layer 1.6363  (mag 1.0909  dir 0.5454)  kd 5.668  ce 12.023  agree 0.12  tail 0.684       215 tok/s  (run 200)   888.5s
+  step    117  loss   1.7733  layer 1.7733  (mag 1.1822  dir 0.5911)  kd 4.918  ce 12.309  agree 0.12  tail 0.755       223 tok/s  (run 201)   895.4s
+  step    118  loss   1.6249  layer 1.6249  (mag 1.0833  dir 0.5416)  kd 10.367  ce 11.663  agree 0.10  tail 0.502       215 tok/s  (run 201)   902.5s
+  step    119  loss   1.6320  layer 1.6320  (mag 1.0880  dir 0.5440)  kd 5.550  ce 11.707  agree 0.13  tail 0.695       216 tok/s  (run 201)   909.6s
+  step    120  loss   1.6271  layer 1.6271  (mag 1.0847  dir 0.5424)  kd 5.325  ce 11.755  agree 0.12  tail 0.684       217 tok/s  (run 201)   916.7s
+  step    121  loss   1.6468  layer 1.6468  (mag 1.0979  dir 0.5489)  kd 7.248  ce 12.074  agree 0.14  tail 0.647       224 tok/s  (run 201)   923.6s
+  step    122  loss   1.6201  layer 1.6201  (mag 1.0800  dir 0.5400)  kd 6.725  ce 11.738  agree 0.10  tail 0.648       214 tok/s  (run 201)   930.8s
+  step    123  loss   1.6453  layer 1.6453  (mag 1.0969  dir 0.5485)  kd 7.306  ce 11.744  agree 0.11  tail 0.613       216 tok/s  (run 201)   937.9s
+  step    124  loss   1.6398  layer 1.6398  (mag 1.0932  dir 0.5466)  kd 4.866  ce 12.112  agree 0.12  tail 0.722       214 tok/s  (run 202)   945.1s
+  step    125  loss   1.6432  layer 1.6432  (mag 1.0955  dir 0.5477)  kd 5.138  ce 12.364  agree 0.13  tail 0.723       220 tok/s  (run 202)   952.0s
+  step    126  loss   1.6489  layer 1.6489  (mag 1.0993  dir 0.5496)  kd 4.963  ce 11.492  agree 0.12  tail 0.704       213 tok/s  (run 202)   959.2s
+  step    127  loss   1.6502  layer 1.6502  (mag 1.1001  dir 0.5501)  kd 5.928  ce 11.420  agree 0.12  tail 0.662       211 tok/s  (run 202)   966.5s
+  step    128  loss   1.6246  layer 1.6246  (mag 1.0831  dir 0.5415)  kd 4.698  ce 11.647  agree 0.12  tail 0.707       220 tok/s  (run 202)   973.5s
+  step    128  validation  11.5809
+  checkpoint: step_000128 (periodic)
+
+  finished step 128 of 128 in 994.8s (196,608 tokens seen)
+  wrote /workspace/runs/run004_matched_behavioral_kd/checkpoints/step_000128 and summary.json
+
+  exit code 0 in 20.7 min
+  record: /workspace/runs/run004_matched_behavioral_kd

@@ -1,0 +1,7 @@
+launch_sha=05788d9d22b2aa189f305e6c5ae2711efad7c26a
+launch_time=2026-09-03T21:02:14Z
+gpu=NVIDIA L40S
+torch=2.8.0+cu128
+vram_guard=scripts/guard_vram.py --max-vram-gib 45 --interval 1.0
+working_tree_fixes=command.txt,guarded_command.txt (drop --student canonical); record_run004_kd.py payload(); test added
+GUARD_PID=24145
