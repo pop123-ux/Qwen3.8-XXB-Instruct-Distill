@@ -1,29 +1,21 @@
 #!/usr/bin/env python3
 """Launch Run 004: residual-contribution (delta) behavioural KD.
 
-Run 004 is the first direct test of the project's "beyond layer matching" hypothesis.
-The repository already contains the validated training/checkpoint machinery and the
-behavioural loss implementation, including the mathematically equivalent chunked path.
-This launcher reuses that machinery while forcing the behavioural loss into ``delta``
-mode:
+Run 004 is the first experiment targeting the project's central "Beyond Layer Matching"
+hypothesis. Run 004-M is the matched replication against Run 003, including its exact
+700k-token corpus cap. Longer behavioral runs reuse the same launcher with a larger
+``--steps`` budget only after the matched result is validated.
 
-    student contribution     h_s[l+1] - h_s[l]
+The launcher reuses the validated layer-KD training path while forcing the behavioral loss
+to ``delta`` mode:
+
+    student contribution       h_s[l+1] - h_s[l]
     teacher target contribution h_t[b]   - h_t[a]
 
-where ``(a, b)`` is the complete teacher span assigned to student layer ``l``. The
-teacher spans tile the full teacher depth, so removed teacher layers are charged to a
-student computation instead of being dropped as they are in conventional pointwise layer
-matching.
+where ``(a, b)`` is the complete teacher span assigned to student layer ``l``.
 
-The underlying validated trainer currently names this execution path ``layer_kd``. This
-launcher deliberately does not fork or duplicate that large training loop. Instead it
-patches only the two imported behavioural-loss functions and the definition writer in the
-live trainer process, then writes a sidecar manifest declaring the actual Run 004 mode.
-The trainer's internal config remains ``layer_kd`` for compatibility; the sidecar is the
-canonical Run 004 protocol record and the recorder validates it before writing the ledger.
-
-This is preparation infrastructure only. It never changes the frozen student architecture
-and it does not execute training unless the command is invoked without ``--dry-run``.
+The underlying trainer still names this execution path ``layer_kd``. The sidecar manifest
+is authoritative about the actual behavioral objective and mode.
 """
 
 from __future__ import annotations
@@ -47,16 +39,11 @@ UNDERLYING_OBJECTIVE = "layer_kd"
 BEHAVIORAL_OBJECTIVE = "behavioral_kd"
 BEHAVIORAL_MODE = "delta"
 DEFAULT_CHUNK_PAIRS = 4
+DEFAULT_EXPERIMENT_ID = "run004_behavioral_kd"
 
 
 def patch_trainer_for_delta() -> tuple[Any, Any, Any]:
-    """Force the existing trainer's layer-KD branch to use the delta objective.
-
-    Only function arguments are changed. The validated loss implementation, chunking
-    semantics, optimizer, checkpointing and validation remain those already exercised by
-    Run 003.
-    """
-
+    """Force the existing trainer's layer-KD branch to use the delta objective."""
     original_loss = trainer_module.behavioral_loss
     original_chunked = trainer_module.behavioral_loss_chunked
     original_definition = trainer_module._layer_kd_definition
@@ -116,11 +103,18 @@ def restore_trainer(originals: tuple[Any, Any, Any]) -> None:
     trainer_module._layer_kd_definition = original_definition
 
 
-def write_manifest(output: Path, *, command: list[str], dry_run: bool) -> Path:
-    """Write the authoritative Run 004 execution manifest."""
+def write_manifest(
+    output: Path,
+    *,
+    command: list[str],
+    dry_run: bool,
+    experiment_id: str,
+    max_tokens: int | None,
+) -> Path:
+    """Write the authoritative behavioral-KD execution manifest."""
     output.mkdir(parents=True, exist_ok=True)
     manifest = {
-        "experiment": "run004_behavioral_kd",
+        "experiment": experiment_id,
         "objective": BEHAVIORAL_OBJECTIVE,
         "behavioral_mode": BEHAVIORAL_MODE,
         "student": STUDENT_ID,
@@ -135,6 +129,7 @@ def write_manifest(output: Path, *, command: list[str], dry_run: bool) -> Path:
         "normalisation": "per-token RMS scaling, inherited from the validated behavioral loss",
         "direction_weight": 1.0,
         "chunk_pairs": DEFAULT_CHUNK_PAIRS,
+        "max_tokens": max_tokens,
         "deltanet_state_matching": False,
         "deltanet_state_note": (
             "No recurrent-state projection is performed: teacher/student recurrent-state "
@@ -155,7 +150,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--pretrained", type=Path, required=True)
     parser.add_argument("--text-path", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=Path("runs/run004_behavioral_kd"))
+    parser.add_argument("--experiment-id", default=DEFAULT_EXPERIMENT_ID)
     parser.add_argument("--sequence-length", type=int, default=1536)
+    parser.add_argument("--max-tokens", type=int, default=None)
     parser.add_argument("--steps", type=int, default=128)
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--gradient-accumulation-steps", type=int, default=1)
@@ -177,14 +174,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def build_kd_run_args(args: argparse.Namespace) -> list[str]:
-    """Translate Run 004's public protocol into the existing kd_run CLI."""
-    return [
+    """Translate the public behavioral protocol into the existing kd_run CLI."""
+    command = [
         "--teacher", str(args.teacher),
         "--revision", args.revision,
         "--quantization", args.quantization,
         "--student", "canonical",
         "--pretrained", str(args.pretrained),
         "--text-path", str(args.text_path),
+    ]
+    if args.max_tokens is not None:
+        command += ["--max-tokens", str(args.max_tokens)]
+    command += [
         "--sequence-length", str(args.sequence_length),
         "--steps", str(args.steps),
         "--batch-size", str(args.batch_size),
@@ -205,19 +206,28 @@ def build_kd_run_args(args: argparse.Namespace) -> list[str]:
         "--eval-every", str(args.eval_every),
         "--save-every", str(args.save_every),
         "--output", str(args.output),
-        "--name", "run004_behavioral_kd",
+        "--name", args.experiment_id,
     ]
+    return command
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     command = build_kd_run_args(args)
-    manifest = write_manifest(args.output, command=command, dry_run=args.dry_run)
+    manifest = write_manifest(
+        args.output,
+        command=command,
+        dry_run=args.dry_run,
+        experiment_id=args.experiment_id,
+        max_tokens=args.max_tokens,
+    )
     print(f"Run 004 manifest: {manifest}")
+    print(f"Experiment: {args.experiment_id}")
     print("Objective: behavioral_kd / delta")
     print("Teacher contribution: h_t[b] - h_t[a]")
     print("Student contribution: h_s[l + 1] - h_s[l]")
     print(f"Chunk pairs: {args.chunk_pairs}")
+    print(f"Max tokens: {args.max_tokens}")
 
     from kd_run import main as kd_main
 
