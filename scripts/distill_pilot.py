@@ -181,7 +181,16 @@ def main(argv: list[str] | None = None) -> int:
     # --- materialise -----------------------------------------------------
     print("\n  MATERIALISING (streaming one teacher tensor at a time) ...")
     source = SafetensorsSource(args.teacher)
+    # Build the student in bf16, not the from_config fp32 default. The teacher is
+    # bf16 on disk, so an fp32 student is a pointless upcast that (a) doubles the
+    # 24 GiB materialisation to 48 GiB and OOM-kills on a 51 GiB-capped container,
+    # and (b) makes the KV-merge and FFN-decomposition arithmetic fp32, so the
+    # saved checkpoint would not be bit-identical to one built in bf16. The
+    # canonical pilot001 student is bf16; this keeps a re-materialisation matching it.
+    import torch
+    torch.set_default_dtype(torch.bfloat16)
     model = build_model(FROZEN_STUDENT, meta=False)
+    torch.set_default_dtype(torch.float32)
     try:
         result = materialise_student(
             model, source, FROZEN_STUDENT,
