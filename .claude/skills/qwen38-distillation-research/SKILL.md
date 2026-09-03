@@ -1616,21 +1616,48 @@ Final model + open release
 
 # 47. CURRENT PHASE
 
-The project is currently transitioning from:
-
-**Phase 3 — mechanism validation**
-
-to:
+The project is in:
 
 **Phase 4 — controlled KD comparison**
 
-Run 001 is complete.
+Completed:
 
-Run 002 calibration at 2048 is complete and failed the safety gate.
+* Run 001 — mechanism validation.
+* Run 002 calibration at 2048 — failed the safety gate; sequence reduced to 1536.
+* Run 002 calibration at 1536 — passed.
+* **Run 002 — pure logit KD, 128 steps, 196,608 tokens. COMPLETE.** Peak allocated
+  40.58 GiB. Record `experiments/run002_logit_kd/`; the trained adapter is preserved in
+  the repository through Git LFS.
+* Run 003 calibration at 1536, unchunked — **failed** the gate at 42.5354 GiB. The
+  scientific configuration was not changed in response.
+* Chunked layer-KD evaluation implemented and proved equivalent: student hidden-state
+  gradients bit-identical at all 48 supervised pairs, objective differing by 6.424e-08
+  relative from float32 summation order alone. Record
+  `experiments/run003_chunking_equivalence/`.
+* Run 003 calibration at 1536, chunked over 4 mapped pairs — **passed** at 38.0289 GiB
+  allocated / 39.8906 GiB reserved against a 42.0 GiB gate and 44.4316 GiB usable.
+  Margin 3.9711 GiB. Record `experiments/run003_calibration_1536_chunked/`.
 
-The next intended action is a **1536-token Run 002 calibration**, followed by the controlled pilot only if it clears the predefined safety margin.
+**The next intended action is the 128-step Run 003.**
 
-Do not confuse calibration with research results.
+It is prepared and needs no design work. Take
+`experiments/run003_calibration_1536_chunked/command.txt` verbatim and change exactly one
+thing: `--steps 1` becomes `--steps 128`. Nothing else may move — not the sequence length,
+not the teacher, not the revision, not the student, not the seed, not the optimizer, not
+the QLoRA geometry, not the batch, not the 48 supervised pairs, not the objective. Run 002
+and Run 003 are a controlled pair and `scripts/record_run003_kd.py` checks that field by
+field when it writes the ledger entry.
+
+Before spending any budget, verify the re-materialised student: exactly
+**13,008,505,728** parameters, `missing == []`, coverage **0.999830**. If any of those
+three fails, stop and do not train.
+
+**38.0289 GiB is a calibration result, not a training result.** The 128-step Run 003 has
+not been run. Do not confuse calibration with research results, and do not let the passed
+gate be reported as an outcome of Run 003.
+
+Run 004 (computational-behaviour / state KD) must not be started until Run 003 is complete
+and recorded.
 
 ---
 
