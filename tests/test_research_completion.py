@@ -13,8 +13,30 @@ def test_campaign_declares_hard_evidence_gates() -> None:
     campaign = json.loads((ROOT / "experiments" / "research_campaign.json").read_text())
     assert campaign["training_vram_ceiling_gib"] == 45.0
     gate_ids = {gate["id"] for gate in campaign["evidence_gates"]}
-    assert gate_ids == {"G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8"}
+    assert gate_ids == {"G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9", "G10", "G11", "G12"}
+    assert campaign["contribution_working_name"] == "computational_span_distillation"
     assert campaign["rules"]["no_fabricated_results"] is True
+    assert campaign["rules"]["novelty_claim_requires_prior_art_comparator"] is True
+    assert campaign["rules"]["central_result_requires_seed_replication"] is True
+
+
+def test_literature_review_contains_closest_prior_art() -> None:
+    text = (ROOT / "docs" / "LITERATURE_REVIEW.md").read_text()
+    for needle in (
+        "Beyond Logits: Aligning Feature Dynamics",
+        "MTA: Multi-Granular Trajectory Alignment",
+        "One-for-All: Bridge the Gap Between Heterogeneous Architectures",
+        "Every Expert Matters",
+        "Short Data, Long Context",
+    ):
+        assert needle in text
+
+
+def test_novelty_hardening_requires_adjacent_vs_span_ablation() -> None:
+    text = (ROOT / "docs" / "NOVELTY_HARDENING.md").read_text()
+    assert "Adjacent dynamics vs span dynamics" in text
+    assert "functional influence profile" in text
+    assert "seed" in text.lower()
 
 
 def test_matched_behavioral_protocol_reproduces_run003_data_cap() -> None:
