@@ -12,13 +12,14 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from importlib import import_module
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from qwen_distill.research.ledger import Ledger
+Ledger = import_module("qwen_distill.research.ledger").Ledger
 
 EXPECTED_STUDENT = "qwen38_19b_h5120_l48_moe"
 EXPECTED_TEACHER = "Qwen/Qwen3.8-27B"
