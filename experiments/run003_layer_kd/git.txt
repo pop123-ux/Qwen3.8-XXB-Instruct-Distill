@@ -1,0 +1,4 @@
+commit 10b45e44ddcc8dd61fe1b528154aa832250cb140
+branch claude/qwen38-16gb-distill-t6d0gy
+ M experiments/ledger.jsonl
+?? experiments/run003_layer_kd/

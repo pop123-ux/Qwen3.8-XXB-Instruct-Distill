@@ -39,7 +39,7 @@
     "memory.total_vram_gib"
   ],
   "note": "training memory on an A40; the 42.0 GiB safety gate is the project's predefined launch condition",
-  "plotting_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
+  "plotting_commit": "10b45e44ddcc8dd61fe1b528154aa832250cb140",
   "sources": [
     "experiments/run002_logit_kd/summary.json",
     "experiments/run002_calibration_1536/summary.json",

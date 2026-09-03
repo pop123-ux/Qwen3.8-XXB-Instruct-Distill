@@ -191,75 +191,105 @@
     },
     "F10": {
       "builder": "figures.comparison:matched_distillation_recovery",
-      "declared_status": "unavailable",
+      "declared_status": "real",
       "profiles": {
         "paper": {
-          "detail": "matched distillation recovery across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
-          "outcome": "missing-data"
+          "files": [
+            "plots/outputs/paper/F10_matched_distillation_recovery.pdf",
+            "plots/outputs/paper/F10_matched_distillation_recovery.json"
+          ],
+          "outcome": "rendered"
         },
         "readme": {
-          "detail": "matched distillation recovery across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
-          "outcome": "missing-data"
+          "files": [
+            "plots/outputs/readme/F10_matched_distillation_recovery.png",
+            "plots/outputs/readme/F10_matched_distillation_recovery.json"
+          ],
+          "outcome": "rendered"
         }
       },
       "title": "Matched distillation recovery"
     },
     "F11": {
       "builder": "figures.comparison:training_loss_by_objective",
-      "declared_status": "unavailable",
+      "declared_status": "real",
       "profiles": {
         "paper": {
-          "detail": "training-loss comparison across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
-          "outcome": "missing-data"
+          "files": [
+            "plots/outputs/paper/F11_training_loss_by_objective.pdf",
+            "plots/outputs/paper/F11_training_loss_by_objective.json"
+          ],
+          "outcome": "rendered"
         },
         "readme": {
-          "detail": "training-loss comparison across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
-          "outcome": "missing-data"
+          "files": [
+            "plots/outputs/readme/F11_training_loss_by_objective.png",
+            "plots/outputs/readme/F11_training_loss_by_objective.json"
+          ],
+          "outcome": "rendered"
         }
       },
       "title": "Training loss by objective"
     },
     "F12": {
       "builder": "figures.comparison:validation_loss_by_objective",
-      "declared_status": "unavailable",
+      "declared_status": "real",
       "profiles": {
         "paper": {
-          "detail": "validation-loss comparison across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
-          "outcome": "missing-data"
+          "files": [
+            "plots/outputs/paper/F12_validation_loss_by_objective.pdf",
+            "plots/outputs/paper/F12_validation_loss_by_objective.json"
+          ],
+          "outcome": "rendered"
         },
         "readme": {
-          "detail": "validation-loss comparison across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
-          "outcome": "missing-data"
+          "files": [
+            "plots/outputs/readme/F12_validation_loss_by_objective.png",
+            "plots/outputs/readme/F12_validation_loss_by_objective.json"
+          ],
+          "outcome": "rendered"
         }
       },
       "title": "Validation loss by objective"
     },
     "F13": {
       "builder": "figures.comparison:teacher_imitation_by_objective",
-      "declared_status": "unavailable",
+      "declared_status": "real",
       "profiles": {
         "paper": {
-          "detail": "teacher-imitation comparison across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
-          "outcome": "missing-data"
+          "files": [
+            "plots/outputs/paper/F13_teacher_imitation_by_objective.pdf",
+            "plots/outputs/paper/F13_teacher_imitation_by_objective.json"
+          ],
+          "outcome": "rendered"
         },
         "readme": {
-          "detail": "teacher-imitation comparison across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
-          "outcome": "missing-data"
+          "files": [
+            "plots/outputs/readme/F13_teacher_imitation_by_objective.png",
+            "plots/outputs/readme/F13_teacher_imitation_by_objective.json"
+          ],
+          "outcome": "rendered"
         }
       },
       "title": "Teacher imitation by objective"
     },
     "F14": {
       "builder": "figures.comparison:convergence_efficiency",
-      "declared_status": "unavailable",
+      "declared_status": "real",
       "profiles": {
         "paper": {
-          "detail": "convergence efficiency across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
-          "outcome": "missing-data"
+          "files": [
+            "plots/outputs/paper/F14_convergence_efficiency.pdf",
+            "plots/outputs/paper/F14_convergence_efficiency.json"
+          ],
+          "outcome": "rendered"
         },
         "readme": {
-          "detail": "convergence efficiency across objectives \u2014 1 matched arm(s): logit_kd (run002_logit_kd)",
-          "outcome": "missing-data"
+          "files": [
+            "plots/outputs/readme/F14_convergence_efficiency.png",
+            "plots/outputs/readme/F14_convergence_efficiency.json"
+          ],
+          "outcome": "rendered"
         }
       },
       "title": "Convergence efficiency"
@@ -478,8 +508,8 @@
       "title": "Quality, memory and throughput trade-off"
     }
   },
-  "generated_at": "2026-09-02T23:03:42.028794+00:00",
-  "plotting_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
+  "generated_at": "2026-09-03T19:20:42.715156+00:00",
+  "plotting_commit": "10b45e44ddcc8dd61fe1b528154aa832250cb140",
   "profiles": [
     "paper",
     "readme"

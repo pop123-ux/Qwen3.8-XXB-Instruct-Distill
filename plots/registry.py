@@ -85,6 +85,9 @@ class FigureSpec:
 RUN002 = "run002_logit_kd"
 RUN002_METRICS = f"experiments/{RUN002}/metrics.jsonl"
 RUN002_SUMMARY = f"experiments/{RUN002}/summary.json"
+RUN003 = "run003_layer_kd"
+RUN003_METRICS = f"experiments/{RUN003}/metrics.jsonl"
+RUN003_SUMMARY = f"experiments/{RUN003}/summary.json"
 
 FIGURES: tuple[FigureSpec, ...] = (
     # --- architecture ----------------------------------------------------
@@ -268,22 +271,23 @@ FIGURES: tuple[FigureSpec, ...] = (
         title="Matched distillation recovery",
         question="At a matched token budget, which distillation objective recovers the "
                  "most held-out performance?",
-        research_questions=("RQ1",), experiments=(RUN002,),
-        sources=(RUN002_METRICS,), metrics=("validation_loss", "top1_agreement", "tokens_seen"),
+        research_questions=("RQ1",), experiments=(RUN002, RUN003),
+        sources=(RUN002_METRICS, RUN003_METRICS), metrics=("validation_loss", "top1_agreement", "tokens_seen"),
         builder="figures.comparison:matched_distillation_recovery",
-        status=UNAVAILABLE, value_kind=MEASURED,
-        notes="Needs at least two arms at the reference protocol. Only logit KD "
-              "(Run 002) exists; Run 001 is excluded automatically because its protocol "
-              "differs. Populates itself when Run 003 lands.",
+        status=REAL, value_kind=MEASURED,
+        notes="Two arms at the reference protocol: logit KD (Run 002, A40) and layer KD "
+              "(Run 003, L40S). Run 001 is excluded automatically because its protocol "
+              "differs. The two arms ran on different GPUs — see docs/RUN_003.md, "
+              "The hardware confound; the figure caption must carry it.",
     ),
     FigureSpec(
         id="F11", slug="training_loss_by_objective",
         title="Training loss by objective",
         question="Do the objectives differ in how their training loss falls?",
-        research_questions=("RQ1",), experiments=(RUN002,),
-        sources=(RUN002_METRICS,), metrics=("loss", "tokens_seen"),
+        research_questions=("RQ1",), experiments=(RUN002, RUN003),
+        sources=(RUN002_METRICS, RUN003_METRICS), metrics=("loss", "tokens_seen"),
         builder="figures.comparison:training_loss_by_objective",
-        status=UNAVAILABLE, value_kind=MEASURED,
+        status=REAL, value_kind=MEASURED,
         notes="Training losses of different objectives are not on a common scale; the "
               "figure says so and exists to show shape, not to rank the arms.",
     ),
@@ -291,10 +295,10 @@ FIGURES: tuple[FigureSpec, ...] = (
         id="F12", slug="validation_loss_by_objective",
         title="Validation loss by objective",
         question="Which objective reaches the lower held-out loss at a matched budget?",
-        research_questions=("RQ1",), experiments=(RUN002,),
-        sources=(RUN002_METRICS,), metrics=("validation_loss", "tokens_seen"),
+        research_questions=("RQ1",), experiments=(RUN002, RUN003),
+        sources=(RUN002_METRICS, RUN003_METRICS), metrics=("validation_loss", "tokens_seen"),
         builder="figures.comparison:validation_loss_by_objective",
-        status=UNAVAILABLE, value_kind=MEASURED,
+        status=REAL, value_kind=MEASURED,
         notes="The one comparison that is on a common scale across arms: the same "
               "held-out cross-entropy, the same validation split.",
     ),
@@ -302,10 +306,10 @@ FIGURES: tuple[FigureSpec, ...] = (
         id="F13", slug="teacher_imitation_by_objective",
         title="Teacher imitation by objective",
         question="Which objective produces a student that imitates the teacher more closely?",
-        research_questions=("RQ1",), experiments=(RUN002,),
-        sources=(RUN002_METRICS,), metrics=("kd_loss", "top1_agreement", "tokens_seen"),
+        research_questions=("RQ1",), experiments=(RUN002, RUN003),
+        sources=(RUN002_METRICS, RUN003_METRICS), metrics=("kd_loss", "top1_agreement", "tokens_seen"),
         builder="figures.comparison:teacher_imitation_by_objective",
-        status=UNAVAILABLE, value_kind=MEASURED,
+        status=REAL, value_kind=MEASURED,
         notes="Two panels: KD loss and top-1 agreement. Split rather than twin-axed, "
               "because a twin axis invites reading a crossing that means nothing.",
     ),
@@ -314,10 +318,10 @@ FIGURES: tuple[FigureSpec, ...] = (
         title="Convergence efficiency",
         question="How many training tokens does each objective need to reach a threshold "
                  "declared in advance?",
-        research_questions=("RQ1",), experiments=(RUN002,),
-        sources=(RUN002_METRICS,), metrics=("validation_loss", "top1_agreement", "tokens_seen"),
+        research_questions=("RQ1",), experiments=(RUN002, RUN003),
+        sources=(RUN002_METRICS, RUN003_METRICS), metrics=("validation_loss", "top1_agreement", "tokens_seen"),
         builder="figures.comparison:convergence_efficiency",
-        status=UNAVAILABLE, value_kind=MEASURED,
+        status=REAL, value_kind=MEASURED,
         notes="Thresholds are declared in figures/comparison.py as module constants and "
               "are fixed before any arm is read, so the figure cannot be tuned to its "
               "own result.",

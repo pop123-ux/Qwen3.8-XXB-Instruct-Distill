@@ -1635,29 +1635,35 @@ Completed:
   relative from float32 summation order alone. Record
   `experiments/run003_chunking_equivalence/`.
 * Run 003 calibration at 1536, chunked over 4 mapped pairs — **passed** at 38.0289 GiB
-  allocated / 39.8906 GiB reserved against a 42.0 GiB gate and 44.4316 GiB usable.
-  Margin 3.9711 GiB. Record `experiments/run003_calibration_1536_chunked/`.
+  (A40). Re-run on the L40S: **38.0289 GiB, identical to 15 s.f.** Record
+  `experiments/run003_calibration_1536_chunked/` (A40) and
+  `experiments/run003_calibration_1536_l40s/` (L40S).
+* **Run 003 — pure layer/intermediate KD, 128 steps, 196,608 tokens. COMPLETE.** Peak
+  allocated 38.9455 GiB. Record `experiments/run003_layer_kd/`; the trained adapter is
+  preserved in the repository through Git LFS. Launch SHA `10b45e44`.
+  `scripts/record_run003_kd.py` compared 18 configuration fields against Run 002 and found
+  `differences == {}`.
 
-**The next intended action is the 128-step Run 003.**
+**Run 003 ran on an L40S; Run 001, Run 002 and the calibrations ran on an A40.** The A40
+pod was destroyed between sessions. The training configuration is byte-for-byte identical;
+the GPU is not. Measured on one identical step: the 4-bit teacher's KD divergence shifts
++1.7%, student-side terms ≤0.25%, peak allocation 0. The project owner was shown this on
+2026-09-03 and chose to run Run 003 on the L40S and document the confound rather than
+re-run Run 002 first. See `docs/RUN_003.md` (The hardware confound) and ledger entry
+`confound`. **Every figure that puts the two arms on one axis must state it.**
 
-It is prepared and needs no design work. Take
-`experiments/run003_calibration_1536_chunked/command.txt` verbatim and change exactly one
-thing: `--steps 1` becomes `--steps 128`. Nothing else may move — not the sequence length,
-not the teacher, not the revision, not the student, not the seed, not the optimizer, not
-the QLoRA geometry, not the batch, not the 48 supervised pairs, not the objective. Run 002
-and Run 003 are a controlled pair and `scripts/record_run003_kd.py` checks that field by
-field when it writes the ledger entry.
+**The next intended action is a review of the Run 002 / Run 003 comparison**, then a
+decision on whether to re-run Run 002 on the L40S to remove the confound before Run 004.
 
-Before spending any budget, verify the re-materialised student: exactly
-**13,008,505,728** parameters, `missing == []`, coverage **0.999830**. If any of those
-three fails, stop and do not train.
+Run 003's 128-step result, read against Run 002 at matched budget: on the metrics logit KD
+directly optimises (KD divergence, top-1 agreement, held-out loss) logit KD leads — 1.41 /
+0.34 / 5.03 against layer KD's 3.98 / 0.16 / 8.77. This is the expected ordering and is
+**not** a capability result: 128 steps cannot move a 13B model, and whether layer KD
+transfers something logit KD does not needs the state-similarity analysis (Figure 5) and a
+real token budget, neither of which exists.
 
-**38.0289 GiB is a calibration result, not a training result.** The 128-step Run 003 has
-not been run. Do not confuse calibration with research results, and do not let the passed
-gate be reported as an outcome of Run 003.
-
-Run 004 (computational-behaviour / state KD) must not be started until Run 003 is complete
-and recorded.
+Run 004 (computational-behaviour / state KD) must not be started until the Run 002 / Run
+003 comparison is reviewed and the confound decision is made.
 
 ---
 

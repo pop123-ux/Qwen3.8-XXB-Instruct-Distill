@@ -1,0 +1,49 @@
+{
+  "data_commit": "f5dd3f75bf4e069c75442396bcf43f2f52d0471d",
+  "experiments": [
+    "run002_logit_kd",
+    "run003_layer_kd"
+  ],
+  "extra": {
+    "excluded": [
+      {
+        "experiment": "kd_run_001",
+        "reason": "protocol differs \u2014 corpus.sha256: '0c666fd429e3729de1400fdfb7494118636e9d2870366d79ca72da6b6c34b799' vs reference 'e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d'; data.max_sequence_length: 1024 vs reference 1536; training.max_steps: 1 vs reference 128"
+      },
+      {
+        "experiment": "run002_calibration",
+        "reason": "1-step calibration, not an arm"
+      },
+      {
+        "experiment": "run002_calibration_1536",
+        "reason": "1-step calibration, not an arm"
+      },
+      {
+        "experiment": "run003_calibration_1536",
+        "reason": "1-step calibration, not an arm"
+      },
+      {
+        "experiment": "run003_calibration_1536_chunked",
+        "reason": "1-step calibration, not an arm"
+      },
+      {
+        "experiment": "run003_calibration_1536_l40s",
+        "reason": "1-step calibration, not an arm"
+      }
+    ]
+  },
+  "figure_id": "F11",
+  "metrics": [
+    "loss",
+    "tokens_seen"
+  ],
+  "note": "matched protocol: {'data.max_sequence_length': 1536, 'training.max_steps': 128, 'training.batch_size': 1, 'training.gradient_accumulation_steps': 1, 'training.seed': 0, 'training.optimizer': 'adamw', 'training.precision': 'bf16', 'training.strategy': 'qlora', 'training.lora_rank': 16, 'training.lora_alpha': 32, 'training.lora_dropout': 0.05, 'training.learning_rate': 0.0002, 'training.weight_decay': 0.0, 'training.warmup_steps': 10, 'training.scheduler': 'cosine', 'training.gradient_checkpointing': True, 'corpus.sha256': 'e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d', 'teacher.revision': 'dbdc473dea0d6a9763042881cc33d6058d1742d2'}",
+  "plotting_commit": "10b45e44ddcc8dd61fe1b528154aa832250cb140",
+  "sources": [
+    "experiments/run002_logit_kd/metrics.jsonl",
+    "experiments/run002_logit_kd/summary.json",
+    "experiments/run003_layer_kd/metrics.jsonl",
+    "experiments/run003_layer_kd/summary.json"
+  ],
+  "value_kind": "measured"
+}
