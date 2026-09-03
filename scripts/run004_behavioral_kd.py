@@ -30,10 +30,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
-import _bootstrap  # noqa: F401
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from qwen_distill.distillation import behavioral as behavioral_module
 from qwen_distill.training import trainer as trainer_module
@@ -213,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Run 004 manifest: {manifest}")
     print("Objective: behavioral_kd / delta")
     print("Teacher contribution: h_t[b] - h_t[a]")
-    print("Student contribution: h_s[l+1] - h_s[l]")
+    print("Student contribution: h_s[l + 1] - h_s[l]")
     print(f"Chunk pairs: {args.chunk_pairs}")
 
     from kd_run import main as kd_main
