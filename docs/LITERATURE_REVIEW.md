@@ -10,7 +10,6 @@ This document is intentionally part of the experiment record. Published methods 
 
 Gong et al., ACL 2025.
 
-- arXiv: https://arxiv.org/abs/2409.01316
 - ACL Anthology: https://aclanthology.org/2025.acl-long.1125/
 - DOI: https://doi.org/10.18653/v1/2025.acl-long.1125
 
