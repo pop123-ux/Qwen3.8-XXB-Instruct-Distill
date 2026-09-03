@@ -11,9 +11,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
-import _bootstrap  # noqa: F401
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from qwen_distill.research.ledger import Ledger
 
@@ -60,79 +63,40 @@ def payload(summary: dict, run_dir: Path, manifest: dict) -> dict:
         "objective": EXPECTED_OBJECTIVE,
         "mode": EXPECTED_MODE,
         "run_dir": str(run_dir),
-        "student": EXPECTED_STUDENT,
-        "teacher": EXPECTED_TEACHER,
-        "teacher_revision": EXPECTED_REVISION,
-        "steps": summary.get("steps"),
-        "tokens": summary.get("tokens_seen"),
-        "outcome": summary.get("outcome"),
-        "memory_gib": summary.get("memory"),
-        "throughput": summary.get("throughput"),
-        "loss": {
-            "training": summary.get("loss"),
-            "kd": distillation.get("kd_loss"),
-            "ce": distillation.get("ce_loss"),
-            "layer_behavior": distillation.get("layer_kd_loss"),
-        },
-        "agreement": distillation.get("top1_agreement"),
-        "validation": summary.get("validation"),
-        "behavioral": {
-            "definition": definition,
-            "magnitude": distillation.get("layer_magnitude"),
-            "direction": distillation.get("layer_direction"),
-            "norm_ratio": distillation.get("layer_norm_ratio"),
-        },
-        "protocol": {
-            "sequence_length": summary["config"]["data"]["max_sequence_length"],
-            "batch_size": summary["config"]["training"]["batch_size"],
-            "gradient_accumulation_steps": summary["config"]["training"]["gradient_accumulation_steps"],
-            "steps": summary["config"]["training"]["max_steps"],
-            "seed": summary["config"]["training"]["seed"],
-            "optimizer": summary["config"]["training"]["optimizer"],
-            "precision": summary["config"]["training"]["precision"],
-            "strategy": summary["config"]["training"]["strategy"],
-            "lora_rank": summary["config"]["training"]["lora_rank"],
-            "lora_alpha": summary["config"]["training"]["lora_alpha"],
-            "kd_temperature": summary["config"]["training"]["kd_temperature"],
-            "kd_top_k": summary["config"]["training"]["kd_top_k"],
-            "chunk_pairs": summary["config"]["training"]["layer_kd_chunk_pairs"],
-        },
-        "manifest": manifest,
-        "caveat": (
-            "This is the first behavioural/delta-KD control. A 128-step run tests whether "
-            "the objective is trainable and whether teacher-alignment diagnostics move; it "
-            "is not a downstream capability or SOTA result. The first comparison is against "
-            "Run 003's matched pointwise layer-KD control."
-        ),
+        "teacher": manifest["teacher"],
+        "teacher_revision": manifest["teacher_revision"],
+        "student": manifest["student"],
+        "summary": str(run_dir / "summary.json"),
+        "definition": definition,
+        "metrics": summary.get("metrics", {}),
     }
 
 
-def main(argv: list[str] | None = None) -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--summary", type=Path, required=True)
+    parser.add_argument("--run-dir", type=Path, required=True)
+    parser.add_argument("--ledger", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
-    parser.add_argument("--ledger", type=Path, default=Path("experiments/ledger.jsonl"))
-    args = parser.parse_args(argv)
+    return parser.parse_args(argv)
 
-    summary = json.loads(args.summary.read_text(encoding="utf-8"))
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    summary_path = args.run_dir / "summary.json"
+    if not summary_path.exists():
+        raise FileNotFoundError(f"missing Run 004 summary: {summary_path}")
+    if not args.manifest.exists():
+        raise FileNotFoundError(f"missing Run 004 manifest: {args.manifest}")
+
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
     problems = validate(summary, manifest)
     if problems:
-        print("REFUSED: Run 004 provenance validation failed:")
-        for problem in problems:
-            print(f"  - {problem}")
-        return 2
+        raise ValueError("Run 004 validation failed:\n- " + "\n- ".join(problems))
 
     ledger = Ledger(args.ledger)
-    entry = ledger.measured(
-        "canonical_kd",
-        "Run 004: pure behavioural/delta KD on the frozen canonical student",
-        payload(summary, args.summary.parent, manifest),
-        arm="run004_behavioral_kd",
-        tags=["run004", "canonical", "qlora", "behavioral_kd", "delta"],
-    )
-    print(f"recorded {entry.id}  {entry.kind}  {entry.title}")
-    print(f"ledger: {args.ledger}")
+    ledger.append(payload(summary, args.run_dir, manifest))
+    print(f"Recorded Run 004 in {args.ledger}")
     return 0
 
 
