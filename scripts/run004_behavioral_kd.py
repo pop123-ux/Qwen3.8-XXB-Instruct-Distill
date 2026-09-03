@@ -137,8 +137,8 @@ def write_manifest(output: Path, *, command: list[str], dry_run: bool) -> Path:
         "chunk_pairs": DEFAULT_CHUNK_PAIRS,
         "deltanet_state_matching": False,
         "deltanet_state_note": (
-            "Not implemented because teacher/student recurrent-state shapes differ; the run "
-            "uses residual-interface computational behavior only."
+            "No recurrent-state projection is performed: teacher/student recurrent-state "
+            "shapes differ, so the run uses residual-interface computational behavior only."
         ),
         "dry_run": dry_run,
         "command": command,
