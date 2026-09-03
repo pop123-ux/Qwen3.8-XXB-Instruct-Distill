@@ -18,7 +18,9 @@ def test_run004_command_and_manifest_are_explicit():
         pretrained = "/student"
         text_path = "/corpus/train.txt"
         output = "/runs/run004_behavioral_kd"
+        experiment_id = "run004_behavioral_kd"
         sequence_length = 1536
+        max_tokens = 700000
         steps = 128
         batch_size = 1
         gradient_accumulation_steps = 1
@@ -41,17 +43,27 @@ def test_run004_command_and_manifest_are_explicit():
     assert BEHAVIORAL_MODE == "delta"
     assert args[args.index("--objective") + 1] == "layer_kd"
     assert args[args.index("--layer-kd-chunk-pairs") + 1] == "4"
+    assert args[args.index("--max-tokens") + 1] == "700000"
     assert args[args.index("--sequence-length") + 1] == "1536"
     assert args[args.index("--steps") + 1] == "128"
+    assert args[args.index("--name") + 1] == "run004_behavioral_kd"
 
 
 def test_run004_manifest_declares_no_recurrent_state_projection(tmp_path):
     from scripts.run004_behavioral_kd import write_manifest
 
-    path = write_manifest(tmp_path, command=["test-command"], dry_run=True)
+    path = write_manifest(
+        tmp_path,
+        command=["test-command"],
+        dry_run=True,
+        experiment_id="run004_behavioral_kd",
+        max_tokens=700000,
+    )
     manifest = json.loads(path.read_text(encoding="utf-8"))
     assert manifest["objective"] == "behavioral_kd"
     assert manifest["behavioral_mode"] == "delta"
+    assert manifest["experiment"] == "run004_behavioral_kd"
+    assert manifest["max_tokens"] == 700000
     assert manifest["student"] == "qwen38_19b_h5120_l48_moe"
     assert manifest["teacher_revision"] == "dbdc473dea0d6a9763042881cc33d6058d1742d2"
     assert manifest["deltanet_state_matching"] is False
