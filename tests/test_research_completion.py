@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.run004_behavioral_kd import build_kd_run_args
 from scripts.guard_vram import parse_args
+from scripts.run004_behavioral_kd import build_kd_run_args
 
 ROOT = Path(__file__).resolve().parents[1]
 
