@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -38,8 +39,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from qwen_distill.distillation import behavioral as behavioral_module
-from qwen_distill.training import trainer as trainer_module
+trainer_module = import_module("qwen_distill.training.trainer")
 
 TEACHER_REVISION = "dbdc473dea0d6a9763042881cc33d6058d1742d2"
 STUDENT_ID = "qwen38_19b_h5120_l48_moe"
