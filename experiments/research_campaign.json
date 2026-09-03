@@ -1,0 +1,65 @@
+{
+  "project": "beyond_layer_matching",
+  "teacher": "Qwen/Qwen3.8-27B",
+  "teacher_revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+  "student": "qwen38_19b_h5120_l48_moe",
+  "student_total_parameters": 13008505728,
+  "student_active_parameters_per_token": 9611119488,
+  "deployment_target_gib": 16.0,
+  "training_vram_ceiling_gib": 45.0,
+  "rq1": {
+    "name": "Beyond Layer Matching",
+    "control": "run003_layer_kd",
+    "matched_behavioral": {
+      "id": "run004_matched_behavioral_kd",
+      "objective": "behavioral_kd",
+      "mode": "delta",
+      "sequence_length": 1536,
+      "max_tokens": 700000,
+      "steps": 128,
+      "only_intended_change": "representation target: pointwise hidden state -> residual contribution"
+    },
+    "scale_up": [
+      {"id": "run004_behavioral_scale_1024", "steps": 1024, "training_tokens": 1572864, "requires_gate": "matched_result_positive_or_noninferior"},
+      {"id": "run004_behavioral_scale_4096", "steps": 4096, "training_tokens": 6291456, "requires_gate": "scale_1024_healthy"},
+      {"id": "run004_behavioral_scale_16384", "steps": 16384, "training_tokens": 25165824, "requires_gate": "scale_4096_healthy_and_budget_allows"}
+    ],
+    "objective_family": [
+      "ce_only",
+      "logit_kd",
+      "layer_kd",
+      "behavioral_kd",
+      "composite_ce_logit_behavioral"
+    ]
+  },
+  "rq2": {
+    "name": "Context-Length Specialization",
+    "target_contexts": [4096, 8192, 16384, 32768, 65536, 131072, 262144],
+    "arms": [
+      "uniform",
+      "short_context_heavy",
+      "medium_context_heavy",
+      "long_context_heavy",
+      "progressive"
+    ],
+    "required_control": "same_total_training_tokens_and_same_evaluation_suite",
+    "status": "requires_context_scheduler_or_mixture_implementation"
+  },
+  "evidence_gates": [
+    {"id": "G1", "description": "teacher/student/initialization audit", "required": true},
+    {"id": "G2", "description": "Run 003 pointwise control archived", "required": true},
+    {"id": "G3", "description": "Run 004-M exact matched replication", "required": true},
+    {"id": "G4", "description": "behavioral objective survives longer-budget training", "required": true},
+    {"id": "G5", "description": "objective-family comparison including composite objective", "required": true},
+    {"id": "G6", "description": "context-specialization ablation", "required": true},
+    {"id": "G7", "description": "16 GiB end-to-end inference measurement/accounting", "required": true},
+    {"id": "G8", "description": "capability benchmark comparison", "required": true}
+  ],
+  "rules": {
+    "no_fabricated_results": true,
+    "no_uncontrolled_protocol_changes": true,
+    "max_training_vram_gib": 45.0,
+    "preserve_historical_runs": true,
+    "paper_claims_require_measured_artifacts": true
+  }
+}
