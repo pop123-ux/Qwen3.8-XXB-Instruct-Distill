@@ -1,0 +1,179 @@
+{
+  "run_id": "run003_layer_kd",
+  "generated_at": "2026-09-03T19:16:59.399472+00:00",
+  "run_root": "/workspace/runs/run003_layer_kd",
+  "launch_commit": "10b45e44ddcc8dd61fe1b528154aa832250cb140",
+  "gpu": "NVIDIA L40S (48 GB) \u2014 NOTE: Run 002, the matched control, ran on an A40. The training configuration is identical; the GPU is not. See docs/RUN_003.md.",
+  "copied": [
+    {
+      "name": "adapters/step_000064/adapter_model.safetensors",
+      "bytes": 92045704,
+      "sha256": "5109dbda1060495691dbf488bb6dd3ced2de116f78143f9c2b0d80de38ff6ef8"
+    },
+    {
+      "name": "adapters/step_000064/checkpoint_manifest.json",
+      "bytes": 1223,
+      "sha256": "ff79ecb72d78134b98bce96dae1a1cc044d0c3eb0ea3d5759291749f4b548a72"
+    },
+    {
+      "name": "adapters/step_000064/config.json",
+      "bytes": 1996,
+      "sha256": "17b281e596b2fbdd50c0d5f3f93a8c2cd556810aedec11df32b639a0dc3e8313"
+    },
+    {
+      "name": "adapters/step_000064/metadata.json",
+      "bytes": 1092,
+      "sha256": "a5a8cbdeb8470055c9400483b70096b2fbd64a777e28e6046acdc1f5b4af2ec6"
+    },
+    {
+      "name": "adapters/step_000128/adapter_model.safetensors",
+      "bytes": 92045704,
+      "sha256": "3d937c7e8b0c6e0947a0b7baa88ac94980c6a3e2240cf281558fe6f6dc901f00"
+    },
+    {
+      "name": "adapters/step_000128/checkpoint_manifest.json",
+      "bytes": 1224,
+      "sha256": "1a9788560697eb296220bfe040cad3a2ae998d50837ae9177855c5e680390011"
+    },
+    {
+      "name": "adapters/step_000128/config.json",
+      "bytes": 1996,
+      "sha256": "17b281e596b2fbdd50c0d5f3f93a8c2cd556810aedec11df32b639a0dc3e8313"
+    },
+    {
+      "name": "adapters/step_000128/metadata.json",
+      "bytes": 1093,
+      "sha256": "c34906e19e661d3f1547999a0280e526e0cd6b86eaa3d0a87680ed8cdd91b738"
+    },
+    {
+      "name": "command.txt",
+      "bytes": 734,
+      "sha256": "ac97e05ac09bfb3593a0ff5fd2c646515fc1be6617b55168c3f06f394e422b93"
+    },
+    {
+      "name": "environment.txt",
+      "bytes": 3319,
+      "sha256": "b7db7cdde11676a0604ff753ee28f7814883d921967e439a6c1a3b8bc65e5214"
+    },
+    {
+      "name": "git.txt",
+      "bytes": 149,
+      "sha256": "746b46420eb0688f8fad3b3fa7785e7906a92f6db34485be603bc57e3a7cf979"
+    },
+    {
+      "name": "hardware.txt",
+      "bytes": 1689,
+      "sha256": "9407e8cccf68563b0573bc13c1627a170ef7affae72d4fc540cbe15b2121de3d"
+    },
+    {
+      "name": "metrics.jsonl",
+      "bytes": 97372,
+      "sha256": "22001fe269e0ba694685234d5b424f4072721fbc90429a4bb5d2ef91764628cc"
+    },
+    {
+      "name": "summary.json",
+      "bytes": 12828,
+      "sha256": "429dbbf439a928933294e155b7f31fda17a9f54f84a5b2db5332add312a2c65b"
+    },
+    {
+      "name": "training.log",
+      "bytes": 21764,
+      "sha256": "3ca24afdebba9412b1dc6f1b387b3a2a1f0eb5b46d365dcbb6b8e7a55220d819"
+    }
+  ],
+  "referenced_not_copied": [
+    {
+      "name": "checkpoints/latest.json",
+      "source": "/workspace/runs/run003_layer_kd/checkpoints/latest.json",
+      "complete": false,
+      "metadata": {}
+    },
+    {
+      "name": "checkpoints/step_000064",
+      "source": "/workspace/runs/run003_layer_kd/checkpoints/step_000064",
+      "complete": true,
+      "metadata": {
+        "step": 64,
+        "created_at": "2026-09-03T19:05:34.569293+00:00",
+        "complete": true,
+        "parameter_count": 13031508864,
+        "trainable_parameter_count": 23003136,
+        "strategy": "qlora",
+        "architecture_sha256": null,
+        "config_sha256": "9a29fb3801190faa47009f5e17021470f585a3caf75994046bccf305f3b475e0",
+        "git_commit": "10b45e44ddcc8dd61fe1b528154aa832250cb140",
+        "precision": "bf16",
+        "optimizer": "adamw",
+        "sequence_length": 1536,
+        "batch_size": 1,
+        "effective_batch_size": 1,
+        "gradient_checkpointing": true,
+        "tokens_seen": 98304,
+        "training_loss": 0.6607613652789345,
+        "validation_loss": 10.547250747680664,
+        "validation_bits_per_byte": null,
+        "hostname": "dcf2993e79d6",
+        "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.39",
+        "gpu_name": "NVIDIA L40S",
+        "torch_version": "2.8.0+cu128",
+        "transformers_version": "5.15.1",
+        "contents": [
+          "adapter_model.safetensors",
+          "config.json",
+          "optimizer.pt",
+          "rng.pt",
+          "scaler.pt",
+          "scheduler.pt",
+          "training_state.json",
+          "metadata.json",
+          "checkpoint_manifest.json",
+          "COMPLETE"
+        ]
+      }
+    },
+    {
+      "name": "checkpoints/step_000128",
+      "source": "/workspace/runs/run003_layer_kd/checkpoints/step_000128",
+      "complete": true,
+      "metadata": {
+        "step": 128,
+        "created_at": "2026-09-03T19:14:45.654609+00:00",
+        "complete": true,
+        "parameter_count": 13031508864,
+        "trainable_parameter_count": 23003136,
+        "strategy": "qlora",
+        "architecture_sha256": null,
+        "config_sha256": "9a29fb3801190faa47009f5e17021470f585a3caf75994046bccf305f3b475e0",
+        "git_commit": "10b45e44ddcc8dd61fe1b528154aa832250cb140",
+        "precision": "bf16",
+        "optimizer": "adamw",
+        "sequence_length": 1536,
+        "batch_size": 1,
+        "effective_batch_size": 1,
+        "gradient_checkpointing": true,
+        "tokens_seen": 196608,
+        "training_loss": 0.6229611364542507,
+        "validation_loss": 8.770483233711936,
+        "validation_bits_per_byte": null,
+        "hostname": "dcf2993e79d6",
+        "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.39",
+        "gpu_name": "NVIDIA L40S",
+        "torch_version": "2.8.0+cu128",
+        "transformers_version": "5.15.1",
+        "contents": [
+          "adapter_model.safetensors",
+          "config.json",
+          "optimizer.pt",
+          "rng.pt",
+          "scaler.pt",
+          "scheduler.pt",
+          "training_state.json",
+          "metadata.json",
+          "checkpoint_manifest.json",
+          "COMPLETE"
+        ]
+      }
+    }
+  ],
+  "note": "training.log has the teacher progress frames stripped; nothing else altered."
+}

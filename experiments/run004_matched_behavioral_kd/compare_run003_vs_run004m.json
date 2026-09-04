@@ -1,0 +1,106 @@
+{
+  "left": {
+    "name": "run003_layer_kd (pointwise)",
+    "status": "ran to step 128 (no max_steps found)",
+    "corpus": {
+      "name": "unknown",
+      "kind": "unknown",
+      "total_bytes": null,
+      "train_sha256": "",
+      "validation_sha256": "",
+      "validation_split_rule": "",
+      "entropy_note": ""
+    },
+    "source": "experiments/run003_layer_kd"
+  },
+  "right": {
+    "name": "run004_matched_behavioral_kd (delta)",
+    "status": "ran to step 128 (no max_steps found)",
+    "corpus": {
+      "name": "unknown",
+      "kind": "unknown",
+      "total_bytes": null,
+      "train_sha256": "",
+      "validation_sha256": "",
+      "validation_split_rule": "",
+      "entropy_note": ""
+    },
+    "source": "/workspace/runs/run004_matched_behavioral_kd"
+  },
+  "same_benchmark": "UNKNOWN",
+  "comparable_benchmark": false,
+  "controlled_experiment": true,
+  "controlled_at_identical_values": [],
+  "uncontrolled_differences": [],
+  "metrics": [
+    {
+      "metric": "validation_loss",
+      "label": "validation loss (nats)",
+      "scope": "data",
+      "unit": "nats",
+      "left": 8.959928772666238,
+      "right": 11.580880815332586,
+      "verdict": "NOT_COMPARABLE",
+      "delta": null,
+      "ratio": null,
+      "reason": "the same quantity as validation bits/byte, before the change of base",
+      "remedy": "evaluate both checkpoints on one shared held-out corpus",
+      "note": ""
+    },
+    {
+      "metric": "run_wide_tokens_per_second",
+      "label": "run-wide throughput",
+      "scope": "process",
+      "unit": "tok/s",
+      "left": 182.9,
+      "right": 202.0,
+      "verdict": "COMPARABLE",
+      "delta": 19.1,
+      "ratio": 1.1044,
+      "reason": "the same architecture at the same sequence length and batch size on the same GPU class. Byte-level tokenisation means a token is a byte in both runs, so the unit is identical. This measures the implementation, not the data.",
+      "remedy": "",
+      "note": ""
+    },
+    {
+      "metric": "steps_to_plateau",
+      "label": "steps to plateau",
+      "scope": "data",
+      "unit": "steps",
+      "left": 96,
+      "right": 96,
+      "verdict": "COMPARABLE_IF",
+      "delta": null,
+      "ratio": null,
+      "reason": "the plateau step is defined relative to each run's OWN best value, so the two are computed against different scales. The shapes can be described side by side; the ratio of the numbers means nothing.",
+      "remedy": "compare as a description of curve shape, never as a numeric ratio",
+      "note": ""
+    },
+    {
+      "metric": "epochs_seen",
+      "label": "epochs over the corpus",
+      "scope": "data",
+      "unit": "epochs",
+      "left": 0.0,
+      "right": 0.0,
+      "verdict": "COMPARABLE_IF",
+      "delta": null,
+      "ratio": null,
+      "reason": "a fact about each run's data budget, not about the models. Level 2 consumed 8 MB many times over; Level 2R sees a far larger corpus.",
+      "remedy": "read as a property of each experiment, not as a comparison between them",
+      "note": ""
+    }
+  ],
+  "shared_benchmark_protocol": [
+    "Pick one held-out corpus. It must be disjoint from BOTH runs' training data \u2014 Level 2's procedural corpus and Level 2R's Gutenberg training split.",
+    "Fix its SHA-256 and record it with the result. Two evaluations on 'the same books' that differ by a header are two different benchmarks.",
+    "Segment it identically for both models: same sequence length, same stride, same batch size. Byte-level loss is a mean over sequences, so segmentation moves it.",
+    "Evaluate both checkpoints under the same precision. fp16 autocast and fp32 do not agree to three decimals, and the difference is comparable to the effect being measured.",
+    "Report both numbers with the corpus digest attached, never as a bare delta.",
+    "Note what the comparison still cannot settle: two models trained on different data, scored on a third corpus, differ by training data AND by whatever that corpus happens to favour."
+  ],
+  "findings": [
+    "at least one run did not record the SHA-256 of the bytes it validated on, so whether the two BPB numbers are the same benchmark cannot be established. No validation-metric delta is reported: an unrecorded digest is a reason to withhold the comparison, not to assume it holds.",
+    "generation degeneracy has not been measured on both sides. Until it has, nothing here speaks to whether either model learned language \u2014 run scripts/sanity_generate.py on a checkpoint from each."
+  ],
+  "headline_refusal": "No overall winner is declared. The runs trained on different corpora, so their validation bits-per-byte are not measurements of the same quantity and no delta between them is reported."
+}

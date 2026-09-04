@@ -1,0 +1,37 @@
+# VCS and local tooling
+.git
+.vscode
+.idea
+
+# Python/cache noise
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.venv
+venv
+
+# Local secrets and environment files
+.env
+.env.*
+
+# Generated experiment outputs and heavyweight model artifacts are mounted at runtime,
+# never baked into the reproducible research control image.
+runs
+outputs
+artifacts
+checkpoints
+**/*.safetensors
+**/*.pt
+**/*.pth
+**/*.ckpt
+**/*.bin
+**/*.log
+
+# Historical transcript material is preserved in git but is not executable image payload.
+CLAUDE_CLI_RUNS
+
+# Accidental shell artifacts seen in earlier working trees.
+--bg
+Record

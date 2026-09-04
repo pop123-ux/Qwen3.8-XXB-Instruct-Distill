@@ -23,6 +23,7 @@ are appended as they become known.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -335,10 +336,8 @@ def capture_tokenizer(tokenizer_path: Path | None) -> dict[str, Any]:
     # The tokenizer travels with the teacher checkpoint, so it inherits that revision.
     manifest = tokenizer_path / "teacher_download_manifest.json"
     if manifest.is_file():
-        try:
+        with contextlib.suppress(json.JSONDecodeError):
             record["revision"] = json.loads(manifest.read_text(encoding="utf-8")).get("revision")
-        except json.JSONDecodeError:
-            pass
     return record
 
 

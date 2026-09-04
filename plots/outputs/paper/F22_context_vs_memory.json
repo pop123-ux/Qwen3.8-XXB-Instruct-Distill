@@ -1,8 +1,10 @@
 {
-  "data_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
+  "data_commit": "10b45e44ddcc8dd61fe1b528154aa832250cb140",
   "experiments": [
     "kd_run_001",
     "run003_calibration_1536_chunked",
+    "run003_calibration_1536_l40s",
+    "run003_layer_kd",
     "run002_calibration_1536",
     "run002_logit_kd",
     "run003_calibration_1536",
@@ -25,6 +27,18 @@
         "experiment": "run003_calibration_1536_chunked",
         "peak_allocated_gib": 38.028852462768555,
         "peak_reserved_gib": 39.890625,
+        "sequence_length": 1536
+      },
+      {
+        "experiment": "run003_calibration_1536_l40s",
+        "peak_allocated_gib": 38.028852462768555,
+        "peak_reserved_gib": 39.890625,
+        "sequence_length": 1536
+      },
+      {
+        "experiment": "run003_layer_kd",
+        "peak_allocated_gib": 38.94548988342285,
+        "peak_reserved_gib": 40.765625,
         "sequence_length": 1536
       },
       {
@@ -60,11 +74,13 @@
     "memory.peak_reserved_gib"
   ],
   "note": "panel a is analytical inference memory; panel b is measured A40 training memory. They are not comparable and are never plotted on one axes.",
-  "plotting_commit": "15bed6f6d8179e1a417cda0b3d0b71e41f69c1fb",
+  "plotting_commit": "10b45e44ddcc8dd61fe1b528154aa832250cb140",
   "sources": [
     "qwen_distill.research.memory:build_table",
     "experiments/kd_run_001/summary.json",
     "experiments/run003_calibration_1536_chunked/summary.json",
+    "experiments/run003_calibration_1536_l40s/summary.json",
+    "experiments/run003_layer_kd/summary.json",
     "experiments/run002_calibration_1536/summary.json",
     "experiments/run002_logit_kd/summary.json",
     "experiments/run003_calibration_1536/summary.json",

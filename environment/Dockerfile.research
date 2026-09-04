@@ -1,0 +1,37 @@
+FROM python:3.12.3-slim-bookworm
+
+ARG RESEARCH_GIT_SHA=unknown
+LABEL org.opencontainers.image.title="qwen38-rq1-research" \
+      org.opencontainers.image.revision="${RESEARCH_GIT_SHA}"
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTORCH_ALLOC_CONF=expandable_segments:True \
+    RESEARCH_GIT_SHA=${RESEARCH_GIT_SHA}
+
+WORKDIR /workspace/Qwen3.8-XXB-Instruct-Distill
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git git-lfs build-essential ca-certificates \
+    && git lfs install --system \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements/research-rq1-direct.txt /tmp/research-rq1-direct.txt
+
+# Install the CUDA-specific torch wheel first. The remaining direct dependencies are exact
+# pins for this new RQ1 environment; the final image digest and package snapshot lock the
+# transitive environment actually used.
+RUN python -m pip install --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0 \
+    && python -m pip install -r /tmp/research-rq1-direct.txt
+
+COPY . .
+RUN python -m pip install -e . --no-deps \
+    && python -m pip freeze | sort > /opt/research-pip-freeze.txt
+
+# The immutable image digest is supplied by the registry/runtime through
+# RESEARCH_CONTAINER_DIGEST. The NVIDIA host driver remains external and is captured at
+# runtime; it is a systems-comparability dimension, not a hidden scientific hyperparameter.
+CMD ["python", "scripts/lab_preflight.py", "--json"]

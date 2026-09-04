@@ -1,0 +1,164 @@
+{
+  "plan_id": "RQ1_OBJECTIVE_LAB_V1",
+  "status": "active_pre_gpu",
+  "research_question": "When teacher and student computational topologies differ, which distillation targets transfer useful behavior most effectively under a matched budget?",
+  "created_date": "2026-09-04",
+  "canonical_teacher": {
+    "model": "Qwen/Qwen3.8-27B",
+    "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2"
+  },
+  "canonical_student": {
+    "id": "qwen38_19b_h5120_l48_moe",
+    "base_parameters": 13008505728,
+    "active_parameters_per_token": 9611119488
+  },
+  "historical_anchors": [
+    {
+      "id": "run003_layer_kd",
+      "arm": "A",
+      "role": "pointwise_state_kd_historical_anchor",
+      "status": "complete",
+      "launch_commit": "10b45e44ddcc8dd61fe1b528154aa832250cb140"
+    },
+    {
+      "id": "run004_matched_behavioral_kd",
+      "arm": "C",
+      "role": "topology_span_delta_historical_anchor",
+      "status": "complete",
+      "launch_commit": "05788d9d22b2aa189f305e6c5ae2711efad7c26a"
+    }
+  ],
+  "matched_recipe": {
+    "sequence_length": 1536,
+    "max_tokens": 700000,
+    "steps": 128,
+    "batch_size": 1,
+    "gradient_accumulation_steps": 1,
+    "strategy": "qlora",
+    "optimizer": "adamw",
+    "learning_rate": 0.0002,
+    "weight_decay": 0.0,
+    "warmup_steps": 10,
+    "scheduler": "cosine",
+    "precision": "bf16",
+    "gradient_checkpointing": true,
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "seed": 0,
+    "kd_temperature": 2.0,
+    "kd_top_k": 64,
+    "kd_tail": "bucket",
+    "layer_kd_direction_weight": 1.0,
+    "layer_kd_normalise": true,
+    "layer_kd_map_strategy": "group",
+    "layer_kd_chunk_pairs": 4,
+    "eval_every": 32,
+    "save_every": 64,
+    "log_every": 1
+  },
+  "arms": [
+    {
+      "arm": "A",
+      "id": "pointwise_state_kd",
+      "question": "What does conventional mapped intermediate-state matching achieve?",
+      "space": "hidden_state",
+      "components": ["pointwise_state_magnitude", "pointwise_state_direction"],
+      "implementation_status": "existing_cpu_tested",
+      "gpu_status": "eligible_after_runtime_gate",
+      "historical_anchor": "run003_layer_kd"
+    },
+    {
+      "arm": "B",
+      "id": "fdd_prediction_dynamics",
+      "question": "Does a faithful prediction-space feature-dynamics comparator outperform pointwise state KD?",
+      "space": "lm_head_prediction",
+      "components": ["output_kd", "trajectory_kl", "derivative_cosine"],
+      "implementation_status": "cpu_tested",
+      "gpu_status": "eligible_after_runtime_gate",
+      "prior_art": {
+        "work": "Gong2025_FDD",
+        "title": "Beyond Logits: Aligning Feature Dynamics for Effective Knowledge Distillation",
+        "venue": "ACL 2025",
+        "adaptation_rule": "Do not relabel residual hidden-state deltas as FDD. FDD maps selected intermediate representations through each model's prediction head and aligns trajectory and first-order prediction dynamics in a shared vocabulary space."
+      }
+    },
+    {
+      "arm": "C",
+      "id": "topology_span_delta",
+      "question": "Can a student layer reproduce the aggregate residual contribution of the teacher span it replaces?",
+      "space": "hidden_state_residual_delta",
+      "components": ["span_delta_magnitude", "span_delta_direction"],
+      "implementation_status": "existing_cpu_tested",
+      "gpu_status": "eligible_after_runtime_gate",
+      "historical_anchor": "run004_matched_behavioral_kd"
+    },
+    {
+      "arm": "D",
+      "id": "pointwise_plus_adjacent_residual_delta",
+      "question": "Does local adjacent residual-transition supervision help when absolute hidden state is anchored?",
+      "space": "hidden_state",
+      "components": ["pointwise_state", "adjacent_residual_delta"],
+      "implementation_status": "cpu_tested",
+      "gpu_status": "eligible_after_runtime_gate",
+      "note": "This is an internal abstraction ablation and must not be called FDD."
+    },
+    {
+      "arm": "E",
+      "id": "pointwise_plus_span_delta",
+      "question": "Does topology-aware span supervision become useful when an absolute-state anchor prevents residual-stream drift?",
+      "space": "hidden_state",
+      "components": ["pointwise_state", "topology_span_delta"],
+      "implementation_status": "cpu_tested",
+      "gpu_status": "eligible_after_runtime_gate",
+      "priority": "critical_hypothesis_test"
+    },
+    {
+      "arm": "F",
+      "id": "output_plus_pointwise_plus_span",
+      "question": "Does the best anchored topology-aware objective translate to output behavior when combined with output-level supervision?",
+      "space": "composite",
+      "components": ["ce", "logit_kd", "pointwise_state", "topology_span_delta"],
+      "implementation_status": "blocked_pending_weight_preregistration_and_cpu_tests",
+      "gpu_status": "blocked",
+      "note": "Composite weights must be pre-registered in a protocol revision before GPU execution; they must not be chosen after seeing A-E results."
+    }
+  ],
+  "execution_gates": [
+    "CPU_GATE: repository static preflight passes before renting GPU",
+    "IMPLEMENTATION_GATE: an arm is not GPU-eligible until its objective implementation and unit tests exist",
+    "PROTOCOL_GATE: all scientific hyperparameters are explicit; no CLI-default inheritance",
+    "DATA_GATE: corpus and tokenizer fingerprints match the registered hashes",
+    "STUDENT_GATE: the canonical transferred checkpoint identity is verified",
+    "RUNTIME_GATE: L40S runtime identity and critical software versions are captured before model loading",
+    "VRAM_GATE: peak training VRAM must remain below 45 GiB",
+    "ARTIFACT_GATE: manifest, resolved config, metrics, summary, memory record, command, and terminal state are present before an arm is considered complete",
+    "ANALYSIS_GATE: no longer-budget or context run starts until the objective comparison is interpreted",
+    "REPLICATION_GATE: a central result requires at least one additional seed"
+  ],
+  "gpu_use_policy": {
+    "allowed": [
+      "runtime GPU identity capture",
+      "teacher/student/data path checks that require the pod filesystem",
+      "GPU memory calibration when a new objective changes memory behavior",
+      "controlled training",
+      "GPU-dependent evaluation and inference memory measurement"
+    ],
+    "forbidden": [
+      "repository browsing",
+      "writing protocols or documentation",
+      "static JSON/schema validation",
+      "CPU-only unit tests",
+      "plotting from already-recorded artifacts",
+      "literature review",
+      "cosmetic refactoring"
+    ]
+  },
+  "decision_order": ["CPU lab readiness", "B/D/E/F implementation with CPU tests", "runtime capture", "A-F seed 0 as eligible", "paired analysis", "targeted additional seed", "functional transition audit", "conditional longer-budget winner", "RQ2 context specialization"],
+  "claim_rules": {
+    "historical_negative_result": "Pure topology span-delta under Run004-M was trainable but underperformed pointwise KD on output/validation diagnostics at 128 steps; this does not establish that behavioral KD generally fails.",
+    "mechanistic_explanation_status": "The idea that pure span-delta can learn the right movement from the wrong absolute state is a hypothesis until the functional audit tests it.",
+    "novelty": "No first-in-literature claim without the registered prior-art comparator and a current literature review.",
+    "capability": "128-step mechanism comparisons are not capability results."
+  }
+}

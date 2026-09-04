@@ -1,0 +1,110 @@
+name: research-image
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'claude/**'
+    paths:
+      - 'environment/**'
+      - 'requirements/**'
+      - 'research/**'
+      - 'scripts/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - '.dockerignore'
+      - '.github/workflows/research-image.yml'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-rq1-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          fetch-depth: 1
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push immutable RQ1 image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: environment/Dockerfile.research
+          push: true
+          build-args: |
+            RESEARCH_GIT_SHA=${{ github.sha }}
+          tags: |
+            ghcr.io/pop123-ux/qwen38-rq1-research:${{ github.sha }}
+            ghcr.io/pop123-ux/qwen38-rq1-research:rq1-v2
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify registry digest
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          case "$IMAGE_DIGEST" in
+            sha256:*) ;;
+            *) echo "Build did not return an immutable sha256 digest: $IMAGE_DIGEST" >&2; exit 1 ;;
+          esac
+
+      - name: Smoke-test immutable image
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker run --rm \
+            -e RESEARCH_CONTAINER_DIGEST="$IMAGE_DIGEST" \
+            -e RESEARCH_GIT_SHA="$GITHUB_SHA" \
+            "ghcr.io/pop123-ux/qwen38-rq1-research@$IMAGE_DIGEST" \
+            python scripts/lab_preflight.py --json
+
+      - name: Record image provenance
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          digest = os.environ["IMAGE_DIGEST"]
+          image = "ghcr.io/pop123-ux/qwen38-rq1-research"
+          payload = {
+              "schema": 2,
+              "git_sha": os.environ["GITHUB_SHA"],
+              "git_ref": os.environ["GITHUB_REF"],
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "image": image,
+              "digest": digest,
+              "immutable_reference": f"{image}@{digest}",
+              "commit_tag_reference": f"{image}:{os.environ['GITHUB_SHA']}",
+          }
+          Path("research-image-provenance.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Upload provenance artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-image-provenance
+          path: research-image-provenance.json
+          if-no-files-found: error
+          retention-days: 90

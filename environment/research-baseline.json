@@ -1,0 +1,24 @@
+{
+  "environment_id": "qwen38-research-rq1-v1",
+  "status": "observed_baseline",
+  "source_experiment": "run004_matched_behavioral_kd",
+  "source_commit": "05788d9d22b2aa189f305e6c5ae2711efad7c26a",
+  "python": "3.12.3",
+  "pytorch": "2.8.0+cu128",
+  "transformers": "5.15.1",
+  "cuda_runtime": "12.8",
+  "gpu": "NVIDIA L40S",
+  "gpu_count": 1,
+  "compute_capability": "8.9",
+  "nvidia_driver": "580.159.04",
+  "host_os": "Linux 6.8.0-134-generic",
+  "allocator": "expandable_segments:True",
+  "policy": {
+    "critical_versions_must_match": true,
+    "container_identity_required_for_new_controlled_runs": true,
+    "full_dependency_lock_required_before_final_long_run": true,
+    "gpu_model_must_match_for_throughput_comparisons": true,
+    "driver_must_match_for_throughput_comparisons": true,
+    "historical_run_outputs_are_not_rewritten": true
+  }
+}

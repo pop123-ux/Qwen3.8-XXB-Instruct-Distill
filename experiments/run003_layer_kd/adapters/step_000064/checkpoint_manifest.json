@@ -1,0 +1,39 @@
+{
+  "manifest_version": "1.0",
+  "step": 64,
+  "parameter_count": 13031508864,
+  "files": {
+    "adapter_model.safetensors": {
+      "size_bytes": 92045704,
+      "sha256": "5109dbda1060495691dbf488bb6dd3ced2de116f78143f9c2b0d80de38ff6ef8"
+    },
+    "training_state.json": {
+      "size_bytes": 39909,
+      "sha256": "853cf54e70f3eb67dd253ea22ad3e77b75efafdb203f4cad6587fc5f5374bb3e"
+    },
+    "metadata.json": {
+      "size_bytes": 1092,
+      "sha256": "a5a8cbdeb8470055c9400483b70096b2fbd64a777e28e6046acdc1f5b4af2ec6"
+    },
+    "optimizer.pt": {
+      "size_bytes": 184225887,
+      "sha256": "948fcd6835376799cc1bd55072c624a377565f8c8beafd836b68c0351f9707ad"
+    },
+    "scheduler.pt": {
+      "size_bytes": 1709,
+      "sha256": "32aa8eb2dec3959598fe67678a57b6b72cb1150e43716ee3993143693df3bccb"
+    },
+    "scaler.pt": {
+      "size_bytes": 1261,
+      "sha256": "07c7431cf6005e7d8f367d79e995f63e2f9b981a37e3437b795d058f9af4308b"
+    },
+    "rng.pt": {
+      "size_bytes": 14565,
+      "sha256": "33aaccb916937f49ee6bc97abe9ed07ebb4bc9dc4a77ec77f707c3e4ab1d3d7a"
+    },
+    "config.json": {
+      "size_bytes": 1996,
+      "sha256": "17b281e596b2fbdd50c0d5f3f93a8c2cd556810aedec11df32b639a0dc3e8313"
+    }
+  }
+}

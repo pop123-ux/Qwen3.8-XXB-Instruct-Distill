@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "purpose": "Separate published trajectory-KD ideas from the project's proposed teacher-span transition abstraction.",
+  "fixed_protocol": {
+    "teacher": "Qwen/Qwen3.8-27B",
+    "teacher_revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+    "student": "qwen38_19b_h5120_l48_moe",
+    "sequence_length": 1536,
+    "max_tokens_matched": 700000,
+    "steps_matched": 128,
+    "batch_size": 1,
+    "gradient_accumulation_steps": 1,
+    "seed_primary": 0,
+    "precision": "bf16",
+    "quantization": "4bit",
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "learning_rate": 0.0002,
+    "kd_temperature": 2.0,
+    "kd_top_k": 64,
+    "optimizer": "adamw",
+    "vram_ceiling_gib": 45.0
+  },
+  "arms": [
+    {
+      "id": "A0",
+      "name": "ce_only",
+      "purpose": "No-teacher floor"
+    },
+    {
+      "id": "A1",
+      "name": "pointwise_layer_kd",
+      "purpose": "Current Run 003 representation-KD control"
+    },
+    {
+      "id": "A2",
+      "name": "logit_kd",
+      "purpose": "Output-only teacher supervision"
+    },
+    {
+      "id": "A3",
+      "name": "fdd_prediction_delta",
+      "purpose": "Closest published feature-dynamics comparator; prediction-space finite-difference supervision"
+    },
+    {
+      "id": "A4",
+      "name": "span_behavior_delta",
+      "purpose": "Proposed computational-span teacher target mapped to each student transition"
+    },
+    {
+      "id": "A5",
+      "name": "composite_ce_logit_behavioral",
+      "purpose": "Test whether behavioral supervision contributes beyond CE + logit KD"
+    }
+  ],
+  "critical_pairwise_tests": [
+    {
+      "id": "T1",
+      "compare": ["A1", "A4"],
+      "question": "Does span-level computational supervision beat pointwise layer matching?"
+    },
+    {
+      "id": "T2",
+      "compare": ["A3", "A4"],
+      "question": "Does aggregating a teacher span add value beyond adjacent feature dynamics?"
+    },
+    {
+      "id": "T3",
+      "compare": ["A2", "A4"],
+      "question": "Does internal computational supervision add value beyond output KD?"
+    },
+    {
+      "id": "T4",
+      "compare": ["A2", "A5"],
+      "question": "Does the behavioral term contribute after accounting for ordinary logit KD?"
+    }
+  ],
+  "secondary_mapping_ablation": [
+    "uniform_depth",
+    "block_type_preserving",
+    "teacher_influence_weighted"
+  ],
+  "functional_metrics": [
+    "teacher_kl",
+    "cross_entropy",
+    "top1_agreement",
+    "validation_loss",
+    "residual_cosine",
+    "relative_residual_error",
+    "logit_delta_cosine",
+    "perturbation_kl",
+    "influence_rank_correlation",
+    "residual_scale_sensitivity"
+  ],
+  "replication": {
+    "primary_seed": 0,
+    "decisive_comparison_second_seed_required": true
+  },
+  "interpretation_rule": "A lower internal matching loss alone is insufficient. The proposed method requires consistent improvement in held-out teacher-imitation or capability metrics and survival at longer budget before the paper can claim a stronger transfer abstraction."
+}

@@ -1,0 +1,121 @@
+{
+  "project": "beyond_layer_matching",
+  "contribution_working_name": "computational_span_distillation",
+  "teacher": "Qwen/Qwen3.8-27B",
+  "teacher_revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+  "student": "qwen38_19b_h5120_l48_moe",
+  "student_total_parameters": 13008505728,
+  "student_active_parameters_per_token": 9611119488,
+  "deployment_target_gib": 16.0,
+  "training_vram_ceiling_gib": 45.0,
+  "prior_art": {
+    "closest_trajectory": [
+      "Gong2025_FDD",
+      "Chi2026_MTA"
+    ],
+    "heterogeneous_architecture": [
+      "Hao2023_OFAKD",
+      "Liu2022_CrossArchitectureKD",
+      "Dong2023_DisWOT"
+    ],
+    "depth_and_intermediate": [
+      "Sun2019_PKD",
+      "Jiao2020_TinyBERT",
+      "NVIDIA2024_MINITRON",
+      "Men2024_ShortGPT",
+      "Yang2024_LaCo",
+      "Kovalev2025_IterativeLayerwise"
+    ],
+    "MoE_distillation": [
+      "Kim2025_EveryExpertMatters"
+    ],
+    "long_context_distillation": [
+      "Huber2026_ShortDataLongContext"
+    ]
+  },
+  "rq1": {
+    "name": "Beyond Layer Matching",
+    "control": "run003_layer_kd",
+    "matched_behavioral": {
+      "id": "run004_matched_behavioral_kd",
+      "objective": "behavioral_kd",
+      "mode": "delta",
+      "sequence_length": 1536,
+      "max_tokens": 700000,
+      "steps": 128,
+      "only_intended_change": "representation target: pointwise hidden state -> residual contribution"
+    },
+    "prior_art_comparator": {
+      "id": "run004_fdd_prediction_delta",
+      "goal": "faithfully approximate the published FDD prediction-dynamics/finite-difference comparator without relabelling CSD as FDD",
+      "requires_gate": "after_run004_matched_behavioral"
+    },
+    "abstraction_ablation": {
+      "id": "run004_adjacent_vs_span",
+      "goal": "isolate adjacent teacher-delta supervision from teacher-span aggregate-delta supervision",
+      "requires_gate": "fdd_comparator_implemented"
+    },
+    "scale_up": [
+      {"id": "run004_behavioral_scale_1024", "steps": 1024, "training_tokens": 1572864, "requires_gate": "matched_result_positive_or_noninferior"},
+      {"id": "run004_behavioral_scale_4096", "steps": 4096, "training_tokens": 6291456, "requires_gate": "scale_1024_healthy"},
+      {"id": "run004_behavioral_scale_16384", "steps": 16384, "training_tokens": 25165824, "requires_gate": "scale_4096_healthy_and_budget_allows"}
+    ],
+    "objective_family": [
+      "ce_only",
+      "logit_kd",
+      "layer_kd",
+      "fdd_prediction_delta",
+      "behavioral_span_delta",
+      "composite_ce_logit_behavioral"
+    ],
+    "functional_audit": {
+      "id": "transition_influence_audit",
+      "metrics": [
+        "residual_cosine",
+        "relative_residual_error",
+        "logit_delta_cosine",
+        "perturbation_kl",
+        "influence_rank_correlation",
+        "residual_scale_sensitivity"
+      ],
+      "requires_gate": "a_decisive_objective_pair_exists"
+    }
+  },
+  "rq2": {
+    "name": "Context-Length Specialization",
+    "target_contexts": [4096, 8192, 16384, 32768, 65536, 131072, 262144],
+    "arms": [
+      "uniform",
+      "short_context_heavy",
+      "medium_context_heavy",
+      "long_context_heavy",
+      "progressive"
+    ],
+    "required_control": "same_total_training_tokens_and_same_evaluation_suite",
+    "status": "requires_context_scheduler_or_mixture_implementation"
+  },
+  "evidence_gates": [
+    {"id": "G1", "description": "teacher/student/initialization audit", "required": true},
+    {"id": "G2", "description": "Run 003 pointwise control archived", "required": true},
+    {"id": "G3", "description": "Run 004-M exact matched replication", "required": true},
+    {"id": "G4", "description": "closest published trajectory comparator implemented and tested", "required": true},
+    {"id": "G5", "description": "span-vs-adjacent abstraction ablation", "required": true},
+    {"id": "G6", "description": "behavioral objective survives longer-budget training", "required": true},
+    {"id": "G7", "description": "objective-family comparison including composite objective", "required": true},
+    {"id": "G8", "description": "context-specialization ablation", "required": true},
+    {"id": "G9", "description": "16 GiB end-to-end inference measurement/accounting", "required": true},
+    {"id": "G10", "description": "capability benchmark comparison", "required": true},
+    {"id": "G11", "description": "functional transition-influence audit", "required": true},
+    {"id": "G12", "description": "decisive result replicated with an additional random seed", "required": true}
+  ],
+  "rules": {
+    "no_fabricated_results": true,
+    "no_uncontrolled_protocol_changes": true,
+    "max_training_vram_gib": 45.0,
+    "preserve_historical_runs": true,
+    "paper_claims_require_measured_artifacts": true,
+    "novelty_claim_requires_prior_art_comparator": true,
+    "central_result_requires_seed_replication": true,
+    "negative_and_null_results_must_be_retained": true
+  }
+}

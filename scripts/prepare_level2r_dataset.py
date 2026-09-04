@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import http.client
 import time
 import urllib.error
 import urllib.request
@@ -206,7 +207,11 @@ def fetch(identifier: str, cache: Path, *, timeout: int, retries: int) -> str | 
                     continue
                 cached.write_text(payload, encoding="utf-8")
                 return payload
-            except (urllib.error.URLError, OSError, TimeoutError):
+            except (urllib.error.URLError, OSError, TimeoutError,
+                    http.client.HTTPException):
+                # IncompleteRead / RemoteDisconnected from a flaky Gutenberg mirror.
+                # The contract is "return None on failure", not "raise": a truncated
+                # response must fall through to the next mirror and the next attempt.
                 continue
         if attempt < retries - 1:
             time.sleep(2 ** attempt)
