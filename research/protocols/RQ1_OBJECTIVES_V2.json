@@ -1,0 +1,141 @@
+{
+  "protocol_id": "RQ1_OBJECTIVES_V2",
+  "status": "scientific_recipe_locked_implementation_in_progress",
+  "purpose": "matched_rq1_objective_family",
+  "plan": "research/plans/RQ1_OBJECTIVE_LAB_V1.json",
+  "supersedes_for_new_runs": "RQ1_V1",
+  "independent_variable": "arm",
+  "allowed_arms": ["A", "B", "C", "D", "E", "F"],
+  "teacher": {
+    "model": "Qwen/Qwen3.8-27B",
+    "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+    "quantization": "4bit"
+  },
+  "student": {
+    "id": "qwen38_19b_h5120_l48_moe",
+    "base_parameters": 13008505728,
+    "active_parameters_per_token": 9611119488,
+    "initialization": "canonical_transferred_checkpoint",
+    "identity_must_be_recorded_at_run_time": true
+  },
+  "training": {
+    "sequence_length": 1536,
+    "max_tokens": 700000,
+    "steps": 128,
+    "batch_size": 1,
+    "gradient_accumulation_steps": 1,
+    "strategy": "qlora",
+    "optimizer": "adamw",
+    "learning_rate": 0.0002,
+    "weight_decay": 0.0,
+    "warmup_steps": 10,
+    "scheduler": "cosine",
+    "precision": "bf16",
+    "gradient_checkpointing": true,
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "seed": 0,
+    "kd_temperature": 2.0,
+    "kd_top_k": 64,
+    "kd_tail": "bucket",
+    "layer_kd_direction_weight": 1.0,
+    "layer_kd_normalise": true,
+    "layer_kd_map_strategy": "group",
+    "layer_kd_chunk_pairs": 4,
+    "eval_every": 32,
+    "save_every": 64,
+    "log_every": 1
+  },
+  "arm_registry": {
+    "A": {
+      "id": "pointwise_state_kd",
+      "status": "existing_cpu_tested",
+      "required_components": ["pointwise_state_magnitude", "pointwise_state_direction"]
+    },
+    "B": {
+      "id": "fdd_prediction_dynamics",
+      "status": "pending_cpu_implementation_and_tests",
+      "required_space": "lm_head_prediction",
+      "required_components": ["output_kd", "trajectory_kl", "derivative_cosine"]
+    },
+    "C": {
+      "id": "topology_span_delta",
+      "status": "existing_cpu_tested",
+      "required_components": ["span_delta_magnitude", "span_delta_direction"]
+    },
+    "D": {
+      "id": "pointwise_plus_adjacent_residual_delta",
+      "status": "pending_cpu_implementation_and_tests",
+      "required_components": ["pointwise_state", "adjacent_residual_delta"],
+      "must_not_be_labelled_fdd": true
+    },
+    "E": {
+      "id": "pointwise_plus_span_delta",
+      "status": "pending_cpu_implementation_and_tests",
+      "required_components": ["pointwise_state", "topology_span_delta"]
+    },
+    "F": {
+      "id": "output_plus_pointwise_plus_span",
+      "status": "blocked_pending_weight_preregistration_and_cpu_tests",
+      "required_components": ["ce", "logit_kd", "pointwise_state", "topology_span_delta"],
+      "composite_weights": null,
+      "weight_rule": "must_be_preregistered_before_gpu_execution"
+    }
+  },
+  "software_quality_lock": {
+    "python": "3.12.3",
+    "pytorch": "2.8.0+cu128",
+    "transformers": "5.15.1",
+    "cuda_runtime": "12.8"
+  },
+  "execution_quality_lock": {
+    "gpu_model": "NVIDIA L40S",
+    "compute_capability": "8.9",
+    "gpu_count": 1,
+    "training_vram_ceiling_gib": 45.0,
+    "allocator": "expandable_segments:True"
+  },
+  "systems_comparability_lock": {
+    "nvidia_driver": "580.159.04",
+    "container_digest": null,
+    "container_digest_policy": "capture_and_pin_before_throughput_claims",
+    "driver_policy": "a mismatch does not invalidate quality comparison if all scientific locks pass, but throughput_comparable must be false"
+  },
+  "data": {
+    "corpus_sha256": "e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d",
+    "tokenizer_vocab_size": 248077,
+    "eos_token_id": 248046,
+    "packing_version": "1.0",
+    "document_separator": "blank_line",
+    "tokenizer_sha256": {
+      "tokenizer.json": "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3",
+      "tokenizer_config.json": "b11349aafa7cdc6a320767cf7ceb29ed82f7eda5d65e8e0819e76f0ce947bf27",
+      "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+      "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+    }
+  },
+  "runtime_environment": {
+    "allocator_env_canonical": "PYTORCH_ALLOC_CONF",
+    "allocator_env_legacy_alias": "PYTORCH_CUDA_ALLOC_CONF",
+    "allocator_value": "expandable_segments:True",
+    "container_digest_env": "RESEARCH_CONTAINER_DIGEST",
+    "note": "PyTorch now documents PYTORCH_ALLOC_CONF as canonical and PYTORCH_CUDA_ALLOC_CONF as the backward-compatible alias. Runtime capture accepts either; new launch instructions use the canonical name."
+  },
+  "rules": {
+    "all_locked_fields_explicit": true,
+    "no_cli_default_inheritance": true,
+    "arm_is_only_scientific_variation": true,
+    "new_hyperparameter_requires_new_protocol": true,
+    "historical_artifacts_immutable": true,
+    "exact_token_stream_required": true,
+    "student_identity_required": true,
+    "cpu_preflight_required_before_gpu_rental": true,
+    "unimplemented_arm_must_refuse": true,
+    "driver_or_container_mismatch_disables_throughput_comparison": true,
+    "critical_software_or_gpu_mismatch_invalidates_quality_comparison": true,
+    "full_environment_capture_required_each_gpu_session": true,
+    "full_dependency_lock_required_before_long_budget_or_capability_run": true,
+    "no_fabricated_results": true
+  }
+}
