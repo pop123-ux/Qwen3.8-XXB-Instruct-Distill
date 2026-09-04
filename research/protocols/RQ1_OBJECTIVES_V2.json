@@ -51,29 +51,46 @@
     "A": {
       "id": "pointwise_state_kd",
       "status": "existing_cpu_tested",
-      "required_components": ["pointwise_state_magnitude", "pointwise_state_direction"]
+      "required_components": ["pointwise_state_magnitude", "pointwise_state_direction"],
+      "objective_parameters": {"mode": "pointwise", "weight": 1.0}
     },
     "B": {
       "id": "fdd_prediction_dynamics",
       "status": "pending_cpu_implementation_and_tests",
       "required_space": "lm_head_prediction",
-      "required_components": ["output_kd", "trajectory_kl", "derivative_cosine"]
+      "required_components": ["output_kd", "trajectory_kl", "derivative_cosine"],
+      "objective_parameters": {
+        "sampled_intermediate_layers": 4,
+        "layer_sampling": "uniform_floor_L_over_LD_plus_1",
+        "alpha_trajectory": 1.0,
+        "beta_derivative": 1.0,
+        "output_kd_weight": 1.0,
+        "trajectory_temperature": 1.0,
+        "output_kd_temperature": 2.0,
+        "token_chunk": 16,
+        "lm_head_adapters": "none",
+        "vocabulary": "full_shared_vocabulary"
+      },
+      "parameter_rationale": "alpha=beta=1 and uniform layer sampling follow Gong et al. ACL 2025; four sampled layers matches the best reported layer-count ablation in that work. Output temperature 2 matches this project's registered KD signal; token_chunk is an evaluation/memory strategy and must be proven objective-equivalent on CPU."
     },
     "C": {
       "id": "topology_span_delta",
       "status": "existing_cpu_tested",
-      "required_components": ["span_delta_magnitude", "span_delta_direction"]
+      "required_components": ["span_delta_magnitude", "span_delta_direction"],
+      "objective_parameters": {"mode": "span_delta", "weight": 1.0}
     },
     "D": {
       "id": "pointwise_plus_adjacent_residual_delta",
       "status": "pending_cpu_implementation_and_tests",
       "required_components": ["pointwise_state", "adjacent_residual_delta"],
-      "must_not_be_labelled_fdd": true
+      "must_not_be_labelled_fdd": true,
+      "objective_parameters": {"pointwise_weight": 1.0, "adjacent_transition_weight": 1.0}
     },
     "E": {
       "id": "pointwise_plus_span_delta",
       "status": "pending_cpu_implementation_and_tests",
-      "required_components": ["pointwise_state", "topology_span_delta"]
+      "required_components": ["pointwise_state", "topology_span_delta"],
+      "objective_parameters": {"pointwise_weight": 1.0, "span_transition_weight": 1.0}
     },
     "F": {
       "id": "output_plus_pointwise_plus_span",
