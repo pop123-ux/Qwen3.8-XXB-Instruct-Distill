@@ -9,7 +9,8 @@ ENV PYTHONUNBUFFERED=1 \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PYTORCH_ALLOC_CONF=expandable_segments:True
+    PYTORCH_ALLOC_CONF=expandable_segments:True \
+    RESEARCH_GIT_SHA=${RESEARCH_GIT_SHA}
 
 WORKDIR /workspace/Qwen3.8-XXB-Instruct-Distill
 
