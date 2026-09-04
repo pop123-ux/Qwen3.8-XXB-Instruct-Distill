@@ -1,0 +1,25 @@
+FROM python:3.12.3-slim-bookworm
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /workspace/Qwen3.8-XXB-Instruct-Distill
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git git-lfs build-essential ca-certificates \
+    && git lfs install --system \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements/research-critical.txt /tmp/research-critical.txt
+
+RUN python -m pip install --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0 \
+    && python -m pip install transformers==5.15.1
+
+COPY . .
+
+# The exact image digest must be recorded for controlled experiments after build.
+# Host NVIDIA driver is intentionally recorded separately because it is supplied by RunPod.
+CMD ["python", "scripts/research_guard.py", "--help"]
