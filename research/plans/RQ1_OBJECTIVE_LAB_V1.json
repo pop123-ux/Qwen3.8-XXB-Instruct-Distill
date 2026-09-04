@@ -74,8 +74,8 @@
       "question": "Does a faithful prediction-space feature-dynamics comparator outperform pointwise state KD?",
       "space": "lm_head_prediction",
       "components": ["output_kd", "trajectory_kl", "derivative_cosine"],
-      "implementation_status": "pending_cpu_implementation_and_tests",
-      "gpu_status": "blocked",
+      "implementation_status": "cpu_tested",
+      "gpu_status": "eligible_after_runtime_gate",
       "prior_art": {
         "work": "Gong2025_FDD",
         "title": "Beyond Logits: Aligning Feature Dynamics for Effective Knowledge Distillation",
@@ -99,8 +99,8 @@
       "question": "Does local adjacent residual-transition supervision help when absolute hidden state is anchored?",
       "space": "hidden_state",
       "components": ["pointwise_state", "adjacent_residual_delta"],
-      "implementation_status": "pending_cpu_implementation_and_tests",
-      "gpu_status": "blocked",
+      "implementation_status": "cpu_tested",
+      "gpu_status": "eligible_after_runtime_gate",
       "note": "This is an internal abstraction ablation and must not be called FDD."
     },
     {
@@ -109,8 +109,8 @@
       "question": "Does topology-aware span supervision become useful when an absolute-state anchor prevents residual-stream drift?",
       "space": "hidden_state",
       "components": ["pointwise_state", "topology_span_delta"],
-      "implementation_status": "pending_cpu_implementation_and_tests",
-      "gpu_status": "blocked",
+      "implementation_status": "cpu_tested",
+      "gpu_status": "eligible_after_runtime_gate",
       "priority": "critical_hypothesis_test"
     },
     {
