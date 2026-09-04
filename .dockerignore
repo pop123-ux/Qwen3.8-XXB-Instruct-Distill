@@ -1,6 +1,5 @@
 # VCS and local tooling
 .git
-.github
 .vscode
 .idea
 
