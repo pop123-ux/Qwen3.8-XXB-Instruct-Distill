@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Capture the full runtime/package fingerprint used by a research run.
+"""Capture the complete runtime/package fingerprint of a research session.
 
-The resulting JSON is intentionally additive: it describes the environment and does not
-modify or rewrite any experiment output. Run it inside the controlled research container
-before a new protocol family is opened.
+This script is observational only. It never modifies an experiment. New controlled runs
+store its output beside the run manifest so code, packages, container and host GPU can be
+separated cleanly when assessing reproducibility and throughput comparability.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.metadata
 import json
 import os
@@ -23,6 +24,14 @@ def _command(*args: str) -> str | None:
         return subprocess.check_output(args, text=True, stderr=subprocess.DEVNULL).strip()
     except Exception:
         return None
+
+
+def _git() -> dict[str, object]:
+    return {
+        "commit": _command("git", "rev-parse", "HEAD"),
+        "branch": _command("git", "branch", "--show-current"),
+        "dirty": bool(_command("git", "status", "--porcelain")),
+    }
 
 
 def _gpu() -> list[dict[str, object]]:
@@ -46,15 +55,44 @@ def _gpu() -> list[dict[str, object]]:
 
 
 def _packages() -> dict[str, str]:
-    return {d.metadata["Name"]: d.version for d in importlib.metadata.distributions()}
+    return dict(sorted(
+        (d.metadata.get("Name") or "unknown", d.version)
+        for d in importlib.metadata.distributions()
+    ))
+
+
+def _allocator() -> dict[str, object]:
+    canonical = os.environ.get("PYTORCH_ALLOC_CONF")
+    legacy = os.environ.get("PYTORCH_CUDA_ALLOC_CONF")
+    return {
+        "value": canonical or legacy,
+        "source_variable": (
+            "PYTORCH_ALLOC_CONF" if canonical is not None
+            else "PYTORCH_CUDA_ALLOC_CONF" if legacy is not None
+            else None
+        ),
+        "canonical": canonical,
+        "legacy_alias": legacy,
+        "conflict": bool(canonical and legacy and canonical != legacy),
+    }
 
 
 def _container_identity() -> dict[str, object]:
-    result: dict[str, object] = {}
+    result: dict[str, object] = {
+        "image_digest": os.environ.get("RESEARCH_CONTAINER_DIGEST"),
+    }
     for path in (Path("/etc/machine-id"), Path("/run/.containerenv")):
         if path.exists():
-            result[path.as_posix()] = path.read_text(encoding="utf-8", errors="replace")[:4096]
-    result["container_image_digest"] = os.environ.get("RESEARCH_CONTAINER_DIGEST")
+            raw = path.read_bytes()
+            result[path.as_posix()] = {
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "size_bytes": len(raw),
+            }
+    lock = Path("/opt/research-pip-freeze.txt")
+    if lock.exists():
+        raw = lock.read_bytes()
+        result["build_pip_freeze_sha256"] = hashlib.sha256(raw).hexdigest()
+        result["build_pip_freeze"] = lock.read_text(encoding="utf-8", errors="replace").splitlines()
     return result
 
 
@@ -63,7 +101,8 @@ def capture() -> dict[str, object]:
     import transformers
 
     return {
-        "environment_schema": 1,
+        "environment_schema": 2,
+        "git": _git(),
         "python": platform.python_version(),
         "python_executable": sys.executable,
         "platform": platform.platform(),
@@ -72,10 +111,12 @@ def capture() -> dict[str, object]:
         "transformers": transformers.__version__,
         "cuda_runtime": torch.version.cuda,
         "cudnn": torch.backends.cudnn.version(),
-        "nvidia_smi": _command("nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"),
+        "nvidia_driver": _command(
+            "nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"
+        ),
         "gpu": _gpu(),
+        "allocator": _allocator(),
         "container": _container_identity(),
-        "allocator": os.environ.get("PYTORCH_CUDA_ALLOC_CONF"),
         "packages": _packages(),
     }
 
