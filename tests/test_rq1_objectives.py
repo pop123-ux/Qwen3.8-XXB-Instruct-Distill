@@ -47,8 +47,14 @@ def test_pointwise_plus_span_is_sum_of_registered_components() -> None:
     teacher = _states(8, scale=1.3)
     mapping = {0: 0, 1: 1, 2: 6, 3: 7}
     out = anchored_transition_loss_chunked(
-        student, teacher, mapping, transition="span", normalise=True,
-        pointwise_weight=1.0, transition_weight=1.0, chunk_pairs=2,
+        student,
+        teacher,
+        mapping,
+        transition="span",
+        normalise=True,
+        pointwise_weight=1.0,
+        transition_weight=1.0,
+        chunk_pairs=2,
     )
     c = out.output.components
     assert out.output.total == pytest.approx(c["pointwise_total"] + c["span_total"], rel=1e-6)
@@ -99,8 +105,13 @@ def test_fdd_identical_prediction_dynamics_is_near_zero() -> None:
         p.requires_grad_(False)
 
     loss = fdd_prediction_dynamics_chunked(
-        tuple(student), tuple(teacher), head_s, head_t,
-        sampled_layers=4, token_chunk=2, trajectory_temperature=1.0,
+        tuple(student),
+        tuple(teacher),
+        head_s,
+        head_t,
+        sampled_layers=4,
+        token_chunk=2,
+        trajectory_temperature=1.0,
         output_temperature=2.0,
     )
     assert loss.output.components["trajectory_kl"] == pytest.approx(0.0, abs=1e-6)
@@ -127,6 +138,51 @@ def test_fdd_produces_hidden_state_gradients_with_frozen_heads() -> None:
     assert all(g is not None for g in loss.grads)
     loss.backward()
     assert any(s.grad is not None for s in student)
+
+
+def test_fdd_token_chunking_preserves_objective_and_hidden_gradients() -> None:
+    """The protocol's token_chunk=16 is a memory strategy, not a scientific change."""
+    import torch
+
+    from qwen_distill.distillation.rq1_objectives import fdd_prediction_dynamics_chunked
+
+    torch.manual_seed(7)
+    student = _states(9, width=6, scale=0.9)
+    teacher = _states(14, width=6, scale=1.4)
+    head_s = torch.nn.Linear(6, 13, bias=False)
+    head_t = torch.nn.Linear(6, 13, bias=False)
+    for p in list(head_s.parameters()) + list(head_t.parameters()):
+        p.requires_grad_(False)
+
+    full = fdd_prediction_dynamics_chunked(
+        student,
+        teacher,
+        head_s,
+        head_t,
+        sampled_layers=4,
+        token_chunk=student[0].shape[1],
+        trajectory_temperature=1.0,
+        output_temperature=2.0,
+    )
+    chunked = fdd_prediction_dynamics_chunked(
+        student,
+        teacher,
+        head_s,
+        head_t,
+        sampled_layers=4,
+        token_chunk=1,
+        trajectory_temperature=1.0,
+        output_temperature=2.0,
+    )
+
+    assert chunked.output.total == pytest.approx(full.output.total, rel=2e-6, abs=2e-6)
+    for key in ("output_kd", "trajectory_kl", "derivative_cosine"):
+        assert chunked.output.components[key] == pytest.approx(
+            full.output.components[key], rel=2e-6, abs=2e-6
+        )
+    assert len(chunked.grads) == len(full.grads)
+    for chunk_grad, full_grad in zip(chunked.grads, full.grads, strict=True):
+        assert torch.allclose(chunk_grad, full_grad, rtol=2e-5, atol=2e-6)
 
 
 def test_fdd_refuses_a_trainable_lm_head() -> None:
