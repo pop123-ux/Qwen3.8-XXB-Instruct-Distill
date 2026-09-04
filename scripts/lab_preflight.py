@@ -20,14 +20,23 @@ PROTOCOL = ROOT / "research/protocols/RQ1_OBJECTIVES_V2.json"
 
 REQUIRED = (
     ".claude/skills/qwen38-distillation-research/SKILL.md",
+    ".dockerignore",
+    ".github/workflows/research-image.yml",
+    ".github/workflows/research-lab-ci.yml",
     "docs/REPRODUCIBILITY.md",
     "environment/Dockerfile.research",
     "environment/research-baseline.json",
     "experiments/research_campaign.json",
     "requirements/research-rq1-direct.txt",
     "scripts/capture_research_environment.py",
+    "scripts/lab_preflight.py",
     "scripts/research_guard.py",
+    "scripts/rq1_launch.py",
+    "scripts/rq1_run.py",
+    "src/qwen_distill/distillation/rq1_objectives.py",
     "tests/test_research_reproducibility_controls.py",
+    "tests/test_research_lab.py",
+    "tests/test_rq1_objectives.py",
 )
 
 
@@ -96,10 +105,13 @@ def inspect() -> dict[str, object]:
     for arm, spec in plan_arms.items():
         status = spec.get("implementation_status")
         gpu_status = spec.get("gpu_status")
+        registry_status = protocol_arms[arm].get("status")
         if status in ready and gpu_status == "blocked":
             errors.append(f"arm {arm} is CPU-ready but still marked GPU-blocked")
         if status not in ready and gpu_status != "blocked":
             errors.append(f"arm {arm} is not CPU-ready but is GPU-eligible")
+        if (status in ready) != (registry_status in ready):
+            errors.append(f"arm {arm} readiness differs between plan and protocol registry")
 
     f = protocol_arms.get("F", {})
     if f.get("composite_weights") is None and not str(f.get("status", "")).startswith("blocked"):
@@ -115,6 +127,24 @@ def inspect() -> dict[str, object]:
         errors.append("research image is not built from the pinned direct RQ1 requirements")
     if "pip install -e . --no-deps" not in docker:
         errors.append("research image does not install this repository as its code payload")
+
+    image_workflow = (ROOT / ".github/workflows/research-image.yml").read_text(encoding="utf-8")
+    for watched in (
+        "environment/**",
+        "requirements/**",
+        "research/**",
+        "scripts/**",
+        "src/**",
+        "tests/**",
+        "pyproject.toml",
+        ".dockerignore",
+    ):
+        if watched not in image_workflow:
+            errors.append(f"research-image workflow does not rebuild for {watched}")
+    if "${{ github.sha }}" not in image_workflow:
+        errors.append("research-image workflow does not publish a commit-addressed image tag")
+    if "steps.build.outputs.digest" not in image_workflow:
+        errors.append("research-image workflow does not record the registry image digest")
 
     if (ROOT / "--bg").exists() or (ROOT / "Record").exists():
         warnings.append("zero-byte shell-artifact files --bg/Record are still present at repo root")
