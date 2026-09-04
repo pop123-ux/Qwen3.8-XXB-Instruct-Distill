@@ -1,0 +1,63 @@
+name: research-image
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'claude/**'
+    paths:
+      - 'environment/Dockerfile.research'
+      - 'requirements/research-rq1-direct.txt'
+      - 'pyproject.toml'
+      - '.github/workflows/research-image.yml'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-rq1-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          fetch-depth: 1
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push immutable RQ1 image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: environment/Dockerfile.research
+          push: true
+          build-args: |
+            RESEARCH_GIT_SHA=${{ github.sha }}
+          tags: |
+            ghcr.io/pop123-ux/qwen38-rq1-research:${{ github.sha }}
+            ghcr.io/pop123-ux/qwen38-rq1-research:rq1-v2
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Record image provenance
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          printf '{\n  "git_sha": "%s",\n  "image": "ghcr.io/pop123-ux/qwen38-rq1-research",\n  "digest": "%s",\n  "immutable_reference": "ghcr.io/pop123-ux/qwen38-rq1-research@%s"\n}\n' "$GITHUB_SHA" "$IMAGE_DIGEST" "$IMAGE_DIGEST" > research-image-provenance.json
+
+      - name: Upload provenance artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-image-provenance
+          path: research-image-provenance.json
+          if-no-files-found: error
+          retention-days: 90
