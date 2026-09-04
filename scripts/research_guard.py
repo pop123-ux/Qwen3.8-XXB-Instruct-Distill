@@ -1,28 +1,24 @@
 #!/usr/bin/env python3
-"""Enforce a versioned research protocol before a controlled run.
-
-The guard consumes a fully resolved JSON configuration rather than inferring scientific
-values from CLI defaults. It verifies critical software/GPU/runtime values and writes a
-fingerprinted manifest before launching the child command.
-"""
+"""Enforce a versioned research protocol before a controlled run."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import os
 import platform
 import subprocess
 from pathlib import Path
 
 
-def _protocol(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 def fingerprint(obj: object) -> str:
     raw = json.dumps(obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
+
+
+def _protocol(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _driver() -> str | None:
@@ -59,7 +55,8 @@ def current_environment() -> dict[str, object]:
         "gpu": gpu,
         "nvidia_driver": _driver(),
         "platform": platform.platform(),
-        "allocator": __import__("os").environ.get("PYTORCH_CUDA_ALLOC_CONF"),
+        "allocator": os.environ.get("PYTORCH_CUDA_ALLOC_CONF"),
+        "container_digest": os.environ.get("RESEARCH_CONTAINER_DIGEST"),
     }
 
 
@@ -109,14 +106,29 @@ def main(argv: list[str] | None = None) -> int:
     env = current_environment()
     errors.extend(_compare(env, protocol["software_baseline"]))
     execution = protocol["execution"]
-    gpu = env.get("gpu") or {}
-    for key, env_key in (("gpu_model", "name"), ("compute_capability", "compute_capability"), ("gpu_count", "count")):
-        if gpu.get(env_key) != execution[key]:
-            errors.append(f"execution {key}: protocol={execution[key]!r}, current={gpu.get(env_key)!r}")
+    gpu = env["gpu"] if isinstance(env["gpu"], dict) else {}
+    checks = {
+        "gpu_model": gpu.get("name"),
+        "compute_capability": gpu.get("compute_capability"),
+        "gpu_count": gpu.get("count"),
+    }
+    for key, actual in checks.items():
+        if actual != execution[key]:
+            errors.append(f"execution {key}: protocol={execution[key]!r}, current={actual!r}")
     if env.get("nvidia_driver") != execution["baseline_driver"]:
         errors.append(f"NVIDIA driver: protocol={execution['baseline_driver']!r}, current={env.get('nvidia_driver')!r}")
     if env.get("allocator") != execution["cuda_allocator"]:
         errors.append(f"CUDA allocator: protocol={execution['cuda_allocator']!r}, current={env.get('allocator')!r}")
+
+    container_digest = execution.get("container_digest")
+    current_digest = env.get("container_digest")
+    if execution.get("container_digest_required"):
+        if not current_digest:
+            errors.append("container digest required: set RESEARCH_CONTAINER_DIGEST from the built image digest")
+        elif container_digest is None:
+            errors.append("protocol container digest is not established yet; create a new locked protocol after building the research image")
+        elif current_digest != container_digest:
+            errors.append(f"container digest: protocol={container_digest!r}, current={current_digest!r}")
 
     manifest = {
         "protocol_id": protocol["protocol_id"],
