@@ -91,8 +91,9 @@ python scripts/guard_vram.py \
     --experiment-id run004_behavioral_scale_1024 \
     --output "$RUN_DIR"
 
-# CPU/lightweight integrity work only after training exits successfully.
-python scripts/run_record.py verify "$RUN_DIR" || true
+# Lightweight integrity work only after training exits successfully. This may report
+# incomplete if the run was not initialised through run_record.py; it is diagnostic only.
+python scripts/run_record.py --root "$RUN_DIR" verify || true
 
 # Small evidence bundle for immediate exfiltration before pod termination.
 # Checkpoints/weights/optimizer state are deliberately excluded.
