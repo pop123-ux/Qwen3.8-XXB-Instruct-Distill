@@ -1,0 +1,10 @@
+# Direct dependencies for the new containerized RQ1 family.
+# This deliberately opens a NEW reproducible environment rather than pretending the
+# unrecorded transitive package set of historical runs can be reconstructed exactly.
+# The built image digest + committed environment capture are the immutable binary lock;
+# CI also records `pip freeze` for rebuild/audit provenance.
+PyYAML==6.0.3
+transformers==5.15.1
+accelerate==1.14.0
+peft==0.20.0
+bitsandbytes==0.50.2
