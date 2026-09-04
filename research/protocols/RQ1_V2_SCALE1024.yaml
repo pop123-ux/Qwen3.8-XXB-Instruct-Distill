@@ -1,0 +1,114 @@
+protocol_id: RQ1_V2_SCALE1024
+status: locked
+purpose: persistence_test_for_behavioral_kd_advantage
+parent_protocol: RQ1_V1
+created_from:
+  run003_layer_kd: 10b45e44ddcc8dd61fe1b528154aa832250cb140
+  run004_matched_behavioral_kd: 05788d9d22b2aa189f305e6c5ae2711efad7c26a
+
+# RQ1_V1 established the matched 128-step comparison. This protocol changes one
+# planned axis only: training horizon, from 128 -> 1024 steps, to test whether
+# behavioral/residual-contribution KD remains healthy beyond the mechanistic regime.
+independent_variable_from_parent: training_horizon
+
+experiment:
+  id: run004_behavioral_scale_1024
+  research_question: RQ1_Beyond_Layer_Matching
+  objective: behavioral_kd
+  behavioral_mode: delta
+  gate: G4
+  prerequisite: matched_result_positive_or_noninferior
+
+teacher:
+  model: Qwen/Qwen3.8-27B
+  revision: dbdc473dea0d6a9763042881cc33d6058d1742d2
+  quantization: 4bit
+
+student:
+  id: qwen38_19b_h5120_l48_moe
+  pretrained_required: true
+  total_parameters: 13008505728
+  active_parameters_per_token: 9611119488
+
+training:
+  sequence_length: 1536
+  max_tokens: 700000
+  steps: 1024
+  training_tokens: 1572864
+  batch_size: 1
+  gradient_accumulation_steps: 1
+  strategy: qlora
+  optimizer: adamw
+  learning_rate: 0.0002
+  weight_decay: 0.0
+  warmup_steps: 10
+  scheduler: cosine
+  precision: bf16
+  gradient_checkpointing: true
+  lora_rank: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  seed: 0
+  kd_temperature: 2.0
+  kd_top_k: 64
+  kd_tail: bucket
+  layer_kd_direction_weight: 1.0
+  layer_kd_normalise: true
+  layer_kd_map_strategy: group
+  layer_kd_chunk_pairs: 4
+  eval_every: 64
+  save_every: 256
+  log_every: 1
+
+execution:
+  gpu_model: NVIDIA L40S
+  gpu_count: 1
+  compute_capability: 8.9
+  training_vram_ceiling_gib: 45.0
+  cuda_allocator: expandable_segments:True
+  abort_on_vram_guard: true
+
+software_baseline:
+  python: 3.12.3
+  pytorch: 2.8.0+cu128
+  transformers: 5.15.1
+  cuda_runtime: 12.8
+
+reproducibility:
+  corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+  tokenizer_vocab_size: 248077
+  eos_token_id: 248046
+  exact_initial_student_required: true
+  exact_teacher_revision_required: true
+  exact_token_stream_required: true
+  run004m_hyperparameters_are_parent_reference: true
+
+interpretation:
+  primary_question: >-
+    Does the behavioral/residual-contribution objective remain healthy and preserve
+    its output-level advantage or non-inferiority when the training horizon is
+    increased eightfold from 128 to 1024 steps?
+  do_not_claim_from_training_loss_alone: true
+  required_metrics:
+    - validation_loss
+    - teacher_kd_divergence
+    - teacher_student_top1_agreement
+    - behavioral_delta_loss
+    - behavioral_magnitude
+    - behavioral_direction
+    - peak_vram_gib
+    - tokens_per_second
+  success_gate: >-
+    Advance to the 4096-step stage only if the 1024-step run is stable and the
+    objective-level and output-level metrics do not erase the matched Run 004-M signal.
+
+rules:
+  no_architecture_change: true
+  no_teacher_change: true
+  no_student_initialization_change: true
+  no_dataset_change: true
+  no_seed_change: true
+  no_loss_definition_change: true
+  no_hyperparameter_tuning_during_run: true
+  historical_artifacts_are_immutable: true
+  never_rewrite_completed_run_outputs: true
