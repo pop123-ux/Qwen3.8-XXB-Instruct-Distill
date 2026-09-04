@@ -1,6 +1,6 @@
 {
   "protocol_id": "RQ1_V1",
-  "status": "locked",
+  "status": "locked_scientific_recipe_environment_pending",
   "purpose": "controlled_objective_comparison",
   "created_from": {
     "run003": "10b45e44ddcc8dd61fe1b528154aa832250cb140",
@@ -8,16 +8,8 @@
   },
   "independent_variable": "objective",
   "allowed_objectives": ["layer_kd", "fdd_prediction_delta", "behavioral_span_delta", "composite_ce_logit_behavioral"],
-  "teacher": {
-    "model": "Qwen/Qwen3.8-27B",
-    "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
-    "quantization": "4bit"
-  },
-  "student": {
-    "id": "qwen38_19b_h5120_l48_moe",
-    "total_parameters": 13008505728,
-    "active_parameters_per_token": 9611119488
-  },
+  "teacher": {"model": "Qwen/Qwen3.8-27B", "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2", "quantization": "4bit"},
+  "student": {"id": "qwen38_19b_h5120_l48_moe", "total_parameters": 13008505728, "active_parameters_per_token": 9611119488},
   "training": {
     "sequence_length": 1536,
     "max_tokens": 700000,
@@ -53,14 +45,11 @@
     "gpu_model": "NVIDIA L40S",
     "compute_capability": "8.9",
     "gpu_count": 1,
-    "baseline_driver": "580.159.04"
+    "baseline_driver": "580.159.04",
+    "container_digest": null,
+    "container_digest_required": true
   },
-  "software_baseline": {
-    "python": "3.12.3",
-    "pytorch": "2.8.0+cu128",
-    "transformers": "5.15.1",
-    "cuda_runtime": "12.8"
-  },
+  "software_baseline": {"python": "3.12.3", "pytorch": "2.8.0+cu128", "transformers": "5.15.1", "cuda_runtime": "12.8"},
   "data": {
     "corpus_sha256": "e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d",
     "tokenizer_vocab_size": 248077,
