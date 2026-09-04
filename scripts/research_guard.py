@@ -3,14 +3,17 @@
 
 Two questions are deliberately separated:
 
-1. Is the run scientifically comparable?  Teacher/student/data/training recipe, critical
-   software, GPU family and allocator are quality locks.
-2. Is its throughput directly comparable?  Host driver and immutable container digest are
-   additional systems locks.
+1. Is the run scientifically comparable? Teacher/student/data/training recipe, critical
+   software, GPU family, allocator, and an immutable container identity are quality locks.
+2. Is its throughput directly comparable? Host driver plus equality of the recorded image
+   digest across compared runs are additional systems locks.
 
-A driver mismatch must never silently invalidate a quality experiment, but it also must
-never be hidden inside a throughput claim. Legacy RQ1_V1 protocols retain their stricter
-all-or-nothing behavior; RQ1_OBJECTIVES_V2 uses the split policy.
+The GPU probe is intentionally executed in a short-lived subprocess. The guard process that
+stays alive while training therefore never owns a CUDA context and cannot consume persistent
+VRAM or contaminate the run's memory accounting.
+
+Legacy RQ1_V1 protocols retain their stricter all-or-nothing behavior;
+RQ1_OBJECTIVES_V2 uses the split quality/systems policy.
 """
 
 from __future__ import annotations
@@ -21,6 +24,7 @@ import json
 import os
 import platform
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -45,6 +49,36 @@ def _driver() -> str | None:
         return None
 
 
+def _gpu_probe() -> dict[str, object]:
+    """Probe CUDA in a child process so its context is gone before training starts."""
+    code = r'''
+import json
+import torch
+
+result = {"available": False}
+if torch.cuda.is_available():
+    p = torch.cuda.get_device_properties(0)
+    result = {
+        "available": True,
+        "name": torch.cuda.get_device_name(0),
+        "count": torch.cuda.device_count(),
+        "compute_capability": f"{p.major}.{p.minor}",
+        "total_vram_gib": p.total_memory / (1024 ** 3),
+    }
+print(json.dumps(result))
+'''
+    try:
+        raw = subprocess.check_output(
+            [sys.executable, "-c", code], text=True, stderr=subprocess.DEVNULL
+        ).strip()
+        value = json.loads(raw)
+        if isinstance(value, dict):
+            return value
+    except Exception:
+        pass
+    return {"available": False}
+
+
 def _allocator() -> tuple[str | None, str | None]:
     canonical = os.environ.get("PYTORCH_ALLOC_CONF")
     legacy = os.environ.get("PYTORCH_CUDA_ALLOC_CONF")
@@ -58,31 +92,25 @@ def _allocator() -> tuple[str | None, str | None]:
 
 
 def current_environment() -> dict[str, object]:
+    # Importing torch for version metadata is safe here; all torch.cuda calls live only in
+    # _gpu_probe's short-lived process.
     import torch
     import transformers
 
-    gpu: dict[str, object] = {"available": False}
-    if torch.cuda.is_available():
-        p = torch.cuda.get_device_properties(0)
-        gpu = {
-            "available": True,
-            "name": torch.cuda.get_device_name(0),
-            "count": torch.cuda.device_count(),
-            "compute_capability": f"{p.major}.{p.minor}",
-            "total_vram_gib": p.total_memory / (1024**3),
-        }
     allocator, allocator_source = _allocator()
     return {
         "python": platform.python_version(),
-        "pytorch": torch.__version__,
-        "transformers": transformers.__version__,
-        "cuda_runtime": torch.version.cuda,
-        "gpu": gpu,
+        "pytorch": str(torch.__version__),
+        "transformers": str(transformers.__version__),
+        "cuda_runtime": str(torch.version.cuda) if torch.version.cuda is not None else None,
+        "gpu": _gpu_probe(),
+        "gpu_probe_process": "short_lived_subprocess",
         "nvidia_driver": _driver(),
         "platform": platform.platform(),
         "allocator": allocator,
         "allocator_source": allocator_source,
         "container_digest": os.environ.get("RESEARCH_CONTAINER_DIGEST"),
+        "image_git_sha": os.environ.get("RESEARCH_GIT_SHA"),
     }
 
 
@@ -114,7 +142,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _v2_checks(protocol: dict, resolved: dict, requested: str, env: dict) -> tuple[list[str], list[str]]:
+def _v2_checks(
+    protocol: dict, resolved: dict, requested: str, env: dict
+) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -150,6 +180,15 @@ def _v2_checks(protocol: dict, resolved: dict, requested: str, env: dict) -> tup
     expected_quality = {k: quality[k] for k in actual_quality}
     errors.extend(_compare(actual_quality, expected_quality, prefix="execution."))
 
+    # New controlled runs must be launched from an immutable image reference. Historical
+    # Runs 001-004-M are not retroactively assigned a digest; this gate applies only to the
+    # continuation campaign.
+    current_digest = env.get("container_digest")
+    if not current_digest:
+        errors.append(
+            "RESEARCH_CONTAINER_DIGEST is required for RQ1_OBJECTIVES_V2 controlled runs"
+        )
+
     systems = protocol["systems_comparability_lock"]
     if env.get("nvidia_driver") != systems.get("nvidia_driver"):
         warnings.append(
@@ -157,22 +196,21 @@ def _v2_checks(protocol: dict, resolved: dict, requested: str, env: dict) -> tup
             f"current={env.get('nvidia_driver')!r}"
         )
     expected_digest = systems.get("container_digest")
-    current_digest = env.get("container_digest")
-    if not current_digest:
-        warnings.append("throughput only: RESEARCH_CONTAINER_DIGEST is not set")
-    elif expected_digest is None:
+    if current_digest and expected_digest is None:
         warnings.append(
-            "throughput only: protocol has not pinned the built image digest yet; "
-            "capture this image and pin it before making throughput claims"
+            "throughput only: protocol intentionally has no self-embedded image digest; "
+            "paired throughput claims must verify identical recorded immutable digests"
         )
-    elif current_digest != expected_digest:
+    elif current_digest and current_digest != expected_digest:
         warnings.append(
             f"throughput only: container protocol={expected_digest!r}, current={current_digest!r}"
         )
     return errors, warnings
 
 
-def _v1_checks(protocol: dict, resolved: dict, requested: str, env: dict) -> tuple[list[str], list[str]]:
+def _v1_checks(
+    protocol: dict, resolved: dict, requested: str, env: dict
+) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     if requested not in protocol["allowed_objectives"]:
         errors.append(f"objective {requested!r} is not allowed by protocol")
@@ -230,7 +268,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     env = current_environment()
-    if env.get("allocator_source") == "PYTORCH_ALLOC_CONF conflicts with legacy PYTORCH_CUDA_ALLOC_CONF":
+    if env.get("allocator_source") == (
+        "PYTORCH_ALLOC_CONF conflicts with legacy PYTORCH_CUDA_ALLOC_CONF"
+    ):
         errors, warnings = ["allocator environment variables conflict"], []
     elif is_v2:
         errors, warnings = _v2_checks(protocol, resolved, requested, env)
@@ -252,7 +292,9 @@ def main(argv: list[str] | None = None) -> int:
         "throughput_comparable": not errors and not warnings,
     }
     args.manifest.parent.mkdir(parents=True, exist_ok=True)
-    args.manifest.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    args.manifest.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
     if errors:
         print("REFUSED: research protocol mismatch")
