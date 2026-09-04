@@ -37,3 +37,25 @@ jobs:
 
       - name: Run free pre-GPU lab gate
         run: python scripts/lab_preflight.py --json
+
+  rq1-objective-kernels:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.3'
+          cache: pip
+
+      - name: Install CPU PyTorch and test runner
+        run: python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.8.0 && python -m pip install pytest==8.4.2
+
+      - name: Exercise RQ1 objective mathematics on CPU
+        env:
+          PYTHONPATH: src
+        run: python -m pytest -q tests/test_rq1_objectives.py
