@@ -1,0 +1,4 @@
+# Critical versions observed in the validated Run 004-M environment.
+# PyTorch CUDA wheels are installed from the cu128 index in Dockerfile.research.
+torch==2.8.0
+transformers==5.15.1
