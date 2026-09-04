@@ -19,7 +19,8 @@ RUN python -m pip install --index-url https://download.pytorch.org/whl/cu128 tor
     && python -m pip install transformers==5.15.1
 
 COPY . .
+RUN python -m pip install -e .
 
 # The exact image digest must be recorded for controlled experiments after build.
-# Host NVIDIA driver is intentionally recorded separately because it is supplied by RunPod.
+# Host NVIDIA driver remains external and is fingerprinted separately.
 CMD ["python", "scripts/research_guard.py", "--help"]
