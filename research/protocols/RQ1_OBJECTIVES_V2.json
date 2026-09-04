@@ -1,6 +1,6 @@
 {
   "protocol_id": "RQ1_OBJECTIVES_V2",
-  "status": "scientific_recipe_locked_implementation_in_progress",
+  "status": "scientific_recipe_locked_cpu_ready_except_F",
   "purpose": "matched_rq1_objective_family",
   "plan": "research/plans/RQ1_OBJECTIVE_LAB_V1.json",
   "supersedes_for_new_runs": "RQ1_V1",
@@ -56,7 +56,7 @@
     },
     "B": {
       "id": "fdd_prediction_dynamics",
-      "status": "pending_cpu_implementation_and_tests",
+      "status": "cpu_tested",
       "required_space": "lm_head_prediction",
       "required_components": ["output_kd", "trajectory_kl", "derivative_cosine"],
       "objective_parameters": {
@@ -71,7 +71,7 @@
         "lm_head_adapters": "none",
         "vocabulary": "full_shared_vocabulary"
       },
-      "parameter_rationale": "alpha=beta=1 and uniform layer sampling follow Gong et al. ACL 2025; four sampled layers matches the best reported layer-count ablation in that work. Output temperature 2 matches this project's registered KD signal; token_chunk is an evaluation/memory strategy and must be proven objective-equivalent on CPU."
+      "parameter_rationale": "alpha=beta=1 and uniform layer sampling follow Gong et al. ACL 2025; four sampled layers matches the best reported layer-count ablation in that work. Output temperature 2 matches this project's registered KD signal; token_chunk is an evaluation/memory strategy and has been CPU-tested for objective and hidden-state-gradient equivalence."
     },
     "C": {
       "id": "topology_span_delta",
@@ -81,14 +81,14 @@
     },
     "D": {
       "id": "pointwise_plus_adjacent_residual_delta",
-      "status": "pending_cpu_implementation_and_tests",
+      "status": "cpu_tested",
       "required_components": ["pointwise_state", "adjacent_residual_delta"],
       "must_not_be_labelled_fdd": true,
       "objective_parameters": {"pointwise_weight": 1.0, "adjacent_transition_weight": 1.0}
     },
     "E": {
       "id": "pointwise_plus_span_delta",
-      "status": "pending_cpu_implementation_and_tests",
+      "status": "cpu_tested",
       "required_components": ["pointwise_state", "topology_span_delta"],
       "objective_parameters": {"pointwise_weight": 1.0, "span_transition_weight": 1.0}
     },
