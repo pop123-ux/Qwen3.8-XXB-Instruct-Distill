@@ -2,7 +2,7 @@ schema_version: '1.0'
 project: Qwen3.8-XXB-Instruct-Distill
 current_rq: RQ1
 current_phase: objective_discrimination
-active_experiment: run007_raw_delta_scale_1024
+active_experiment: run008_raw_delta_seed1
 active_experiment_priority: highest
 active_experiment_instruction: 'Arm B is already authorized. If currently running, DO NOT pause, stop,
   restart, reconfigure, replace, or invalidate it because these roadmap files were added. Capture its
@@ -182,6 +182,75 @@ completed_experiments:
       checkpoint_step128: /workspace/runs/run006_raw_delta_behavioral_kd/checkpoints/step_000128
       launcher: /workspace/tmp/rq1_analysis/run_armC_raw_delta.py
     next_admissible_branch: 1024-step persistence run of this exact formulation (run007, ACTIVE)
+  run007_raw_delta_scale_1024:
+    label: Arm C raw residual matching - 1024-step persistence run
+    status: completed
+    integrity: PASS
+    immutable: true
+    steps: 1024
+    exact_objective_and_formulation:
+      objective: behavioral_kd
+      behavioral_mode: delta
+      normalise: false
+      equation: L = mean_pairs[ MSE(d_s, d_t) + 1.0*(1 - cos(d_s, d_t)) ] on RAW (unnormalised) deltas
+      identical_to: run006_raw_delta_behavioral_kd (Arm C), horizon only changed
+      implementation: existing frozen repository flag --layer-kd-no-normalise; NO objective code change
+    exact_changed_variable: training horizon 128 -> 1024 steps (log 16 / eval 128 / save 512); objective
+      and all frozen assets identical to Arm C
+    results:
+      final_validation_loss: 6.6116
+      best_validation_loss: 6.5137
+      final_teacher_student_top1_agreement: 0.145928
+      mean_teacher_student_top1_agreement: 0.151618
+      final_logit_kd_loss: 5.578027
+      final_ce_loss: 6.803974
+      behavioral_loss_first: 1.610159
+      behavioral_loss_final: 0.840474
+      final_layer_norm_ratio: 0.521878
+      runtime_seconds: 7488.71
+      tokens_per_second: 210.0
+      tokens_seen: 1572864
+      expected_tokens_seen: 1572864
+      peak_allocated_gib: 38.945
+      peak_reserved_gib: 40.785
+      observed_nvidia_smi_peak_gib: 41.725
+      validation_trajectory:
+        step_128: 7.2949
+        step_256: 6.7653
+        step_384: 6.8489
+        step_512: 6.7456
+        step_640: 6.7112
+        step_768: 6.5137
+        step_896: 6.6321
+        step_1024: 6.6116
+      packed_corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+    classification: PERSISTENCE_CONFIRMED
+    persistence_comparison_within_arm_c:
+      note: The only valid matched comparison for persistence is Arm C against itself across horizons.
+      arm_c_128_final_validation: 7.7461
+      arm_c_1024_final_validation: 6.6116
+      improvement: 1.1345
+      arm_c_128_mean_top1: 0.097017
+      arm_c_1024_mean_top1: 0.151618
+    interpretation: The Arm C advantage persists and deepens at an 8x longer horizon. Final validation
+      loss improved 7.7461 -> 6.6116 (-1.1345) versus its own 128-step result, with healthy optimization,
+      no NaN, no OOM, and identical peak memory. Mean teacher/student top-1 agreement rose 0.0970 -> 0.1516,
+      and agreement reached 0.19 late in training, above the Run003 128-step final of 0.1622 at some points;
+      the 1024 FINAL agreement is 0.1459. Validation largely plateaued after ~step 768 (best 6.5137 at
+      768, then 6.6321 / 6.6116), so returns are diminishing rather than still improving steeply.
+    comparability_caveat: Run007 (1024 steps) must NOT be compared to the Run003 128-step pointwise control
+      as though the budgets were matched. The matched causal contrast is Run003 vs Arm C at 128 steps.
+      Run007 tests persistence of Arm C only. No matched 1024-step pointwise control exists.
+    artifact_paths:
+      run_dir: /workspace/runs/run007_raw_delta_scale_1024
+      archived_evidence: experiments/run007_raw_delta_scale_1024/
+      summary: experiments/run007_raw_delta_scale_1024/summary.json
+      metrics: experiments/run007_raw_delta_scale_1024/metrics.jsonl
+      checkpoint_step1024: '/workspace/runs/run007_raw_delta_scale_1024/checkpoints/step_001024 (NOT in
+        git: weights)'
+      launcher: /workspace/tmp/rq1_analysis/run_armC_1024.py
+    next_admissible_branch: replication of Arm C at a second seed (run008, launched); then a second teacher/student
+      topology
 current_finding:
   statement: 'Across three transformation-matching formulations under one matched 128-step envelope: A
     (RMS-normalised delta) loses badly (+2.93 validation); B (normalised + explicit log-RMS magnitude
@@ -200,9 +269,12 @@ current_finding:
     RQ1 now has one behavioral formulation (raw residual matching) that beats matched pointwise KD on
     held-out loss at 128 steps for this topology. Persistence, replication, and a second topology remain
     unmet.
+  persistence: 'Arm C persistence CONFIRMED at 1024 steps: 7.7461 -> 6.6116 final validation within the
+    same formulation, mean top-1 agreement 0.0970 -> 0.1516, healthy optimization throughout. Plateau
+    after ~step 768.'
 active_hypothesis:
-  statement: Does the Arm C advantage over pointwise KD persist at an 8x longer optimization horizon?
-  status: being_tested_by_run007
+  statement: Does the Arm C 128-step advantage over pointwise KD reproduce at a second seed?
+  status: being_tested_by_run008
 current_plan:
   arm_b_scale_aware_behavioral:
     status: running_or_already_authorized
@@ -276,7 +348,6 @@ rq2:
   gate: G6
   execute_now: false
   note: Full definition captured in research/ROADMAP.yaml. Not executed; RQ1 still active.
-next_action: Let run007 (1024-step Arm C persistence) complete. Compare against Run003 128-step control
-  and Arm C 128-step. Do NOT compare 1024 behavioral directly to 128 pointwise as if budgets were matched.
-  Then update state and, if time permits, prefer a REPLICATION of the Arm C 128-step result at a second
-  seed over any new loss variant.
+next_action: Let run008 (Arm C @ seed 1) complete if the GPU window allows; classify replication. The
+  strongest remaining gaps for an RQ1 claim are (a) a matched 1024-step POINTWISE control, which does
+  not exist, and (b) a second teacher/student topology. Neither fits the current window.
