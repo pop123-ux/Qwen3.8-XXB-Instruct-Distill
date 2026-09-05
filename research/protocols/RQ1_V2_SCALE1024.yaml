@@ -66,7 +66,13 @@ execution:
   gpu_model: NVIDIA L40S
   gpu_count: 1
   compute_capability: 8.9
-  training_vram_ceiling_gib: 45.0
+  historical_protocol_vram_ceiling_gib: 45.0
+  operational_nvidia_smi_guard_gib: 44.0
+  operational_guard_note: >-
+    The archived L40S exposed about 44.39 GiB physical capacity, so a 45-GiB
+    nvidia-smi usage threshold cannot trigger before device exhaustion. The 44-GiB
+    external guard is an operational safety correction only; it does not change the
+    model, optimizer, data, loss, precision, or training schedule.
   cuda_allocator: expandable_segments:True
   abort_on_vram_guard: true
 
