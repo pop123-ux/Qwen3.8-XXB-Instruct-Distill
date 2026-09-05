@@ -16,9 +16,12 @@ Have these persistent paths ready or restore them immediately:
 - `/workspace/runs/pilot001/transferred`
 - `/workspace/corpora/gutenberg/train.txt`
 
-The corpus must hash to:
+Two hashes describe the same frozen data pipeline at different stages and must not be confused:
 
-`e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d`
+- raw `/workspace/corpora/gutenberg/train.txt`: `bc5972d9a52580ff14ab1b3b1753f9cd68c726c63cc625a7ed3913ec3c5dc5c5`
+- deterministic packed stream after teacher tokenization + EOS packing + the 700,000-token cap: `e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d`
+
+The launcher verifies the raw hash before loading weights and verifies the packed-stream hash from `summary.json` after training. This prevents a source-file mismatch from consuming GPU time while also proving that the matched token stream was reproduced.
 
 Use the same L40S software baseline used by the matched experiment: Python 3.12.3, PyTorch 2.8.0+cu128, Transformers 5.15.1.
 
@@ -30,19 +33,23 @@ Checkout this branch and run exactly:
 bash scripts/launch_l40s_scale1024.sh
 ```
 
-The launcher refuses the wrong GPU, missing teacher/student/corpus, wrong corpus hash, wrong critical Python/PyTorch/Transformers versions, or missing Run 004/VRAM-guard code. It records provenance before training and hard-stops the child process if used GPU memory exceeds 45 GiB.
+The launcher refuses the wrong GPU count/model, missing teacher/student/corpus/configs, wrong raw corpus hash, wrong critical Python/PyTorch/Transformers versions, or a non-empty target run directory. It records provenance before training and hard-stops the child process if total used GPU memory reaches 45 GiB.
 
 Do not use the L40S session for package research, architecture edits, plotting, documentation, benchmark selection, or hyperparameter tuning.
 
 ## What changes from Run 004-M
 
-The intended scientific change is the training horizon: 128 -> 1,024 steps. Architecture, teacher revision, student initialization, sequence length, batch size, QLoRA geometry, seed, objective definition, temperature, top-k, corpus identity, and 700k-token corpus cap remain frozen.
+The intended optimization change is the training horizon: 128 -> 1,024 steps. Architecture, teacher revision, student initialization, sequence length, batch size, QLoRA geometry, seed, objective definition, temperature, top-k, corpus identity, and 700k-token corpus cap remain frozen.
 
-The longer run will revisit the finite 700k-token packed stream because 1,024 x 1,536 exceeds the unique packed-token count. This is deliberate for continuity with the matched envelope and must be reported when interpreting the scale result; it is not evidence from 1.57M unique corpus tokens.
+The instrumentation cadence follows the historically preregistered 1,024-step command: log every 16 steps, evaluate every 128, save every 512. These intervals do not change the optimization objective.
+
+The longer run will revisit the finite 700k-token packed stream because 1,024 x 1,536 = 1,572,864 processed positions, which exceeds the unique packed-token count. This is deliberate for continuity with the matched envelope and must be reported when interpreting the scale result; it is not evidence from 1.57M unique corpus tokens.
 
 ## After the run
 
-The launcher writes `evidence_bundle.tgz` inside the run directory without checkpoints, optimizer state, or model weights. Preserve that bundle before terminating the pod.
+Before bundling evidence, the launcher requires `summary.json` and the behavioral manifest and verifies: completed outcome, 1,024 steps, 700,000 packed tokens, 1,536 sequence length, exact packed-stream hash, behavioral/delta objective identity, exact teacher revision, and the 700k cap.
+
+It then writes `evidence_bundle.tgz` inside the run directory without checkpoints, optimizer state, or model weights. Preserve that bundle before terminating the pod.
 
 The decision after this run is binary:
 
