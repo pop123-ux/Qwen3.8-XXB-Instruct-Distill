@@ -27,13 +27,15 @@ Use the same L40S software baseline used by the matched experiment: Python 3.12.
 
 ## On the pod
 
-Checkout this branch and run exactly:
+Checkout `prep/l40s-rq1-scale1024`, pull the latest branch state, leave the working tree clean, and run exactly:
 
 ```bash
 bash scripts/launch_l40s_scale1024.sh
 ```
 
-The launcher refuses the wrong GPU count/model, missing teacher/student/corpus/configs, wrong raw corpus hash, wrong critical Python/PyTorch/Transformers versions, or a non-empty target run directory. It records provenance before training and hard-stops the child process if total used GPU memory reaches 45 GiB.
+The launcher refuses the wrong branch, a dirty working tree, wrong GPU count/model, missing teacher/student/corpus/configs, wrong raw corpus hash, wrong critical Python/PyTorch/Transformers versions, or a non-empty target run directory. It records provenance before training.
+
+The historical command specified a 45-GiB external guard, but the archived L40S exposed only about 44.39 GiB physical capacity, making that `nvidia-smi` threshold ineffective. The paid-run launcher therefore uses a 44.0-GiB operational safety guard. This does not alter the model, data, optimizer, loss, precision, seed, or schedule; Run 003's recorded training peak was about 38.95 GiB allocated / 40.77 GiB reserved.
 
 Do not use the L40S session for package research, architecture edits, plotting, documentation, benchmark selection, or hyperparameter tuning.
 
@@ -49,7 +51,7 @@ The longer run will revisit the finite 700k-token packed stream because 1,024 x 
 
 Before bundling evidence, the launcher requires `summary.json` and the behavioral manifest and verifies: completed outcome, 1,024 steps, 700,000 packed tokens, 1,536 sequence length, exact packed-stream hash, behavioral/delta objective identity, exact teacher revision, and the 700k cap.
 
-It then writes `evidence_bundle.tgz` inside the run directory without checkpoints, optimizer state, or model weights. Preserve that bundle before terminating the pod.
+It then writes `evidence_bundle.tgz` inside the run directory without checkpoints, optimizer state, model weights, or recursively including the archive itself. Preserve that bundle before terminating the pod.
 
 The decision after this run is binary:
 
