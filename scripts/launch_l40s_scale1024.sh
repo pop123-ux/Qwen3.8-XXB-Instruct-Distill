@@ -11,16 +11,26 @@ STUDENT="${STUDENT:-/workspace/runs/pilot001/transferred}"
 CORPUS="${CORPUS:-/workspace/corpora/gutenberg/train.txt}"
 RUN_DIR="${RUN_DIR:-/workspace/runs/run004_behavioral_scale_1024}"
 REVISION="dbdc473dea0d6a9763042881cc33d6058d1742d2"
+EXPECTED_BRANCH="prep/l40s-rq1-scale1024"
 # Raw source-file identity from experiments/run002_logit_kd/dataset_provenance.json.
 EXPECTED_SOURCE_CORPUS_SHA="bc5972d9a52580ff14ab1b3b1753f9cd68c726c63cc625a7ed3913ec3c5dc5c5"
 # Deterministic 700k-token packed stream identity recorded by matched Run 003.
 EXPECTED_PACKED_CORPUS_SHA="e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d"
 EXPECTED_GPU="NVIDIA L40S"
+# Run 003 on the same GPU peaked at ~38.95 GiB allocated / 40.77 GiB reserved.
+# The archived L40S exposed ~44.39 GiB total, so the historical 45-GiB external
+# nvidia-smi threshold was above physical GiB capacity and could not act as a guard.
+OPERATIONAL_VRAM_GUARD_GIB="44.0"
 
 cd "$ROOT"
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 
 fail() { echo "FATAL: $*" >&2; exit 2; }
+
+CURRENT_BRANCH="$(git branch --show-current)"
+[[ "$CURRENT_BRANCH" == "$EXPECTED_BRANCH" ]] || \
+  fail "expected branch $EXPECTED_BRANCH, got ${CURRENT_BRANCH:-DETACHED}"
+[[ -z "$(git status --porcelain)" ]] || fail "repository is dirty; refuse paid run"
 
 [[ -d "$TEACHER" ]] || fail "teacher missing: $TEACHER"
 [[ -d "$STUDENT" ]] || fail "materialised student missing: $STUDENT"
@@ -66,19 +76,21 @@ PY
 {
   echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "git_commit=$(git rev-parse HEAD)"
-  echo "git_status=$(git status --porcelain | wc -l | xargs) dirty_paths"
+  echo "git_branch=$CURRENT_BRANCH"
+  echo "git_status=clean"
   echo "gpu=$GPU_NAME"
   echo "driver=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -n1 | xargs)"
   echo "source_corpus_sha256=$SOURCE_CORPUS_SHA"
   echo "expected_packed_corpus_sha256=$EXPECTED_PACKED_CORPUS_SHA"
   echo "teacher_revision=$REVISION"
+  echo "operational_vram_guard_gib=$OPERATIONAL_VRAM_GUARD_GIB"
   echo "protocol=RQ1_V2_SCALE1024"
 } | tee "$RUN_DIR/preflight.txt"
 
 # The only expensive action: guarded 1024-step behavioral KD.
 # Instrumentation cadence matches the historically preregistered 1024-step command.
 python scripts/guard_vram.py \
-  --max-vram-gib 45 \
+  --max-vram-gib "$OPERATIONAL_VRAM_GUARD_GIB" \
   --interval 1.0 \
   --log "$RUN_DIR/vram_guard.log" \
   -- python -u scripts/run004_behavioral_kd.py \
@@ -144,11 +156,13 @@ if failed:
 PY
 
 # Small evidence bundle for immediate exfiltration before pod termination.
-# Checkpoints/weights/optimizer state are deliberately excluded.
+# Checkpoints/weights/optimizer state are deliberately excluded. Exclude the archive
+# itself because it is created inside RUN_DIR.
 tar -czf "$RUN_DIR/evidence_bundle.tgz" \
   --exclude='checkpoints' \
   --exclude='*.safetensors' \
   --exclude='*.pt' \
+  --exclude='evidence_bundle.tgz' \
   -C "$RUN_DIR" .
 
 printf '\nRUN COMPLETE\nEvidence: %s\n' "$RUN_DIR/evidence_bundle.tgz"
