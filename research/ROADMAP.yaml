@@ -1,0 +1,346 @@
+schema_version: "1.0"
+project: "Qwen3.8-XXB-Instruct-Distill"
+
+purpose: >
+  Persistent machine-readable research plan for RQ execution, experiment ordering,
+  frozen controls, admissible branches, blocker recovery, and future-session behavior.
+
+execution_contract:
+  command_phrase: "continue the research roadmap"
+  required_sequence:
+    - read: "research/ROADMAP.yaml"
+    - read: "research/STATE.yaml"
+    - validate_relevant_completed_artifacts: true
+    - identify_next_admissible_experiment: true
+    - resolve_technical_blockers_without_changing_scientific_invariants: true
+    - execute_next_complete_high_information_experiment: true
+    - preserve_artifacts: true
+    - update_state_after_each_completed_or_failed_run: true
+    - follow_result_branch: true
+  forbidden:
+    - "Do not overwrite completed control artifacts."
+    - "Do not silently change dataset, teacher revision, student initialization, sequence length, seed, optimizer family, LR, precision, or LoRA settings."
+    - "Do not hyperparameter-search until a hypothesis wins."
+    - "Do not change multiple causal variables at once unless explicitly defined as one arm."
+    - "Do not treat a negative scientific result as a technical failure."
+    - "Do not spend the paid GPU window primarily on post-hoc diagnosis while a complete RQ-relevant experiment can run."
+    - "Do not interrupt an already-authorized active arm merely to make the roadmap cleaner."
+
+resource_policy:
+  primary_goal: "maximize completed, interpretable evidence per unit of paid GPU time"
+  preferences:
+    - "Prefer complete matched 128-step arms over incomplete long runs."
+    - "Scale only a formulation that earns scaling through a completed matched arm unless the user overrides the gate."
+    - "CPU-side bookkeeping may run during GPU work but must not interfere with CUDA."
+
+frozen_assets:
+  teacher:
+    model: "Qwen/Qwen3.8-27B"
+    revision: "dbdc473dea0d6a9763042881cc33d6058d1742d2"
+    expected_local_path: "/workspace/models/qwen3.8-27b-dbdc473"
+  student_initialization:
+    expected_path: "/workspace/runs/pilot001/transferred"
+    deterministic_materialization:
+      layer_strategy: "group"
+      kv_merge: "mean"
+      ffn_method: "contiguous_partition"
+      gate_compensation: true
+      seed: 0
+      teacher_revision: "dbdc473dea0d6a9763042881cc33d6058d1742d2"
+    rule: "If missing, rematerialize deterministically with this exact historical transfer configuration."
+  corpus:
+    train_path: "/workspace/corpora/gutenberg/train.txt"
+    train_bytes: 5554406
+    train_sha256: "bc5972d9a52580ff14ab1b3b1753f9cd68c726c63cc625a7ed3913ec3c5dc5c5"
+    validation_bytes: 4436201
+    validation_sha256: "ad34c19250a46fde189e1fcbeabc66aa3e66c0f63da6cd657e0a28b723b83961"
+    packed_700k_sha256: "e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d"
+    max_tokens: 700000
+    sequence_length: 1536
+    rule: "Never substitute another corpus. Exact identity is mandatory."
+
+global_matched_training_defaults:
+  matched_steps: 128
+  batch_size: 1
+  gradient_accumulation_steps: 1
+  learning_rate: 0.0002
+  optimizer: "adamw"
+  weight_decay: 0.0
+  precision: "bf16"
+  warmup_steps: 10
+  scheduler: "cosine"
+  gradient_checkpointing: true
+  lora_rank: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  seed: 0
+  kd_temperature: 2.0
+  kd_top_k: 64
+  chunk_pairs: 4
+  expected_processed_positions_128: 196608
+  expected_processed_positions_1024: 1572864
+  vram_guard_gib: 44.0
+
+comparison_policy:
+  primary_shared_metrics:
+    - final_validation_loss
+    - final_ce_loss
+    - final_teacher_student_top1_agreement
+  secondary_shared_metrics:
+    - final_logit_kd_loss
+    - validation_trajectory
+    - agreement_trajectory
+    - runtime_seconds
+    - tokens_per_second
+    - peak_allocated_gib
+    - peak_reserved_gib
+  rule: >
+    Do not directly compare behavioral-specific loss values to pointwise hidden-state
+    loss values as if they were the same metric. RQ claims must be grounded primarily
+    in shared output-level metrics.
+  gate:
+    STRONG_GO: "Behavioral arm materially beats the pointwise control on important shared metrics with healthy optimization."
+    GO: "Behavioral arm is overall better or credibly non-inferior on shared metrics."
+    AMBIGUOUS: "Shared metrics conflict materially; permit one bounded clarification, not open-ended diagnosis."
+    NO_GO: "Behavioral arm remains clearly inferior, unstable, corrupted, or scientifically non-comparable."
+
+research_questions:
+  RQ1:
+    exact_question: >
+      When teacher and student topologies differ materially, does behavioral/residual-delta
+      knowledge distillation provide a better supervision signal than conventional pointwise
+      hidden-state matching?
+    broader_hypothesis: >
+      As teacher-student representational/topological mismatch increases, absolute hidden-state
+      correspondence becomes less well justified, while correspondence between transformations
+      may remain meaningful.
+    scope_note: >
+      A single negative behavioral formulation does not falsify the broader transformation-matching
+      hypothesis. Multiple principled formulations failing under matched conditions provide
+      increasingly strong evidence against it for this topology.
+
+    control:
+      id: "run003_layer_kd"
+      objective: "pointwise_hidden_state_matching"
+      status: "completed"
+      immutable: true
+      steps: 128
+      results:
+        final_validation_loss: 8.9599
+        best_validation_loss: 8.7705
+        final_teacher_student_top1_agreement: 0.16222
+        mean_teacher_student_top1_agreement: 0.11196
+        final_logit_kd_loss: 3.9808
+        final_ce_loss: 9.4026
+        runtime_seconds: 1098.3
+        tokens_per_second: 179.0
+        peak_allocated_gib: 38.945
+        peak_reserved_gib: 40.766
+
+    arms:
+      run004_matched_behavioral_kd:
+        label: "Arm A"
+        objective: "normalized_residual_delta_behavioral_kd"
+        status: "completed"
+        immutable: true
+        steps: 128
+        independent_variable: "behavioral normalized residual-delta supervision replaces pointwise hidden-state supervision"
+        results:
+          integrity: "PASS"
+          final_validation_loss: 11.8886
+          best_validation_loss: 11.8886
+          final_teacher_student_top1_agreement: 0.12117
+          mean_teacher_student_top1_agreement: 0.09612
+          final_logit_kd_loss: 4.9099
+          final_ce_loss: 11.9913
+          runtime_seconds: 1030.0
+          tokens_per_second: 190.9
+          peak_allocated_gib: 38.945
+          peak_reserved_gib: 40.766
+          validation_trajectory:
+            step_32: 12.539
+            step_64: 13.516
+            step_96: 12.001
+            step_128: 11.889
+        classification: "NO_GO"
+        interpretation: >
+          Clean negative result for normalized residual-delta KD. It is clearly inferior to
+          Run003 on shared metrics at the matched endpoint. This rejects this formulation,
+          not the whole transformation-matching hypothesis.
+
+      arm_b_scale_aware_behavioral:
+        label: "Arm B"
+        objective: "scale_aware_transformation_matching"
+        status: "ACTIVE_OR_PENDING_CAPTURE"
+        already_authorized: true
+        do_not_interrupt_if_running: true
+        steps: 128
+        independent_variable: >
+          Behavioral formulation only: preserve transformation direction while also retaining
+          or matching update magnitude.
+        formulation_contract:
+          exact_equation: "COPY_FROM_ALREADY_LOCKED_ACTIVE_RUN_CONFIG_OR_ARTIFACT"
+          coefficient_values: "COPY_FROM_ALREADY_LOCKED_ACTIVE_RUN_CONFIG_OR_ARTIFACT"
+          rule: >
+            Do not redesign, tune, restart, or reconfigure Arm B after this roadmap is added.
+            Capture the exact already-chosen formulation before interpreting results.
+        everything_else: "match frozen assets and matched training defaults"
+        branches:
+          STRONG_GO_or_GO:
+            - "Preserve Arm B as immutable evidence."
+            - "Prefer confirmation or a 1024-step persistence run of the exact locked formulation if compute allows completion."
+          NO_GO:
+            - "Preserve Arm B as immutable evidence."
+            - "Advance to Arm C raw residual matching; do not sweep Arm B coefficients."
+          AMBIGUOUS:
+            - "Allow one bounded integrity/comparability clarification, then classify."
+
+      arm_c_raw_residual:
+        label: "Arm C"
+        objective: "raw_unnormalized_residual_matching"
+        status: "planned_if_arm_b_no_go"
+        steps: 128
+        independent_variable: >
+          Remove per-update normalization and directly match residual/update vectors while
+          preserving all other matched conditions.
+        rule: >
+          Define and lock the exact equation before execution. Do not introduce absolute
+          pointwise hidden-state matching into this arm.
+        branches:
+          STRONG_GO_or_GO:
+            - "Preserve Arm C and confirm or scale the exact formulation depending on remaining compute."
+          NO_GO:
+            - "Conclude that multiple reasonable transformation-matching formulations are inferior to pointwise KD for this topology under the matched protocol."
+            - "Do not keep inventing loss variants in the same session."
+          AMBIGUOUS:
+            - "Perform at most one bounded clarification, then classify."
+
+    evidence_progression:
+      - "Run003 establishes the pointwise control."
+      - "Arm A establishes a clean negative result for normalized delta."
+      - "Arm B tests whether preserving update scale changes the result."
+      - "Arm C, if needed, tests whether normalization itself caused the failure."
+    supportive_path: >
+      If any behavioral arm becomes competitive or superior, confirm the exact formulation and
+      test persistence at a longer horizon before making a strong RQ1 claim.
+    negative_path: >
+      If Arm B and Arm C both remain clearly inferior, conclude that current evidence favors
+      pointwise KD for this heterogeneous pair and does not support the broader behavioral-KD
+      hypothesis for this topology.
+    broader_generalization_requirement: >
+      Claims about a general principle across heterogeneous architectures require evidence from
+      at least one additional teacher-student topology. A single-pair result is not universal proof.
+    scaling_policy:
+      default_1024_gate: "Scale only an exact formulation classified STRONG_GO or GO at 128 steps unless user explicitly overrides."
+      steps: 1024
+      log_every: 16
+      eval_every: 128
+      save_every: 512
+      expected_processed_positions: 1572864
+      packed_sha256: "e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d"
+
+  RQ2:
+    status: "RECOVERED_FROM_LOCAL_REPOSITORY"
+    recovered_on: "2026-09-05"
+    recovered_from:
+      - ".claude/skills/qwen38-distillation-research/SKILL.md (section 3, 'RQ2 - Context-Length Specialization')"
+      - "docs/RESEARCH_COMPLETION.md (section 'RQ2 - Context-Length Specialization', gate G6)"
+      - "docs/RUN_004.md (section 'Relation to the broader paper')"
+    title: "Context-Length Specialization"
+    exact_question: >
+      Does the optimal training-context distribution differ from the final deployment
+      context, and can deliberate context specialization produce better
+      capability/efficiency tradeoffs than: uniform-context training;
+      maximum-context training; or another default mixture?
+    hypothesis: >
+      Deliberate context specialization of the TRAINING context distribution can produce a
+      better capability/efficiency tradeoff than uniform-context or maximum-context
+      training. The repository records this explicitly as "This is a hypothesis."
+    context_regimes: ["4K", "8K", "16K", "32K", "64K", "128K", "262K"]
+    required_distinctions:
+      - "native architectural context"
+      - "training context"
+      - "evaluation context"
+      - "demonstrated deployment context"
+      - "demonstrated 16 GB context"
+    caveat: >
+      Do not equate max_position_embeddings=262144 with proof of 262K operational capability.
+    planned_arms:
+      - "uniform context mixture"
+      - "short-context-heavy"
+      - "medium-context-heavy"
+      - "long-context-heavy"
+      - "progressive context schedule"
+    controlled_variables: >
+      The context study must keep the student, teacher, optimizer family, total token
+      budget, seed policy, evaluation suite, and deployment accounting controlled while
+      varying the training-context distribution. The training system must explicitly
+      record the distribution rather than only the maximum sequence length.
+    relation_to_rq1: >
+      RQ2 is not considered answered by RQ1. Run 004-M is evidence for RQ1 and does not
+      answer the context-specialization question. RQ2 requires separate controlled
+      context-distribution experiments with equalized total training tokens and a common
+      evaluation suite.
+    gate: "G6 - context-specialization ablation; required for an RQ2 conclusion"
+    success_criterion: >
+      A context-specialized curriculum produces a reproducible improvement in the
+      capability/context tradeoff relative to the control.
+    negative_result_criterion: >
+      No meaningful advantage is found. Also scientifically useful.
+    execute_now: false
+    constraints:
+      - "Do not interrupt an active GPU experiment to execute RQ2."
+      - "Do not execute RQ2 until RQ1 reaches a defined stopping point."
+      - "Do not use external web/GitHub to redefine RQ2."
+
+  RQ3:
+    status: "RECOVERED_FROM_LOCAL_REPOSITORY_reference_only"
+    title: "Architecture-Aware Initialization"
+    exact_question: >
+      Investigate whether teacher-derived initialization materially improves convergence,
+      teacher agreement, sample efficiency, stability, and final capability relative to
+      randomly initialized student weights.
+    recovered_from: ".claude/skills/qwen38-distillation-research/SKILL.md (section 4)"
+    execute_now: false
+
+technical_blocker_policy:
+  missing_corpus:
+    type: "technical_failure"
+    action: "Recover exact frozen corpus, verify bytes/hash, then resume the same experiment."
+    forbidden: "substitute another corpus"
+  missing_student_initialization:
+    type: "technical_failure"
+    action: "Deterministically rematerialize exact historical initialization and resume."
+  oom:
+    type: "technical_failure"
+    action: "Use only scientifically equivalent, already-validated memory controls."
+    forbidden: "silently change sequence length, batch semantics, objective, or dataset"
+  nan_inf:
+    type: "technical_failure"
+    action: "Stop invalid run, make minimum repair, repeat same locked arm."
+  wrong_model_revision_or_corpus:
+    type: "technical_failure"
+    action: "Invalidate affected run, restore frozen asset, repeat same locked arm."
+  implementation_bug:
+    type: "technical_failure"
+    action: "Make smallest correct repair, record it, repeat only affected experiments."
+  poor_metrics:
+    type: "scientific_negative_result"
+    action: "Preserve run, classify against roadmap gate, follow scientific branch."
+    forbidden: "retune repeatedly until metrics improve"
+  time_limit:
+    type: "resource_boundary"
+    action: "Finish current interpretable arm if feasible; prefer complete matched experiments and preserve artifacts."
+
+state_update_requirements:
+  after_each_run:
+    - status
+    - integrity
+    - exact_objective_and_formulation
+    - exact_changed_variable
+    - final_shared_metrics
+    - runtime_and_vram
+    - scientific_classification
+    - next_admissible_branch
+    - artifact_paths
+  completed_runs_immutable: true

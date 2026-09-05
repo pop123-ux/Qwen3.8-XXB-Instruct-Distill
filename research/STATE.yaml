@@ -1,0 +1,282 @@
+schema_version: '1.0'
+project: Qwen3.8-XXB-Instruct-Distill
+current_rq: RQ1
+current_phase: objective_discrimination
+active_experiment: run007_raw_delta_scale_1024
+active_experiment_priority: highest
+active_experiment_instruction: 'Arm B is already authorized. If currently running, DO NOT pause, stop,
+  restart, reconfigure, replace, or invalidate it because these roadmap files were added. Capture its
+  already-locked formulation from local artifacts/config, let it finish, then branch on its actual result.
+
+  '
+completed_experiments:
+  run003_layer_kd:
+    label: pointwise control
+    status: completed
+    integrity: PASS
+    immutable: true
+    steps: 128
+    results:
+      final_validation_loss: 8.9599
+      best_validation_loss: 8.7705
+      final_teacher_student_top1_agreement: 0.16222
+      mean_teacher_student_top1_agreement: 0.11196
+      final_logit_kd_loss: 3.9808
+      final_ce_loss: 9.4026
+      runtime_seconds: 1098.3
+      tokens_per_second: 179.0
+      peak_allocated_gib: 38.945
+      peak_reserved_gib: 40.766
+    interpretation: Fixed matched pointwise hidden-state KD control for RQ1.
+  run004_matched_behavioral_kd:
+    label: Arm A normalized delta
+    status: completed
+    integrity: PASS
+    immutable: true
+    steps: 128
+    results:
+      final_validation_loss: 11.8886
+      best_validation_loss: 11.8886
+      final_teacher_student_top1_agreement: 0.12117
+      mean_teacher_student_top1_agreement: 0.09612
+      final_logit_kd_loss: 4.9099
+      final_ce_loss: 11.9913
+      runtime_seconds: 1030.0
+      tokens_per_second: 190.9
+      peak_allocated_gib: 38.945
+      peak_reserved_gib: 40.766
+      validation_trajectory:
+        step_32: 12.539
+        step_64: 13.516
+        step_96: 12.001
+        step_128: 11.889
+    classification: NO_GO
+    interpretation: 'Normalized residual-delta behavioral KD is clearly inferior to Run003 at the matched
+      128-step endpoint. This is a clean negative result for this formulation, not a falsification of
+      all transformation-matching objectives.
+
+      '
+  run005_scale_aware_behavioral_kd:
+    label: Arm B scale-aware behavioral KD
+    status: completed
+    integrity: PASS
+    immutable: true
+    steps: 128
+    exact_objective_and_formulation:
+      objective: behavioral_kd
+      behavioral_mode: delta
+      scale_aware: true
+      equation: L = mean_pairs[ MSE(RMSnorm(d_s), RMSnorm(d_t)) + 1.0*(1 - cos(RMSnorm(d_s), RMSnorm(d_t)))
+        + lambda_magnitude * mean_tokens( (log(RMS(d_s)+eps) - log(RMS(d_t)+eps))^2 ) ]
+      lambda_magnitude: 1.0
+      eps: 1.0e-06
+      direction_weight: 1.0
+      student_term: d_s = h_s[l+1] - h_s[l]
+      teacher_term: d_t = h_t[b] - h_t[a], [a,b) assigned teacher span, tiling 64/64
+      locked_before_training: true
+      preregistration_sha256: fb9baa27645e3e4e6fa07e89f94b3fc04bfbe10f0bbcbed93d3dde09e3c9dec5
+      implementation: in-process patch of qwen_distill.distillation.behavioral._pair_term; repository
+        objective code unmodified
+    exact_changed_variable: 'behavioral loss formulation only: ADDED log-RMS magnitude term S vs Run004-M;
+      all frozen assets/defaults identical'
+    analytical_basis: 'Under RMS normalisation MSE == 2*(1-cos) identically, so Run004-M reduced to 3*(1-cos):
+      pure direction, ZERO update-magnitude information. Verified numerically: Run003 mag/dir=2.0000,
+      Run004-M mag/dir=2.0000. Empirical check: a teacher delta scaled 3x gives magnitude=0.000000 and
+      direction=0.000000 under the old objective, while S = 1.206947 = log(3)^2.'
+    results:
+      final_validation_loss: 9.1346
+      best_validation_loss: 9.0225
+      final_teacher_student_top1_agreement: 0.104886
+      mean_teacher_student_top1_agreement: 0.079637
+      final_logit_kd_loss: 4.233501
+      final_ce_loss: 8.980469
+      behavioral_loss_first: 3.285153
+      behavioral_loss_final: 1.756153
+      final_layer_magnitude: 1.181996
+      final_layer_direction: 0.574158
+      final_layer_norm_ratio: 0.934986
+      runtime_seconds: 1008.44
+      tokens_per_second: 195.0
+      peak_allocated_gib: 38.945
+      peak_reserved_gib: 40.18
+      validation_trajectory:
+        step_32: 10.8373
+        step_64: 9.2801
+        step_96: 9.0225
+        step_128: 9.1346
+      packed_corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+    classification: AMBIGUOUS_LEANING_NO_GO
+    interpretation: 'Adding update-magnitude supervision recovered ~94% of the Run004-M deficit on held-out
+      validation loss (11.8886 -> 9.1346 against control 8.9599). The mechanism behaved as designed: final
+      layer_norm_ratio moved 0.694 -> 0.935, i.e. student residual magnitudes came to match the teacher
+      spans. Arm B also BEATS the control on final CE (8.9805 vs 9.4026). However it remains behind on
+      held-out validation loss (+0.1746) and clearly behind on teacher/student top-1 agreement (0.1049
+      vs 0.1622, -35% relative). Primary shared metrics therefore conflict materially. Under the roadmap
+      gate this is not GO, so Arm B is NOT scaled to 1024.'
+    artifact_paths:
+      run_dir: /workspace/runs/run005_scale_aware_behavioral_kd
+      summary: /workspace/runs/run005_scale_aware_behavioral_kd/summary.json
+      metrics: /workspace/runs/run005_scale_aware_behavioral_kd/metrics.jsonl
+      manifest: /workspace/runs/run005_scale_aware_behavioral_kd/arm_manifest.json
+      preregistration: /workspace/runs/run005_scale_aware_behavioral_kd/PREREGISTRATION.md
+      evidence_bundle: /workspace/runs/run005_scale_aware_behavioral_kd/evidence_bundle.tgz
+      checkpoint_step128: /workspace/runs/run005_scale_aware_behavioral_kd/checkpoints/step_000128
+      launcher: /workspace/tmp/rq1_analysis/run_armB_scale_aware.py
+    next_admissible_branch: Arm C raw/unnormalised residual matching (running); do NOT sweep lambda_magnitude
+  run006_raw_delta_behavioral_kd:
+    label: Arm C raw/unnormalised residual matching
+    status: completed
+    integrity: PASS
+    immutable: true
+    steps: 128
+    exact_objective_and_formulation:
+      objective: behavioral_kd
+      behavioral_mode: delta
+      normalise: false
+      equation: L = mean_pairs[ MSE(d_s, d_t) + 1.0*(1 - cos(d_s, d_t)) ] on RAW (unnormalised) deltas
+      direction_weight: 1.0
+      student_term: d_s = h_s[l+1] - h_s[l]
+      teacher_term: d_t = h_t[b] - h_t[a], [a,b) assigned teacher span, tiling 64/64
+      locked_before_training: true
+      preregistration_sha256: fb9baa27645e3e4e6fa07e89f94b3fc04bfbe10f0bbcbed93d3dde09e3c9dec5
+      implementation: existing frozen repository flag --layer-kd-no-normalise; NO objective code change
+    exact_changed_variable: RMS normalisation DISABLED vs Run004-M; all frozen assets/defaults identical
+    results:
+      final_validation_loss: 7.7461
+      best_validation_loss: 7.6579
+      final_teacher_student_top1_agreement: 0.143974
+      mean_teacher_student_top1_agreement: 0.097017
+      final_logit_kd_loss: 3.359652
+      final_ce_loss: 8.018023
+      behavioral_loss_first: 1.666446
+      behavioral_loss_final: 1.072185
+      final_layer_norm_ratio: 0.416082
+      runtime_seconds: 1033.11
+      tokens_per_second: 190.3
+      peak_allocated_gib: 38.945
+      peak_reserved_gib: 40.785
+      observed_nvidia_smi_peak_gib: 41.725
+      validation_trajectory:
+        step_32: 9.1093
+        step_64: 8.6027
+        step_96: 7.6579
+        step_128: 7.7461
+      packed_corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+    classification: GO
+    gap_to_control:
+      final_validation_loss: -1.2139
+      final_ce_loss: -1.3846
+      final_logit_kd_loss: -0.6208
+      final_top1_agreement: -0.0182
+    interpretation: 'Raw unnormalised residual matching BEATS the pointwise control on 4 of 5 shared metrics:
+      final validation loss 7.7461 vs 8.9599 (-1.2139, -13.5% rel), best validation 7.6579 vs 8.7705,
+      CE 8.0180 vs 9.4026, logit KD 3.3600 vs 3.9808. It trails only on teacher/student top-1 agreement
+      (0.1440 vs 0.1622, -11% rel), and its agreement reached 0.15 mid-run, so it stays in the control
+      range rather than collapsing as Arm B did. Optimization healthy; memory identical.'
+    artifact_paths:
+      run_dir: /workspace/runs/run006_raw_delta_behavioral_kd
+      summary: /workspace/runs/run006_raw_delta_behavioral_kd/summary.json
+      metrics: /workspace/runs/run006_raw_delta_behavioral_kd/metrics.jsonl
+      manifest: /workspace/runs/run006_raw_delta_behavioral_kd/arm_manifest.json
+      evidence_bundle: /workspace/runs/run006_raw_delta_behavioral_kd/evidence_bundle.tgz
+      checkpoint_step128: /workspace/runs/run006_raw_delta_behavioral_kd/checkpoints/step_000128
+      launcher: /workspace/tmp/rq1_analysis/run_armC_raw_delta.py
+    next_admissible_branch: 1024-step persistence run of this exact formulation (run007, ACTIVE)
+current_finding:
+  statement: 'Across three transformation-matching formulations under one matched 128-step envelope: A
+    (RMS-normalised delta) loses badly (+2.93 validation); B (normalised + explicit log-RMS magnitude
+    term) nearly closes the gap (+0.17); C (raw unnormalised delta) BEATS the pointwise control (-1.21
+    validation, -1.38 CE, -0.62 logit KD), trailing only slightly on top-1 agreement (-0.018).'
+  analytical_root_cause: 'Under RMS normalisation MSE == 2*(1-cos) identically, so Arm A reduced algebraically
+    to 3*(1-cos): pure direction, ZERO update-magnitude information. Empirically a teacher delta scaled
+    3x yields magnitude=0.000000 and direction=0.000000 under that objective. Verified mag/dir == 2.0000
+    in both Run003 and Run004-M logs.'
+  mechanism_caveat: 'IMPORTANT: the win is NOT explained by driving student update magnitudes toward the
+    teacher. Arm B achieved the closest magnitude parity (final layer_norm_ratio 0.935) yet performed
+    WORSE than Arm C, whose final norm_ratio is 0.416 - further from parity than the control (0.617).
+    The distinguishing factor is that the loss retains magnitude SENSITIVITY, not that magnitudes are
+    equalised. The precise mechanism is NOT established by these runs and must not be asserted.'
+  implication: Run004-M was a formulation-specific negative, not a refutation of transformation matching.
+    RQ1 now has one behavioral formulation (raw residual matching) that beats matched pointwise KD on
+    held-out loss at 128 steps for this topology. Persistence, replication, and a second topology remain
+    unmet.
+active_hypothesis:
+  statement: Does the Arm C advantage over pointwise KD persist at an 8x longer optimization horizon?
+  status: being_tested_by_run007
+current_plan:
+  arm_b_scale_aware_behavioral:
+    status: running_or_already_authorized
+    steps: 128
+    preserve_existing_configuration: true
+    exact_loss_equation: PENDING_CAPTURE_FROM_ACTIVE_LOCAL_CONFIG_OR_ARTIFACT
+    exact_coefficients: PENDING_CAPTURE_FROM_ACTIVE_LOCAL_CONFIG_OR_ARTIFACT
+    changed_variable: behavioral objective formulation only
+    instruction: 'Do not redesign Arm B from this file. Record the exact formulation chosen before outcome
+      observation, then evaluate it against Run003 and Arm A.
+
+      '
+  branch_after_arm_b:
+    STRONG_GO_or_GO:
+      next_action: 'Preserve Arm B, then use remaining complete-compute budget for an exact confirmation
+        or 1024-step persistence run of the same formulation.
+
+        '
+    NO_GO:
+      next_action: 'Run Arm C: one first-principles raw/unnormalized residual-matching arm at the same
+        matched 128-step protocol. Do not sweep Arm B coefficients.
+
+        '
+    AMBIGUOUS:
+      next_action: 'Perform at most one bounded comparability/integrity clarification, then classify.
+
+        '
+  arm_c_if_needed:
+    status: planned
+    objective: raw_unnormalized_residual_matching
+    steps: 128
+    changed_variable: transformation-matching formulation only
+    rule: Lock exact equation before outcome observation; preserve all frozen assets/defaults.
+ruled_out_for_current_phase:
+- broad LR sweeps
+- temperature sweeps
+- top-k sweeps
+- LoRA-rank sweeps
+- multi-parameter tuning
+- repeated lambda tuning until behavioral KD wins
+- long post-hoc diagnosis while a higher-information RQ arm can run
+- overwriting Run003 or Run004-M artifacts
+- blindly scaling Arm A after its clear matched NO-GO
+technical_blocker:
+  current: null
+  rule: Resolve according to research/ROADMAP.yaml without changing scientific invariants.
+rq2:
+  status: RECOVERED_FROM_LOCAL_REPOSITORY
+  title: Context-Length Specialization
+  exact_question: 'Does the optimal training-context distribution differ from the final deployment context,
+    and can deliberate context specialization produce better capability/efficiency tradeoffs than: uniform-context
+    training; maximum-context training; or another default mixture?'
+  recovered_from:
+  - .claude/skills/qwen38-distillation-research/SKILL.md (section 3)
+  - docs/RESEARCH_COMPLETION.md (RQ2 section, gate G6)
+  - docs/RUN_004.md (Relation to the broader paper)
+  planned_arms:
+  - uniform context mixture
+  - short-context-heavy
+  - medium-context-heavy
+  - long-context-heavy
+  - progressive context schedule
+  context_regimes:
+  - 4K
+  - 8K
+  - 16K
+  - 32K
+  - 64K
+  - 128K
+  - 262K
+  gate: G6
+  execute_now: false
+  note: Full definition captured in research/ROADMAP.yaml. Not executed; RQ1 still active.
+next_action: Let run007 (1024-step Arm C persistence) complete. Compare against Run003 128-step control
+  and Arm C 128-step. Do NOT compare 1024 behavioral directly to 128 pointwise as if budgets were matched.
+  Then update state and, if time permits, prefer a REPLICATION of the Arm C 128-step result at a second
+  seed over any new loss variant.
