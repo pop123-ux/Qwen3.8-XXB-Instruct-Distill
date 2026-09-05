@@ -11,12 +11,14 @@ STUDENT="${STUDENT:-/workspace/runs/pilot001/transferred}"
 CORPUS="${CORPUS:-/workspace/corpora/gutenberg/train.txt}"
 RUN_DIR="${RUN_DIR:-/workspace/runs/run004_behavioral_scale_1024}"
 REVISION="dbdc473dea0d6a9763042881cc33d6058d1742d2"
-EXPECTED_CORPUS_SHA="e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d"
+# Raw source-file identity from experiments/run002_logit_kd/dataset_provenance.json.
+EXPECTED_SOURCE_CORPUS_SHA="bc5972d9a52580ff14ab1b3b1753f9cd68c726c63cc625a7ed3913ec3c5dc5c5"
+# Deterministic 700k-token packed stream identity recorded by matched Run 003.
+EXPECTED_PACKED_CORPUS_SHA="e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d"
 EXPECTED_GPU="NVIDIA L40S"
 
 cd "$ROOT"
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
-mkdir -p "$RUN_DIR"
 
 fail() { echo "FATAL: $*" >&2; exit 2; }
 
@@ -25,12 +27,24 @@ fail() { echo "FATAL: $*" >&2; exit 2; }
 [[ -f "$CORPUS" ]] || fail "corpus missing: $CORPUS"
 [[ -f scripts/run004_behavioral_kd.py ]] || fail "Run 004 behavioral launcher missing"
 [[ -f scripts/guard_vram.py ]] || fail "VRAM guard missing"
+[[ -f "$TEACHER/config.json" ]] || fail "teacher config missing: $TEACHER/config.json"
+[[ -f "$STUDENT/config.json" ]] || fail "student config missing: $STUDENT/config.json"
 
+# Never mix a paid run with stale or partial artifacts. To resume/retry deliberately,
+# choose a new RUN_DIR after inspecting the failed record.
+if [[ -d "$RUN_DIR" ]] && find "$RUN_DIR" -mindepth 1 -print -quit | grep -q .; then
+  fail "run directory is not empty: $RUN_DIR"
+fi
+mkdir -p "$RUN_DIR"
+
+GPU_COUNT="$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l | xargs)"
+[[ "$GPU_COUNT" == "1" ]] || fail "expected exactly one NVIDIA GPU, got $GPU_COUNT"
 GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n1 | xargs)"
 [[ "$GPU_NAME" == "$EXPECTED_GPU" ]] || fail "expected $EXPECTED_GPU, got $GPU_NAME"
 
-CORPUS_SHA="$(sha256sum "$CORPUS" | awk '{print $1}')"
-[[ "$CORPUS_SHA" == "$EXPECTED_CORPUS_SHA" ]] || fail "corpus SHA mismatch: $CORPUS_SHA"
+SOURCE_CORPUS_SHA="$(sha256sum "$CORPUS" | awk '{print $1}')"
+[[ "$SOURCE_CORPUS_SHA" == "$EXPECTED_SOURCE_CORPUS_SHA" ]] || \
+  fail "raw train.txt SHA mismatch: $SOURCE_CORPUS_SHA"
 
 python - <<'PY'
 import sys, torch, transformers
@@ -55,12 +69,14 @@ PY
   echo "git_status=$(git status --porcelain | wc -l | xargs) dirty_paths"
   echo "gpu=$GPU_NAME"
   echo "driver=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -n1 | xargs)"
-  echo "corpus_sha256=$CORPUS_SHA"
+  echo "source_corpus_sha256=$SOURCE_CORPUS_SHA"
+  echo "expected_packed_corpus_sha256=$EXPECTED_PACKED_CORPUS_SHA"
   echo "teacher_revision=$REVISION"
   echo "protocol=RQ1_V2_SCALE1024"
 } | tee "$RUN_DIR/preflight.txt"
 
 # The only expensive action: guarded 1024-step behavioral KD.
+# Instrumentation cadence matches the historically preregistered 1024-step command.
 python scripts/guard_vram.py \
   --max-vram-gib 45 \
   --interval 1.0 \
@@ -85,15 +101,47 @@ python scripts/guard_vram.py \
     --optimizer adamw \
     --precision bf16 \
     --seed 0 \
-    --log-every 1 \
-    --eval-every 64 \
-    --save-every 256 \
+    --log-every 16 \
+    --eval-every 128 \
+    --save-every 512 \
     --experiment-id run004_behavioral_scale_1024 \
     --output "$RUN_DIR"
 
-# Lightweight integrity work only after training exits successfully. This may report
-# incomplete if the run was not initialised through run_record.py; it is diagnostic only.
-python scripts/run_record.py --root "$RUN_DIR" verify || true
+# Cheap post-run integrity gate. The raw file hash above proves source identity; this
+# proves that tokenizer + EOS + 700k cap reproduced the exact matched packed stream.
+python - "$RUN_DIR" "$EXPECTED_PACKED_CORPUS_SHA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+expected_packed_sha = sys.argv[2]
+summary_path = root / "summary.json"
+manifest_path = root / "run004_behavioral_manifest.json"
+if not summary_path.is_file():
+    raise SystemExit(f"FATAL: missing {summary_path}")
+if not manifest_path.is_file():
+    raise SystemExit(f"FATAL: missing {manifest_path}")
+
+summary = json.loads(summary_path.read_text(encoding="utf-8"))
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+checks = {
+    "outcome": summary.get("outcome") == "completed",
+    "steps": summary.get("steps") == 1024,
+    "packed_corpus_sha": summary.get("corpus", {}).get("sha256") == expected_packed_sha,
+    "packed_tokens": summary.get("corpus", {}).get("n_tokens") == 700000,
+    "sequence_length": summary.get("corpus", {}).get("sequence_length") == 1536,
+    "behavioral_objective": manifest.get("objective") == "behavioral_kd",
+    "behavioral_mode": manifest.get("behavioral_mode") == "delta",
+    "teacher_revision": manifest.get("teacher_revision") == "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+    "max_tokens": manifest.get("max_tokens") == 700000,
+}
+failed = [name for name, ok in checks.items() if not ok]
+for name, ok in checks.items():
+    print(f"post-run {name}: {'PASS' if ok else 'FAIL'}")
+if failed:
+    raise SystemExit("FATAL: post-run integrity checks failed: " + ", ".join(failed))
+PY
 
 # Small evidence bundle for immediate exfiltration before pod termination.
 # Checkpoints/weights/optimizer state are deliberately excluded.
