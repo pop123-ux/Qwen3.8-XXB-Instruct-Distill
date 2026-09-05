@@ -7,8 +7,10 @@ created_from:
   run004_matched_behavioral_kd: 05788d9d22b2aa189f305e6c5ae2711efad7c26a
 
 # RQ1_V1 established the matched 128-step comparison. This protocol changes one
-# planned axis only: training horizon, from 128 -> 1024 steps, to test whether
+# optimization axis only: training horizon, from 128 -> 1024 steps, to test whether
 # behavioral/residual-contribution KD remains healthy beyond the mechanistic regime.
+# Logging/evaluation/checkpoint cadence follows the historically preregistered 1024-step
+# command and is instrumentation, not an optimization hyperparameter.
 independent_variable_from_parent: training_horizon
 
 experiment:
@@ -56,9 +58,9 @@ training:
   layer_kd_normalise: true
   layer_kd_map_strategy: group
   layer_kd_chunk_pairs: 4
-  eval_every: 64
-  save_every: 256
-  log_every: 1
+  eval_every: 128
+  save_every: 512
+  log_every: 16
 
 execution:
   gpu_model: NVIDIA L40S
@@ -75,7 +77,8 @@ software_baseline:
   cuda_runtime: 12.8
 
 reproducibility:
-  corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+  source_train_txt_sha256: bc5972d9a52580ff14ab1b3b1753f9cd68c726c63cc625a7ed3913ec3c5dc5c5
+  packed_700k_token_stream_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
   tokenizer_vocab_size: 248077
   eos_token_id: 248046
   exact_initial_student_required: true
