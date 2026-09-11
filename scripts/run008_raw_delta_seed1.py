@@ -8,6 +8,7 @@ while explicitly disabling RMS normalisation exactly as Run006 did.
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -58,7 +59,11 @@ def command() -> list[str]:
 
 
 def main() -> int:
-    if (OUTPUT / "summary.json").exists():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dry-run", action="store_true", help="validate config without loading weights")
+    args = parser.parse_args()
+
+    if not args.dry_run and (OUTPUT / "summary.json").exists():
         raise SystemExit(f"Refusing to overwrite completed evidence: {OUTPUT / 'summary.json'}")
     OUTPUT.mkdir(parents=True, exist_ok=True)
 
@@ -74,6 +79,7 @@ def main() -> int:
         "loss_equation": "mean_pairs[MSE(d_s,d_t) + (1-cos(d_s,d_t))] on raw deltas",
         "seed": SEED,
         "teacher_revision": REVISION,
+        "dry_run": args.dry_run,
         "command": cmd,
     }
     (OUTPUT / "arm_manifest.json").write_text(
@@ -82,7 +88,7 @@ def main() -> int:
 
     patched = patch_trainer_for_delta()
     try:
-        return kd_main(cmd)
+        return kd_main(cmd + (["--dry-run"] if args.dry_run else []))
     finally:
         restore_trainer(patched)
 
