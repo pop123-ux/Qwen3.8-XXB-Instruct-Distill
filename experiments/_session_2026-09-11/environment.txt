@@ -1,0 +1,80 @@
+captured_at=2026-09-11T15:01:59+00:00
+repo=/workspace/Qwen3.8-XXB-Instruct-Distill
+git_sha=48c5c707bd1e26af9b78399f165201b76b8fb14f
+git_branch=runpod/rq1-3h-2026-09-11
+teacher_revision=dbdc473dea0d6a9763042881cc33d6058d1742d2
+python_environment=system python3 (no venv; venv creation failed, embedded pip corrupted)
+
+Python 3.12.3
+
+Fri Sep 11 15:02:00 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.159.03             Driver Version: 580.159.03     CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:C3:00.0 Off |                    0 |
+| N/A   37C    P0             77W /  315W |       0MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+
+platform: Linux-6.17.0-29-generic-x86_64-with-glibc2.39
+torch: 2.14.0+cu130
+torch_cuda: 13.0
+transformers: 5.17.0
+accelerate: 1.15.0
+peft: 0.20.0
+bitsandbytes: 0.50.2
+gpu: NVIDIA L40S
+
+=== environment repair performed ===
+torch was pip-upgraded unpinned to 2.14.0+cu130 (user's deliberate unpinned-session choice).
+This left torchvision 0.23.0+cu128 and torchaudio 2.8.0+cu128 installed, both pinned to
+torch==2.8.0, incompatible with the new torch. Importing peft triggered transformers to
+pull in BloomPreTrainedModel -> loss_for_object_detection -> image_utils -> torchvision.io,
+which crashed with 'RuntimeError: operator torchvision::nms does not exist' surfaced as
+'ModuleNotFoundError: Could not import module BloomPreTrainedModel'.
+Repair: pip uninstall torchvision torchaudio (text-only project; neither package is used
+anywhere in this repository or by kd_run.py/run008/run009). No scientific package changed.
+Verified: full smoke test PASS, and the repository's own import path
+(qwen_distill.architecture.moe_student, .distillation.behavioral, .distillation.real_teacher,
+  .training.tokenized_data, transformers.AutoModelForCausalLM/BitsAndBytesConfig) PASS.
+
+=== I/O staging repair (technical, non-scientific) — 2026-09-11T16:11Z ===
+BLOCKER: /workspace is a MooseFS FUSE mount (mfs#us-mo-1.runpod.net:9421).
+Measured: sequential FUSE read 44.7 MB/s; local disk write 2.5 GB/s; page-cached
+FUSE read 3.9 GB/s. safetensors loads tensors via scattered mmap access, which over
+FUSE degraded to ~11 s/tensor. First Run008 attempt: teacher load took 31m43s
+(vs 1m42s in the 2026-09-05 session) and the student load projected 2h27m,
+which would not fit the 3h paid window.
+
+REPAIR: staged the canonical student's 26,017,243,200-byte model.safetensors from
+the FUSE volume to local disk (/root/pilot001_local) using 8 parallel dd streams
+(5m42s, ~76 MB/s aggregate). Exposed at the canonical path via symlink:
+  /workspace/runs/pilot001/transferred -> /root/pilot001_local
+Network original retained at /workspace/runs/pilot001/transferred_network.
+
+VERIFICATION (byte-identity proven, not assumed):
+  local  copy: 30a10bdb6df5ad1b5a1a0cd1d47fa2ffc81d5333801b6ab03162f0b437979cfe
+  source file: 30a10bdb6df5ad1b5a1a0cd1d47fa2ffc81d5333801b6ab03162f0b437979cfe
+  IDENTICAL. Size 26017243200 bytes both.
+
+SCIENTIFIC IMPACT: none. Identical weight bytes, identical canonical path as seen
+by the launcher. Only the storage backend behind the path changed. No hyperparameter,
+corpus, teacher, student-init, seed, or objective value was altered.
+Both Run008 and Run009 use this same staged student, so the pair remains matched.
+
+=== first Run008 attempt (aborted, NOT evidence) ===
+Aborted during student weight loading due to the I/O blocker above, before any
+optimizer step. No summary.json was produced. Log preserved as
+run008_attempt1_slow_io.log. The run directory contained only arm_manifest.json.

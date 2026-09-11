@@ -1,0 +1,34 @@
+Corpus reconstruction, 2026-09-11 session
+=========================================
+The frozen corpus is scripts/prepare_level2r_dataset.py with --limit 8:
+  TRAIN_IDS[:8] (1342,158,161,84,1661,2097,2701,98) + all 8 fixed VALIDATION_IDS
+  = 16 documents, matching the historical manifest (8 train / 8 validation).
+
+VERIFIED IDENTITIES
+  validation.txt : ad34c19250a46fde189e1fcbeabc66aa3e66c0f63da6cd657e0a28b723b83961
+                   4,436,201 bytes  -> EXACT MATCH to the frozen value
+  packed 700k    : e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+                   n_tokens=700000, n_sequences=455, n_train=433, n_validation=22
+                   -> EXACT MATCH; this is the actual training input and is the
+                      load-bearing invariant. Recorded independently by Run008,
+                      Run009 and Run010 summaries.
+
+KNOWN DEVIATION (documented, not silently accepted)
+  train.txt raw  : 5dbb61a9d1528e945ee5bdacb6c6765c39d6b2a145be2912568eb787f1b7baee
+                   5,554,410 bytes
+  frozen value   : bc5972d9a52580ff14ab1b3b1753f9cd68c726c63cc625a7ed3913ec3c5dc5c5
+                   5,554,406 bytes
+  Difference is exactly 4 bytes, traced to Project Gutenberg document 2701
+  (Moby Dick): the live pg2701.txt is 1,276,267 bytes today vs 1,276,263 bytes
+  when the historical corpus was built. A fresh `curl -L` reproduces today's
+  bytes exactly, so this is upstream content drift on a mutable source, NOT a
+  corrupted cache and NOT a substituted corpus. All 15 other source documents
+  are byte-identical to the historical fetch.
+
+  Those 4 bytes fall PAST the 700,000-token cutoff: tokenisation consumes
+  5,519,078 bytes here vs 5,519,074 historically, and the packed stream hash is
+  identical. The drift therefore never enters training.
+
+  CONSEQUENCE: the raw train.txt hash is no longer reproducible from a live
+  Gutenberg fetch. Future sessions should treat the PACKED 700k SHA as the
+  authoritative corpus invariant and record the raw hash as provenance only.

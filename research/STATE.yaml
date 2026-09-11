@@ -2,7 +2,7 @@ schema_version: '1.0'
 project: Qwen3.8-XXB-Instruct-Distill
 current_rq: RQ1
 current_phase: objective_discrimination
-active_experiment: run008_raw_delta_seed1
+active_experiment: null
 active_experiment_priority: highest
 active_experiment_instruction: 'Arm B is already authorized. If currently running, DO NOT pause, stop,
   restart, reconfigure, replace, or invalidate it because these roadmap files were added. Capture its
@@ -251,6 +251,98 @@ completed_experiments:
       launcher: /workspace/tmp/rq1_analysis/run_armC_1024.py
     next_admissible_branch: replication of Arm C at a second seed (run008, launched); then a second teacher/student
       topology
+  run008_raw_delta_seed1:
+    label: Run008 - raw/unnormalised residual-delta KD, seed 1
+    status: completed
+    integrity: PASS
+    immutable: true
+    steps: 128
+    purpose: second-seed replication of Run006 (raw residual matching)
+    only_intended_change_vs_run006: seed 0 -> 1 (plus the different unpinned package env; see environment)
+    exact_objective_and_formulation:
+      objective: behavioral_kd
+      behavioral_mode: delta
+      normalise: false
+      equation: L = mean_pairs[ MSE(d_s, d_t) + 1.0*(1 - cos(d_s, d_t)) ] on RAW deltas
+      n_supervised_pairs: 48
+      implementation: --layer-kd-no-normalise + run004 delta patch; no objective code change
+    environment: &id001
+      python: 3.12.3
+      torch: 2.14.0+cu130
+      torch_cuda: '13.0'
+      transformers: 5.17.0
+      accelerate: 1.15.0
+      peft: 0.20.0
+      bitsandbytes: 0.50.2
+      gpu: NVIDIA L40S
+      driver: 580.159.03
+      note: 'UNPINNED current-release stack, deliberately different from the historical Run003-Run007
+        stack (torch 2.8.0+cu128 / transformers 5.15.1). Repair applied: uninstalled torchvision+torchaudio
+        (incompatible with upgraded torch; unused by this text-only project). Run008 and Run009 share
+        this identical environment, which is why they form the primary same-environment causal pair.'
+      pip_freeze: /workspace/runpod_sessions/2026-09-11-rq1-3h/pip-freeze.txt
+    results:
+      final_validation_loss: 7.41131
+      best_validation_loss: 7.41131
+      final_ce_loss: 7.754179
+      final_logit_kd_loss: 5.265838
+      final_teacher_student_top1_agreement: 0.123778
+      mean_teacher_student_top1_agreement: 0.1014
+      behavioral_loss_first: 1.566234
+      behavioral_loss_final: 0.977893
+      final_layer_norm_ratio: 0.437882
+      runtime_seconds: 522.17
+      tokens_per_second: 376.5
+      tokens_seen: 196608
+      peak_allocated_gib: 38.947
+      peak_reserved_gib: 40.742
+      observed_nvidia_smi_peak_gib: 41.263
+      validation_trajectory:
+        step_32: 9.4548
+        step_64: 8.1694
+        step_96: 7.6094
+        step_128: 7.4113
+      packed_corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+    artifact_paths:
+      run_dir: /workspace/runs/run008_raw_delta_seed1
+      archived: experiments/run008_raw_delta_seed1/
+  run009_pointwise_seed1:
+    label: Run009 - pointwise hidden-state KD control, seed 1
+    status: completed
+    integrity: PASS
+    immutable: true
+    steps: 128
+    purpose: same-seed, same-environment matched control for Run008
+    only_intended_change_vs_run008: 'objective: raw residual-delta -> pointwise (layer_kd_normalise True)'
+    exact_objective_and_formulation:
+      objective: pointwise_hidden_state_matching
+      behavioral_mode: pointwise
+      normalise: true
+      note: Under RMS normalisation MSE == 2*(1-cos) identically; observed mag/dir ratio was exactly 2.000
+        in this run, confirming the normalised objective was active.
+    environment: *id001
+    results:
+      final_validation_loss: 8.73926
+      best_validation_loss: 8.73926
+      final_ce_loss: 8.955086
+      final_logit_kd_loss: 5.268191
+      final_teacher_student_top1_agreement: 0.145277
+      mean_teacher_student_top1_agreement: 0.111762
+      runtime_seconds: 509.13
+      tokens_per_second: 386.2
+      tokens_seen: 196608
+      peak_allocated_gib: 38.947
+      peak_reserved_gib: 40.742
+      observed_nvidia_smi_peak_gib: 41.684
+      validation_trajectory:
+        step_32: 11.9175
+        step_64: 10.2236
+        step_96: 8.9362
+        step_128: 8.7393
+      packed_corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+    artifact_paths:
+      run_dir: /workspace/runs/run009_pointwise_seed1
+      archived: experiments/run009_pointwise_seed1/
 current_finding:
   statement: 'Across three transformation-matching formulations under one matched 128-step envelope: A
     (RMS-normalised delta) loses badly (+2.93 validation); B (normalised + explicit log-RMS magnitude
@@ -272,6 +364,9 @@ current_finding:
   persistence: 'Arm C persistence CONFIRMED at 1024 steps: 7.7461 -> 6.6116 final validation within the
     same formulation, mean top-1 agreement 0.0970 -> 0.1516, healthy optimization throughout. Plateau
     after ~step 768.'
+  seed1_replication: The raw-delta advantage on validation loss and CE REPLICATED at seed 1 against a
+    same-seed, same-environment pointwise control (val -15.20%, CE -13.41%), as did the small top-1 agreement
+    disadvantage. The seed-0 logit-KD advantage did not replicate.
 active_hypothesis:
   statement: Does the Arm C 128-step advantage over pointwise KD reproduce at a second seed?
   status: being_tested_by_run008
@@ -348,6 +443,53 @@ rq2:
   gate: G6
   execute_now: false
   note: Full definition captured in research/ROADMAP.yaml. Not executed; RQ1 still active.
-next_action: Let run008 (Arm C @ seed 1) complete if the GPU window allows; classify replication. The
-  strongest remaining gaps for an RQ1 claim are (a) a matched 1024-step POINTWISE control, which does
-  not exist, and (b) a second teacher/student topology. Neither fits the current window.
+next_action: 'Decisive second-seed requirement for raw-delta vs pointwise is now SATISFIED. Highest-value
+  remaining RQ1 blockers, in preregistered information order: (1) faithful FDD prediction-delta prior-art
+  comparator; (2) adjacent-vs-span abstraction ablation; (3) CE-only no-teacher floor; (4) composite CE+logit+behavioural
+  objective; (5) matched 1024-step pointwise control (~2h, only with a sufficient window).'
+seed1_matched_pair_result:
+  pair: run008_raw_delta_seed1 (treatment) vs run009_pointwise_seed1 (control)
+  why_this_pair_is_primary: Same seed, same machine, same unpinned package environment, same teacher/student/corpus/token-budget/optimiser.
+    The ONLY difference is the objective. Because today's package stack differs from the historical Run003-Run007
+    stack, this within-session pair - not a comparison against historical seed-0 runs - is the causally
+    clean test.
+  invariant_gate: PASS
+  deltas_treatment_minus_control:
+    final_validation_loss: -1.32796
+    final_validation_loss_pct: -15.2
+    final_ce_loss: -1.20091
+    final_ce_loss_pct: -13.41
+    final_logit_kd_loss: -0.00235
+    final_logit_kd_loss_pct: -0.04
+    final_top1_agreement: -0.0215
+    final_top1_agreement_pct: -14.8
+    mean_top1_agreement: -0.01036
+  classification: REPLICATED
+  classification_basis: 'On the protocol primary metric (validation loss) raw-delta beats pointwise by
+    1.328 (-15.20%), reproducing the seed-0 direction and magnitude (seed-0: -1.2139). CE reproduces too
+    (-1.201 vs seed-0 -1.385). The top-1 agreement disadvantage also reproduces in the same direction
+    and similar size (-0.0215 vs seed-0 -0.0182). Logit KD, which favoured raw-delta by -0.621 at seed
+    0, is essentially TIED at seed 1 (-0.0024): that specific advantage did NOT replicate and must not
+    be claimed.'
+  cross_seed_consistency:
+    seed0_pair: run006 (raw delta) vs run003 (pointwise), historical stack
+    seed0_deltas:
+      validation: -1.2139
+      ce: -1.3846
+      logit_kd: -0.6208
+      top1: -0.0182
+    seed1_deltas:
+      validation: -1.32796
+      ce: -1.20091
+      logit_kd: -0.00235
+      top1: -0.0215
+    caveat: n=2 seeds. This is a consistent direction across two seeds and two different package environments,
+      NOT a statistically powered result. No variance estimate is available from two points.
+  honest_limits:
+  - Two seeds only; no confidence intervals.
+  - Top-1 teacher agreement consistently favours pointwise; validation loss and CE consistently favour
+    raw-delta. These diagnostics genuinely disagree and must be reported together.
+  - The logit-KD advantage seen at seed 0 did not replicate at seed 1.
+  - Still a single teacher/student topology.
+  - No matched 1024-step pointwise control exists, so no claim of raw-delta superiority at long horizon
+    is supported.
