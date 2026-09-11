@@ -1,0 +1,56 @@
+{
+  "experiment": "run013_A2_logits_only_raw_seed1",
+  "preregistered_arm": "A2",
+  "arm_name": "logits_only",
+  "question": "How much of the result is attributable to any intermediate supervision at all?",
+  "prediction": "Weakest of the four, and the honest floor every other arm must clear.",
+  "falsified_if": "A2 matches or beats A3 and A4, which would mean intermediate supervision is unnecessary and the paper's premise is wrong. This outcome is reportable and would be reported.",
+  "resolved_coefficients": {
+    "ce": 0.1,
+    "logit_kd": 1.0,
+    "router_balance": 1.0
+  },
+  "router_aux_loss_coef": 0.001,
+  "hidden_term": null,
+  "hidden_normalise": false,
+  "objective": "composite",
+  "envelope_match_proof": {
+    "arm": "A2",
+    "arm_name": "logits_only",
+    "resolved_coefficients": {
+      "ce": 0.1,
+      "logit_kd": 1.0,
+      "router_balance": 1.0
+    },
+    "hidden_term": null,
+    "hidden_normalise": false,
+    "inherited_from_run008_argv": {
+      "max_steps": 128,
+      "batch_size": 1,
+      "gradient_accumulation_steps": 1,
+      "learning_rate": 0.0002,
+      "optimizer": "adamw",
+      "strategy": "qlora",
+      "lora_rank": 16,
+      "lora_alpha": 32,
+      "precision": "bf16",
+      "gradient_checkpointing": true,
+      "seed": 1,
+      "eval_every": 32,
+      "save_every": 64,
+      "log_every": 1,
+      "layer_kd_chunk_pairs": 4,
+      "layer_kd_direction_weight": 1.0,
+      "text_path": "/workspace/corpora/gutenberg/train.txt",
+      "tokenizer_path": "/workspace/models/qwen3.8-27b-dbdc473",
+      "max_tokens": 700000,
+      "max_sequence_length": 1536,
+      "pretrained": "/workspace/runs/pilot001/transferred"
+    },
+    "non_objective_fields_changed": {},
+    "is_envelope_matched": true
+  },
+  "reference_run_for_envelope": "run008_raw_delta_seed1",
+  "framing_note": "run008-run011 are PURE hidden-matching mechanism probes and are NOT these cells; run012 is a CE-only floor lacking A0's router_balance term and is not reused as A0. Historical runs are not relabelled.",
+  "locked_before_execution": true
+}

@@ -508,6 +508,10 @@ current_finding:
     CE. CAVEAT: validation loss is exactly the CE-only training objective and the KD arms never optimise
     CE, so this bounds the claim rather than refuting teacher signal outright. The composite objective
     is now the decisive experiment.'
+  composite_matrix: The headline preregistered comparison is now run. A3 (CE+logitKD+raw residual-transition)
+    is slightly WORSE than A2 (CE+logitKD) at 4.9365 vs 4.8960, and worse than A1 pointwise at 4.8533.
+    Raw residual-transition supervision does not add value to the realistic recipe at this budget. Claims
+    that it improves language modelling are NOT supported.
 active_hypothesis:
   statement: Does the Arm C 128-step advantage over pointwise KD reproduce at a second seed?
   status: being_tested_by_run008
@@ -584,13 +588,9 @@ rq2:
   gate: G6
   execute_now: false
   note: Full definition captured in research/ROADMAP.yaml. Not executed; RQ1 still active.
-next_action: 'BLOCKED/REPORTED: FDD comparator needs the intended paper named. HIGHEST VALUE NEXT: wire
-  CompositeLossConfig into trainer.py (documented feature commit, verified by the two reductions above),
-  then run the genuine preregistered cells A3 and A1 at seed 1, plus A0 with router_balance. This is the
-  experiment that actually answers whether residual-transition supervision adds value to a realistic recipe,
-  and it is the one the CE-only floor made decisive. Also still open: a scale-matched control to separate
-  magnitude information from loss-scale / effective-LR effects (the surviving alternative explanation
-  for Run011), and long-horizon controls including a 1024-step CE-only arm.'
+next_action: De-confound A3-vs-A1 by running matched-normalisation cells (A3 normalised and/or A1 raw).
+  Then gradient-scale-matched normalized-delta control, matched 1024-step pointwise control, capability/transition
+  evaluation. FDD remains BLOCKED_BY_PRIOR_ART_IDENTITY.
 seed1_matched_pair_result:
   pair: run008_raw_delta_seed1 (treatment) vs run009_pointwise_seed1 (control)
   why_this_pair_is_primary: Same seed, same machine, same unpinned package environment, same teacher/student/corpus/token-budget/optimiser.
@@ -823,3 +823,169 @@ fdd_comparator_status:
     be implemented faithfully.
   question_for_user: Which specific paper does "FDD" refer to? A title, arXiv id or author would unblock
     it.
+composite_matrix_seed1:
+  status: COMPLETE
+  steps: 128
+  seed: 1
+  what_this_is: the genuine preregistered cells from research/ablations.py, run through the newly wired
+    composite objective (commit e3c525c). run003-run011 are PURE hidden-matching probes and are NOT these
+    cells; run012 is a CE-only floor lacking A0 router_balance. Historical runs are not relabelled.
+  arms:
+    A0:
+      run: run013_A0_ce_only_raw_seed1
+      final_validation_loss: 4.34954
+      best_validation_loss: 4.34954
+      ce_loss: 4.409506
+      logit_kd_loss: 3.968722
+      top1_agreement: 0.264495
+      hidden_term_value: null
+      router_aux: 2.000788
+      weighted_objective_total: 4.411507
+      resolved_coefficients:
+        ce: 1.0
+        router_balance: 1.0
+      hidden_term: null
+      hidden_normalise: false
+      runtime_seconds: 484.57
+      tokens_per_second: 405.7
+      peak_allocated_gib: 39.479
+      peak_reserved_gib: 41.703
+      validation_trajectory:
+        step_32: 5.9184
+        step_64: 4.6624
+        step_96: 4.4006
+        step_128: 4.3495
+      packed_corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+      trainable_parameters: 23003136
+      integrity: PASS
+    A2:
+      run: run013_A2_logits_only_raw_seed1
+      final_validation_loss: 4.89596
+      best_validation_loss: 4.89596
+      ce_loss: 4.982708
+      logit_kd_loss: 2.825053
+      top1_agreement: 0.272313
+      hidden_term_value: null
+      router_aux: 2.001662
+      weighted_objective_total: 3.325326
+      resolved_coefficients:
+        ce: 0.1
+        logit_kd: 1.0
+        router_balance: 1.0
+      hidden_term: null
+      hidden_normalise: false
+      runtime_seconds: 509.24
+      tokens_per_second: 386.1
+      peak_allocated_gib: 41.536
+      peak_reserved_gib: 43.861
+      validation_trajectory:
+        step_32: 6.7116
+        step_64: 5.2615
+        step_96: 4.9178
+        step_128: 4.896
+      packed_corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+      trainable_parameters: 23003136
+      integrity: PASS
+    A1:
+      run: run013_A1_pointwise_layer_matching_normalised_seed1
+      final_validation_loss: 4.85328
+      best_validation_loss: 4.85328
+      ce_loss: 4.970865
+      logit_kd_loss: 2.803992
+      top1_agreement: 0.274267
+      hidden_term_value: 0.903725
+      router_aux: 2.001924
+      weighted_objective_total: 3.754943
+      resolved_coefficients:
+        ce: 0.1
+        hidden_pointwise: 0.5
+        logit_kd: 1.0
+        router_balance: 1.0
+      hidden_term: hidden_pointwise
+      hidden_normalise: true
+      runtime_seconds: 536.1
+      tokens_per_second: 366.7
+      peak_allocated_gib: 41.301
+      peak_reserved_gib: 43.869
+      validation_trajectory:
+        step_32: 6.4851
+        step_64: 5.1866
+        step_96: 4.8695
+        step_128: 4.8533
+      packed_corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+      trainable_parameters: 23003136
+      integrity: PASS
+    A3:
+      run: run013_A3_behavioural_delta_raw_seed1
+      final_validation_loss: 4.93647
+      best_validation_loss: 4.92632
+      ce_loss: 5.013668
+      logit_kd_loss: 2.820757
+      top1_agreement: 0.274267
+      hidden_term_value: 1.184747
+      router_aux: 2.001311
+      weighted_objective_total: 3.916499
+      resolved_coefficients:
+        ce: 0.1
+        hidden_delta: 0.5
+        logit_kd: 1.0
+        router_balance: 1.0
+      hidden_term: hidden_delta
+      hidden_normalise: false
+      runtime_seconds: 521.93
+      tokens_per_second: 376.7
+      peak_allocated_gib: 41.316
+      peak_reserved_gib: 43.861
+      validation_trajectory:
+        step_32: 6.9278
+        step_64: 5.3238
+        step_96: 4.9263
+        step_128: 4.9365
+      packed_corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+      trainable_parameters: 23003136
+      integrity: PASS
+  contrasts_final_validation_loss:
+    A2_vs_A0:
+      delta: 0.5464
+      pct: 12.56
+      question: value of ordinary output/logit KD
+      CONFOUNDED: A0 carries ce=1.0 and A2 carries ce=0.1, so the CE weight changes 10x alongside adding
+        logit KD. Validation loss IS held-out CE, so A0 leading here is partly that weighting and NOT
+        a clean measure of logit KD value.
+    A1_vs_A2:
+      delta: -0.0427
+      pct: -0.87
+      question: marginal value of pointwise hidden supervision
+      clean: true
+    A3_vs_A2:
+      delta: 0.0405
+      pct: 0.83
+      question: marginal value of raw residual-transition supervision
+      clean: true
+    A3_vs_A1:
+      delta: 0.0832
+      pct: 1.71
+      question: residual-transition vs pointwise in a realistic recipe
+      CONFOUNDED: A1 ran normalised, A3 raw. Differs in hidden FORM and NORMALISATION. A1-raw would be
+        a strawman (unnormalised pointwise MSE is dominated by the deepest mapped pairs), so matched-normalisation
+        cells are required to de-confound.
+  classification: A3_BELOW_A2 -- residual-transition supervision does NOT add value to the realistic recipe
+  headline: In the preregistered composite recipe the raw residual-transition term is slightly HARMFUL
+    relative to CE + logit KD alone (+0.0405, +0.83%), while the pointwise term is slightly helpful (-0.0427,
+    -0.87%). Pointwise beats residual-transition by +0.0832 (+1.71%), though that particular contrast
+    is confounded by normalisation.
+  teacher_agreement_note: 'logit KD does buy imitation fidelity: top-1 rises 0.2645 (A0) -> 0.2723 (A2)
+    -> 0.2743 (A1 and A3, identical). The hidden term form does not change top-1 at all. So held-out CE
+    and teacher agreement continue to disagree in direction.'
+  honest_limits:
+  - single seed
+  - 128 steps
+  - differences of <1% with no variance estimate are not resolvable as real effects
+  - A2-vs-A0 and A3-vs-A1 confounded as recorded above
+  - single teacher/student topology
+  artifacts:
+    A0: experiments/run013_A0_ce_only_raw_seed1/
+    A2: experiments/run013_A2_logits_only_raw_seed1/
+    A1: experiments/run013_A1_pointwise_layer_matching_normalised_seed1/
+    A3: experiments/run013_A3_behavioural_delta_raw_seed1/
+    comparison: experiments/_session_2026-09-11/composite_matrix_seed1.txt

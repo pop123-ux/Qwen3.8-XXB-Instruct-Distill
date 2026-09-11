@@ -1,0 +1,54 @@
+{
+  "experiment": "run013_A0_ce_only_raw_seed1",
+  "preregistered_arm": "A0",
+  "arm_name": "ce_only",
+  "question": "What does the student reach with no teacher signal at all, only the reference tokens? Every KD claim is a claim *relative to this*.",
+  "prediction": "Worst of the family. Without it, 'KD helps' is unquantified \u2014 the logit-KD arm could be winning on supervision density rather than on anything about the teacher.",
+  "falsified_if": "A0 matches A2, which would mean the teacher's distribution adds nothing over hard labels at this scale and would put the premise of the whole programme in question. Reportable, and would be reported.",
+  "resolved_coefficients": {
+    "ce": 1.0,
+    "router_balance": 1.0
+  },
+  "router_aux_loss_coef": 0.001,
+  "hidden_term": null,
+  "hidden_normalise": false,
+  "objective": "composite",
+  "envelope_match_proof": {
+    "arm": "A0",
+    "arm_name": "ce_only",
+    "resolved_coefficients": {
+      "ce": 1.0,
+      "router_balance": 1.0
+    },
+    "hidden_term": null,
+    "hidden_normalise": false,
+    "inherited_from_run008_argv": {
+      "max_steps": 128,
+      "batch_size": 1,
+      "gradient_accumulation_steps": 1,
+      "learning_rate": 0.0002,
+      "optimizer": "adamw",
+      "strategy": "qlora",
+      "lora_rank": 16,
+      "lora_alpha": 32,
+      "precision": "bf16",
+      "gradient_checkpointing": true,
+      "seed": 1,
+      "eval_every": 32,
+      "save_every": 64,
+      "log_every": 1,
+      "layer_kd_chunk_pairs": 4,
+      "layer_kd_direction_weight": 1.0,
+      "text_path": "/workspace/corpora/gutenberg/train.txt",
+      "tokenizer_path": "/workspace/models/qwen3.8-27b-dbdc473",
+      "max_tokens": 700000,
+      "max_sequence_length": 1536,
+      "pretrained": "/workspace/runs/pilot001/transferred"
+    },
+    "non_objective_fields_changed": {},
+    "is_envelope_matched": true
+  },
+  "reference_run_for_envelope": "run008_raw_delta_seed1",
+  "framing_note": "run008-run011 are PURE hidden-matching mechanism probes and are NOT these cells; run012 is a CE-only floor lacking A0's router_balance term and is not reused as A0. Historical runs are not relabelled.",
+  "locked_before_execution": true
+}

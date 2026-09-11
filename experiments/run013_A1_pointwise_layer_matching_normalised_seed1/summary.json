@@ -1,0 +1,298 @@
+{
+  "experiment": "run013_A1_pointwise_layer_matching_normalised_seed1",
+  "level": "",
+  "git_commit": "e3c525c7d01a3f0f8a86115c3a9a6797103f2100",
+  "device": "cuda",
+  "requested_precision": "bf16",
+  "effective_precision": "bf16",
+  "precision_note": null,
+  "objective": "composite",
+  "parameters": null,
+  "parameter_counts": {
+    "total_parameters": 13031508864,
+    "trainable_parameters": 23003136,
+    "trainable_fraction": 0.0017651935965409939,
+    "frozen_parameters": 13008505728
+  },
+  "strategy": "qlora",
+  "optimizer": "adamw",
+  "steps": 128,
+  "runtime_s": 536.1,
+  "tokens_seen": 196608,
+  "tokens_per_second": 366.7,
+  "throughput": {
+    "total_tokens": 196608,
+    "elapsed_s": 536.1,
+    "tokens_per_second": 366.7,
+    "session_tokens": 196608,
+    "session_elapsed_s": 536.1,
+    "session_tokens_per_second": 366.7,
+    "resumed_tokens": 0,
+    "resumed_seconds": 0.0,
+    "n_sessions_note": "elapsed_s and tokens_per_second span every session this experiment ran across; session_* cover only the process that wrote this record"
+  },
+  "first_loss": 10.558192006365667,
+  "final_loss": 3.754942910183066,
+  "best_validation_loss": 4.853283231908625,
+  "first_validation_loss": 6.485097386620262,
+  "final_validation_loss": 4.853283231908625,
+  "corpus": {
+    "source": "/workspace/corpora/gutenberg/train.txt tokenised by Qwen2Tokenizer at /workspace/models/qwen3.8-27b-dbdc473",
+    "n_bytes": 5519078,
+    "n_sequences": 455,
+    "sequence_length": 1536,
+    "sha256": "e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d",
+    "n_train": 433,
+    "n_validation": 22,
+    "n_tokens": 700000,
+    "n_documents": 17017,
+    "n_tokens_dropped": 1120,
+    "document_separator": "blank_line",
+    "packing_version": "1.0",
+    "eos_token_id": 248046,
+    "tokenizer": {
+      "source": "/workspace/models/qwen3.8-27b-dbdc473",
+      "tokenizer_class": "Qwen2Tokenizer",
+      "vocab_size": 248077,
+      "eos_token": "<|im_end|>",
+      "eos_token_id": 248046,
+      "file_sha256": {
+        "tokenizer.json": "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3",
+        "tokenizer_config.json": "b11349aafa7cdc6a320767cf7ceb29ed82f7eda5d65e8e0819e76f0ce947bf27",
+        "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+        "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+      },
+      "teacher_model": "Qwen/Qwen3.8-27B",
+      "teacher_revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+      "is_pinned": true
+    },
+    "tokens_per_byte": 0.1268
+  },
+  "distillation": {
+    "objective": "composite",
+    "kd_alpha": 0.5,
+    "kd_temperature": 2.0,
+    "kd_tail": "bucket",
+    "kd_top_k": 64,
+    "teacher": {
+      "source": "online",
+      "top_k": 64,
+      "temperature": 2.0,
+      "teacher_model": "Qwen/Qwen3.8-27B",
+      "teacher_revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+      "hidden_states": true
+    },
+    "n_logged_steps": 128,
+    "kd_loss": {
+      "first": 8.722653,
+      "final": 2.803992,
+      "mean": 3.251605
+    },
+    "ce_loss": {
+      "first": 11.060639,
+      "final": 4.970865,
+      "mean": 6.026772
+    },
+    "top1_agreement": {
+      "first": 0.001303,
+      "final": 0.274267,
+      "mean": 0.232863
+    },
+    "teacher_entropy": {
+      "first": 1.323865,
+      "final": 1.248222,
+      "mean": 1.329934
+    },
+    "teacher_tail_mass": {
+      "first": 0.671811,
+      "final": 0.662717,
+      "mean": 0.667729
+    }
+  },
+  "outcome": "completed",
+  "oom": null,
+  "persistence": {
+    "enabled": false,
+    "destination": null,
+    "persisted": [],
+    "failed": [],
+    "all_checkpoints_persisted": false
+  },
+  "memory": {
+    "cuda_available": true,
+    "device_name": "NVIDIA L40S",
+    "total_vram_gib": 44.39215087890625,
+    "snapshots": [
+      {
+        "stage": "baseline",
+        "allocated_gib": 19.30807113647461,
+        "reserved_gib": 42.396484375,
+        "max_allocated_gib": 19.30807113647461,
+        "max_reserved_gib": 42.396484375
+      },
+      {
+        "stage": "after_model_creation",
+        "allocated_gib": 32.57499027252197,
+        "reserved_gib": 42.396484375,
+        "max_allocated_gib": 32.61253643035889,
+        "max_reserved_gib": 42.396484375
+      },
+      {
+        "stage": "after_model_to_device",
+        "allocated_gib": 32.57499027252197,
+        "reserved_gib": 42.396484375,
+        "max_allocated_gib": 32.61253643035889,
+        "max_reserved_gib": 42.396484375
+      },
+      {
+        "stage": "after_optimizer_creation",
+        "allocated_gib": 32.57499027252197,
+        "reserved_gib": 42.396484375,
+        "max_allocated_gib": 32.61253643035889,
+        "max_reserved_gib": 42.396484375
+      },
+      {
+        "stage": "after_input_allocation",
+        "allocated_gib": 32.57500171661377,
+        "reserved_gib": 42.396484375,
+        "max_allocated_gib": 32.61253643035889,
+        "max_reserved_gib": 42.396484375
+      },
+      {
+        "stage": "after_forward",
+        "allocated_gib": 35.03195381164551,
+        "reserved_gib": 42.396484375,
+        "max_allocated_gib": 37.331928730010986,
+        "max_reserved_gib": 42.396484375
+      },
+      {
+        "stage": "after_loss",
+        "allocated_gib": 37.58152151107788,
+        "reserved_gib": 42.396484375,
+        "max_allocated_gib": 39.04434394836426,
+        "max_reserved_gib": 42.396484375
+      },
+      {
+        "stage": "after_backward",
+        "allocated_gib": 34.808528900146484,
+        "reserved_gib": 41.744140625,
+        "max_allocated_gib": 41.129976749420166,
+        "max_reserved_gib": 43.802734375
+      },
+      {
+        "stage": "after_optimizer_step",
+        "allocated_gib": 34.979915618896484,
+        "reserved_gib": 41.90234375,
+        "max_allocated_gib": 41.129976749420166,
+        "max_reserved_gib": 43.802734375
+      },
+      {
+        "stage": "peak_training",
+        "allocated_gib": 34.979915618896484,
+        "reserved_gib": 41.857421875,
+        "max_allocated_gib": 41.301363468170166,
+        "max_reserved_gib": 43.869140625
+      }
+    ],
+    "components": {
+      "cuda_context_and_baseline_gib": 19.30807113647461,
+      "weights_gib": 13.266919136047363,
+      "input_batch_gib": 1.1444091796875e-05,
+      "activations_gib": 2.4569520950317383,
+      "loss_path_gib": 2.549567699432373,
+      "gradients_net_of_freed_activations_gib": -2.7729926109313965,
+      "optimizer_state_gib": 0.17138671875,
+      "peak_allocated_gib": 41.301363468170166,
+      "peak_reserved_gib": 43.869140625,
+      "allocator_reserve_overhead_gib": 2.567777156829834
+    },
+    "peak_allocated_gib": 41.301363468170166,
+    "peak_reserved_gib": 43.869140625,
+    "notes": []
+  },
+  "analytical_estimate": null,
+  "estimate_vs_measured": {
+    "available": false
+  },
+  "config": {
+    "name": "run013_A1_pointwise_layer_matching_normalised_seed1",
+    "description": "real teacher-in-the-loop layer_kd against the frozen canonical student",
+    "level": "",
+    "objective": {
+      "signal_source": "online"
+    },
+    "teacher": {
+      "model": "Qwen/Qwen3.8-27B",
+      "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2"
+    },
+    "model": {
+      "spec_path": null,
+      "pretrained": "/workspace/runs/pilot001/transferred",
+      "architecture": {},
+      "trust_remote_code": false
+    },
+    "data": {
+      "train_path": null,
+      "validation_path": null,
+      "synthetic": false,
+      "synthetic_examples": 256,
+      "text_corpus": false,
+      "text_path": "/workspace/corpora/gutenberg/train.txt",
+      "procedural_bytes": 2000000,
+      "validation_fraction": 0.05,
+      "max_corpus_bytes": null,
+      "max_sequence_length": 1536,
+      "streaming": false,
+      "shuffle_seed": 0,
+      "tokenized_text": true,
+      "tokenizer_path": "/workspace/models/qwen3.8-27b-dbdc473",
+      "expected_vocab_size": 248320,
+      "document_separator": "blank_line",
+      "max_documents": null,
+      "max_tokens": 700000
+    },
+    "training": {
+      "strategy": "qlora",
+      "optimizer": "adamw",
+      "precision": "bf16",
+      "objective": "composite",
+      "learning_rate": 0.0002,
+      "weight_decay": 0.0,
+      "warmup_steps": 10,
+      "max_steps": 128,
+      "scheduler": "cosine",
+      "batch_size": 1,
+      "gradient_accumulation_steps": 1,
+      "gradient_checkpointing": true,
+      "lora_rank": 16,
+      "lora_alpha": 32,
+      "lora_dropout": 0.05,
+      "kd_weight": 0.5,
+      "kd_temperature": 2.0,
+      "kd_tail": "bucket",
+      "kd_top_k": 64,
+      "layer_kd_direction_weight": 1.0,
+      "layer_kd_normalise": true,
+      "layer_kd_map_strategy": "group",
+      "layer_kd_chunk_pairs": 4,
+      "composite_weights": {
+        "ce": 0.1,
+        "logit_kd": 1.0,
+        "router_balance": 1.0,
+        "hidden_pointwise": 0.5
+      },
+      "seed": 1,
+      "eval_every": 32,
+      "save_every": 64,
+      "log_every": 1,
+      "progress_every": null,
+      "persistent_backup": null
+    },
+    "runtime": {
+      "output_dir": "/workspace/runs/run013_A1_pointwise_layer_matching_normalised_seed1",
+      "device": "auto",
+      "resume_from": null,
+      "reserved_vram_gib": 1.0
+    }
+  }
+}

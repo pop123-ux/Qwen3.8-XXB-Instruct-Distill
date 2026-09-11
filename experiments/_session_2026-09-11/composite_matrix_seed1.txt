@@ -1,0 +1,34 @@
+======================================================================================================================
+PREREGISTERED COMPOSITE MATRIX - seed 1, 128 steps, packed corpus e11ca38bb099fc89...
+======================================================================================================================
+arm terms                        final_val  best_val       CE  logitKD    top1   hidden     aux   objtot   tok/s  peakGiB
+----------------------------------------------------------------------------------------------------------------------
+A0  CE only                         4.3495    4.3495   4.4095   3.9687  0.2645        -  2.0008   4.4115   405.7    39.48
+A2  CE + logit KD                   4.8960    4.8960   4.9827   2.8251  0.2723        -  2.0017   3.3253   386.1    41.54
+A1  + pointwise hidden (norm)       4.8533    4.8533   4.9709   2.8040  0.2743   0.9037  2.0019   3.7549   366.7    41.30
+A3  + residual-transition (raw)     4.9365    4.9263   5.0137   2.8208  0.2743   1.1847  2.0013   3.9165   376.7    41.32
+
+DECISIVE CONTRASTS (final validation loss; lower is better)
+----------------------------------------------------------------------------------------------------------------------
+  A2 vs A0: +0.5464 (+12.56%)  d_top1 +0.0078   value of ordinary output/logit KD
+  A1 vs A2: -0.0427 (-0.87%)  d_top1 +0.0020   marginal value of pointwise hidden supervision
+  A3 vs A2: +0.0405 (+0.83%)  d_top1 +0.0020   marginal value of raw residual-transition supervision
+  A3 vs A1: +0.0832 (+1.71%)  d_top1 +0.0000   residual-transition vs pointwise in a realistic recipe
+
+VALIDATION TRAJECTORY
+----------------------------------------------------------------------------------------------------------------------
+  step          A0          A2          A1          A3
+    32      5.9184      6.7116      6.4851      6.9278
+    64      4.6624      5.2615      5.1866      5.3238
+    96      4.4006      4.9178      4.8695      4.9263
+   128      4.3495      4.8960      4.8533      4.9365
+
+INTEGRITY
+----------------------------------------------------------------------------------------------------------------------
+  [OK ] A0 coeff={'ce': 1.0, 'router_balance': 1.0} hidden=None norm=False peak_res=41.70
+  [OK ] A2 coeff={'ce': 0.1, 'logit_kd': 1.0, 'router_balance': 1.0} hidden=None norm=False peak_res=43.86
+  [OK ] A1 coeff={'ce': 0.1, 'hidden_pointwise': 0.5, 'logit_kd': 1.0, 'router_balance': 1.0} hidden=hidden_pointwise norm=True peak_res=43.87
+  [OK ] A3 coeff={'ce': 0.1, 'hidden_delta': 0.5, 'logit_kd': 1.0, 'router_balance': 1.0} hidden=hidden_delta norm=False peak_res=43.86
+======================================================================================================================
+NOTE: component columns (CE, logitKD, hidden, aux) are UNWEIGHTED magnitudes.
+      Only 'objtot' is the weighted objective actually optimised.
