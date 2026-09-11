@@ -24,7 +24,7 @@ from .tokenized_data import DOCUMENT_SEPARATORS
 STRATEGIES = ("full", "lora", "qlora")
 OPTIMIZERS = ("adamw", "adamw_8bit", "adafactor", "sgd")
 PRECISIONS = ("bf16", "fp16", "fp32")
-OBJECTIVES = ("sft", "logit_kd", "mixed_kd", "layer_kd")
+OBJECTIVES = ("sft", "logit_kd", "mixed_kd", "layer_kd", "composite")
 
 
 @dataclass
@@ -179,6 +179,12 @@ class TrainingConfig:
     #: ~4 GiB, which is what put Run 003's first calibration over its gate. ``null`` keeps
     #: every pair live at once, which is the reference path, not a faster one.
     layer_kd_chunk_pairs: int | None = 4
+    #: Weights for the preregistered composite objective (research.ablations arms A0-A4).
+    #: Only read when ``objective == "composite"``. The keys are the term names in
+    #: distillation.behavioral.LOSS_TERMS; a term absent or zero is off. This is the only
+    #: way to run the preregistered cells, whose losses are composite -- ``layer_kd`` is a
+    #: PURE hidden-matching probe and is not any of them.
+    composite_weights: dict[str, float] = field(default_factory=dict)
 
     seed: int = 0
     eval_every: int = 50
@@ -317,6 +323,24 @@ class ExperimentConfig:
                 "a text corpus carries no stored teacher logits; either set "
                 "objective.signal_source='online' or use a teacher-generated dataset"
             )
+        if self.training.objective == "composite":
+            # Delegated to the same CompositeLossConfig the ablation matrix uses, so a
+            # trainer config and an Arm cannot disagree about what a cell means.
+            from ..distillation.behavioral import CompositeLossConfig, HIDDEN_DELTA, HIDDEN_POINTWISE
+            weights = self.training.composite_weights
+            if not weights:
+                errors.append(
+                    "objective 'composite' needs training.composite_weights; the "
+                    "preregistered cells are defined in research.ablations.ARMS"
+                )
+            else:
+                both = HIDDEN_POINTWISE in weights and HIDDEN_DELTA in weights
+                try:
+                    CompositeLossConfig(
+                        weights=dict(weights), allow_combined_hidden=both
+                    ).validate()
+                except Exception as exc:  # ValueError / ObjectiveUnavailable
+                    errors.append(f"composite_weights rejected: {exc}")
         if self.training.objective == "layer_kd":
             if self.training.layer_kd_direction_weight < 0:
                 errors.append("layer_kd_direction_weight must not be negative: a negative "

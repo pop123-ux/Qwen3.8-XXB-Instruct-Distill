@@ -30,7 +30,15 @@ from pathlib import Path
 from typing import Any
 
 from ..architecture.spec import HybridArchSpec
-from ..distillation.behavioral import behavioral_loss, behavioral_loss_chunked
+from ..distillation.behavioral import (
+    CE,
+    HIDDEN_DELTA,
+    HIDDEN_POINTWISE,
+    LOGIT_KD,
+    ROUTER_BALANCE,
+    behavioral_loss,
+    behavioral_loss_chunked,
+)
 from ..distillation.kd_loss import distillation_loss
 from .checkpoints import (
     CheckpointMetadata,
@@ -225,7 +233,8 @@ def build_model(config: ExperimentConfig, spec: HybridArchSpec | None):
 
 def _require_supported(config: ExperimentConfig, teacher: Any = None) -> None:
     """Fail clearly on paths this trainer does not yet implement."""
-    if config.training.objective not in ("sft", "logit_kd", "mixed_kd", "layer_kd"):
+    if config.training.objective not in ("sft", "logit_kd", "mixed_kd", "layer_kd",
+                                        "composite"):
         raise NotImplementedError(
             f"objective {config.training.objective!r} is defined in the config schema but "
             "not yet implemented in the trainer."
@@ -293,6 +302,117 @@ def resolve_precision(precision: str, device: str) -> tuple[str, str | None]:
     return precision, None
 
 
+
+def _composite_step(
+    *, outputs, batch, teacher_signal, config, weights, hidden_term, hidden_mode,
+    layer_map, layer_chunk_pairs, kd_temperature, kd_tail, scaler, records, model,
+):
+    """Assemble one micro-batch of the preregistered composite objective.
+
+    The cells are defined in :mod:`qwen_distill.research.ablations`; this only evaluates
+    the weights it is given. Every enabled term contributes a gradient:
+
+    * ``hidden_pointwise`` / ``hidden_delta`` keep the chunked memory strategy. Their
+      weight is folded into ``loss_scale`` alongside ``1/accum``, so it is applied exactly
+      once and never multiplied onto an already-backwarded scalar.
+    * ``logit_kd`` and ``ce`` come from one :func:`distillation_loss` call **with** a
+      graph, using its separately reported ``kd`` and ``cross_entropy`` tensors. The same
+      shift and ignore-index masking every previous run used therefore applies unchanged.
+      ``alpha`` is irrelevant here because the blended ``total`` is not used.
+    * ``router_balance`` is the architecture's own load-balancing auxiliary at its own
+      ``router_aux_loss_coef``. The model only folds that into ``outputs.loss`` when
+      ``labels`` is passed, and this path never passes ``labels``, so adding it here
+      cannot double count.
+
+    Returns ``(step_objective, loss, layer_backward, layer_map)`` where ``step_objective``
+    is the float total weighted objective for logging and ``loss`` is the graph tensor
+    holding every term whose gradient is not already held by ``layer_backward``.
+    """
+    import torch
+
+    accum = config.training.gradient_accumulation_steps
+    layer_backward = None
+    layer_output = None
+
+    if hidden_term is not None:
+        if teacher_signal.hidden_states is None:
+            raise ValueError(
+                f"composite weight on {hidden_term} needs the teacher's hidden states, "
+                "but the signal provider returned none"
+            )
+        if layer_map is None:
+            layer_map = _layer_mapping(
+                len(outputs.hidden_states) - 1,
+                len(teacher_signal.hidden_states) - 1,
+                config.training.layer_kd_map_strategy,
+            )
+            print(f"  layer map: {len(layer_map.mapping)} pairs, "
+                  f"{len(layer_map.removed_teacher_layers)} teacher layers unsupervised")
+        # The weight rides in loss_scale so it is applied once, at the point the chunk's
+        # gradient is taken. Multiplying layer_output.total afterwards would not affect
+        # the gradient at all -- that scalar is already detached.
+        layer_backward = behavioral_loss_chunked(
+            outputs.hidden_states, teacher_signal.hidden_states, layer_map.mapping,
+            mode=hidden_mode,
+            direction_weight=config.training.layer_kd_direction_weight,
+            normalise=config.training.layer_kd_normalise,
+            chunk_pairs=layer_chunk_pairs or 4,
+            loss_scale=weights[hidden_term] / accum,
+            backward=lambda t: scaler.scale(t).backward(),
+        )
+        layer_output = layer_backward.output
+        # ~1 GiB of teacher tuple that nothing needs now.
+        teacher_signal.hidden_states = None
+
+    kd_output = distillation_loss(
+        outputs.logits, batch, teacher_signal,
+        alpha=1.0, temperature=kd_temperature, tail=kd_tail,
+    )
+
+    terms = []
+    if weights.get(LOGIT_KD):
+        terms.append(weights[LOGIT_KD] * kd_output.kd)
+    if weights.get(CE):
+        terms.append(weights[CE] * kd_output.cross_entropy)
+    router_aux = None
+    if weights.get(ROUTER_BALANCE):
+        aux = getattr(outputs, "aux_loss", None)
+        if aux is None:
+            raise ValueError(
+                "composite weight on router_balance, but the model returned no aux_loss; "
+                "output_router_logits was not honoured"
+            )
+        coefficient = float(getattr(model.config, "router_aux_loss_coef", 0.0))
+        if coefficient <= 0.0:
+            raise ValueError(
+                "router_balance is weighted but router_aux_loss_coef is not positive; the "
+                "term would contribute nothing"
+            )
+        router_aux = aux
+        terms.append(weights[ROUTER_BALANCE] * coefficient * aux)
+    if not terms:
+        raise ValueError("composite step produced no graph term; check composite_weights")
+
+    graph_total = terms[0]
+    for extra in terms[1:]:
+        graph_total = graph_total + extra
+    loss = graph_total / accum
+
+    weighted_hidden = (weights[hidden_term] * float(layer_output.total)
+                       if layer_output is not None else 0.0)
+    step_objective = (weighted_hidden + float(graph_total.detach())) / accum
+
+    record = dict(kd_output.to_log())
+    if layer_output is not None:
+        record.update(_layer_log(layer_output))
+        record["hidden_weighted"] = weighted_hidden
+    if router_aux is not None:
+        record["router_aux"] = float(router_aux.detach())
+    record["objective_total"] = step_objective * accum
+    records.append(record)
+    return step_objective, loss, layer_backward, layer_map
+
+
 def train(
     config: ExperimentConfig, spec: HybridArchSpec | None, *, teacher: Any = None
 ) -> int:
@@ -319,11 +439,33 @@ def train(
     kd_temperature = config.training.kd_temperature
     kd_tail = config.training.kd_tail
     layer_kd = config.training.objective == "layer_kd"
+    composite = config.training.objective == "composite"
+    #: The preregistered composite cells (research.ablations.ARMS A0-A4) are the only
+    #: configurations whose loss carries CE, logit KD, a hidden term and the router
+    #: auxiliary together. ``layer_kd`` is a PURE hidden-matching probe: there CE and the
+    #: KD divergence are computed under no_grad as diagnostics and contribute no gradient.
+    composite_weights: dict[str, float] = {}
+    composite_hidden_term = None
+    composite_hidden_mode = None
+    if composite:
+        composite_weights = {k: float(v)
+                             for k, v in config.training.composite_weights.items()
+                             if float(v) > 0.0}
+        if HIDDEN_POINTWISE in composite_weights and HIDDEN_DELTA in composite_weights:
+            raise NotImplementedError(
+                "arm A4 enables both hidden terms; this trainer path runs one hidden term "
+                "per step. Run A1 and A3 separately, or extend the loss assembly."
+            )
+        if HIDDEN_DELTA in composite_weights:
+            composite_hidden_term, composite_hidden_mode = HIDDEN_DELTA, "delta"
+        elif HIDDEN_POINTWISE in composite_weights:
+            composite_hidden_term, composite_hidden_mode = HIDDEN_POINTWISE, "pointwise"
     #: How many mapped pairs' loss terms are built before their gradient is taken. ``None``
     #: holds every pair live to one backward — the reference path, and the one whose peak
     #: memory scales with the pair count. The objective is the same either way; see
     #: behavioral.behavioral_loss_chunked.
-    layer_chunk_pairs = config.training.layer_kd_chunk_pairs if layer_kd else None
+    layer_chunk_pairs = (config.training.layer_kd_chunk_pairs
+                         if (layer_kd or composite_hidden_term is not None) else None)
     # Pure objectives report alpha 1.0: logit_kd optimises the KD divergence alone, and
     # layer_kd optimises the layer term alone with the divergence kept as a diagnostic.
     kd_alpha = 1.0 if config.training.objective in ("logit_kd", "layer_kd") \
@@ -344,6 +486,17 @@ def train(
         describe = getattr(teacher, "describe", None)
         print(f"  objective: {config.training.objective}  alpha {kd_alpha}  "
               f"T {kd_temperature}  tail {kd_tail}")
+        if composite:
+            print(f"  composite: weights {dict(sorted(composite_weights.items()))}")
+            print(f"  composite: hidden term {composite_hidden_term or 'none'}"
+                  f" (mode {composite_hidden_mode or 'n/a'})")
+            if composite_hidden_term is not None and not getattr(
+                    teacher, "capture_hidden_states", False):
+                raise ValueError(
+                    f"composite weight on {composite_hidden_term} needs the teacher's "
+                    "hidden states, but the signal provider was built without "
+                    "capture_hidden_states=True."
+                )
         if layer_kd:
             print(f"  layer KD : pointwise hidden-state matching, map "
                   f"'{config.training.layer_kd_map_strategy}', direction weight "
@@ -721,11 +874,29 @@ def train(
                         # for its SIGTERM handler, and shadowing it makes every path fail.
                         teacher_signal = teacher.signal_for(batch)
                         phase[0] = "forward pass"
-                        outputs = model(input_ids=batch, output_hidden_states=layer_kd)
+                        forward_kwargs = {
+                            "output_hidden_states": (
+                                layer_kd or composite_hidden_term is not None),
+                        }
+                        if composite and ROUTER_BALANCE in composite_weights:
+                            # Only where a term requires it: the flag makes the MoE blocks
+                            # return every layer's router logits, which is not free.
+                            forward_kwargs["output_router_logits"] = True
+                        outputs = model(input_ids=batch, **forward_kwargs)
                         if first_step:
                             take(profile, "after_forward")
                         phase[0] = "distillation loss"
-                        if layer_kd:
+                        if composite:
+                            step_objective, loss, layer_backward, layer_map = _composite_step(
+                                outputs=outputs, batch=batch, teacher_signal=teacher_signal,
+                                config=config, weights=composite_weights,
+                                hidden_term=composite_hidden_term,
+                                hidden_mode=composite_hidden_mode,
+                                layer_map=layer_map, layer_chunk_pairs=layer_chunk_pairs,
+                                kd_temperature=kd_temperature, kd_tail=kd_tail,
+                                scaler=scaler, records=kd_records, model=model,
+                            )
+                        elif layer_kd:
                             if teacher_signal.hidden_states is None:
                                 raise ValueError(
                                     "the teacher returned no hidden states, so layer_kd "
@@ -799,14 +970,36 @@ def train(
                     # own stage rather than being folded into the forward pass.
                     take(profile, "after_loss")
                 phase[0] = "backward pass"
-                if layer_backward is not None:
-                    # The loss gradient already exists; this propagates it into the student
-                    # in one traversal. `loss` is a float here, not a graph tensor.
+                if layer_backward is not None and torch.is_tensor(loss):
+                    # Composite with a hidden term. The hidden term's gradient is already
+                    # held against the student's hidden states (scaled by its weight and
+                    # 1/accum inside behavioral_loss_chunked); `loss` carries the remaining
+                    # weighted terms and still has a graph. Seeding both into ONE
+                    # torch.autograd.backward traverses the student once and accumulates
+                    # the two contributions additively, which is exactly what a single
+                    # combined loss would have done -- and avoids both a double backward
+                    # and retain_graph.
+                    scaled = scaler.scale(loss)
+                    live = [(t, g) for t, g in
+                            zip(layer_backward.sources, layer_backward.grads)
+                            if t.requires_grad]
+                    torch.autograd.backward(
+                        [t for t, _ in live] + [scaled],
+                        [g for _, g in live] + [torch.ones_like(scaled)],
+                    )
+                    accumulated += float(step_objective)
+                    layer_backward = None
+                elif layer_backward is not None:
+                    # Pure layer_kd. The loss gradient already exists; this propagates it
+                    # into the student in one traversal. `loss` is a float here.
                     layer_backward.backward()
                     accumulated += float(loss)
                     # Releases the held per-layer gradient tensors before the next
                     # micro-batch's forward allocates.
                     layer_backward = None
+                elif composite:
+                    scaler.scale(loss).backward()
+                    accumulated += float(step_objective)
                 else:
                     scaler.scale(loss).backward()
                     accumulated += float(loss.item())
@@ -853,6 +1046,17 @@ def train(
                     if layer_kd:
                         keys += ("layer_kd_loss", "layer_magnitude", "layer_direction",
                                  "layer_norm_ratio", "layer_pairs")
+                    if composite:
+                        # The weighted total is the objective actually optimised; the
+                        # component magnitudes below it are unweighted and must not be
+                        # read as if they were.
+                        keys += ("objective_total",)
+                        if composite_hidden_term is not None:
+                            keys += ("layer_kd_loss", "layer_magnitude",
+                                     "layer_direction", "layer_norm_ratio",
+                                     "layer_pairs", "hidden_weighted")
+                        if ROUTER_BALANCE in composite_weights:
+                            keys += ("router_aux",)
                     record.update({
                         key: round(sum(r[key] for r in kd_records) / len(kd_records), 6)
                         for key in keys if all(r.get(key) is not None for r in kd_records)
@@ -864,6 +1068,12 @@ def train(
                         extra += (f"  layer {record['layer_kd_loss']:.4f}"
                                   f"  (mag {record['layer_magnitude']:.4f}"
                                   f"  dir {record['layer_direction']:.4f})")
+                    if composite:
+                        extra += f"  obj {record['objective_total']:.4f}"
+                        if "layer_kd_loss" in record:
+                            extra += f"  hid {record['layer_kd_loss']:.4f}"
+                        if "router_aux" in record:
+                            extra += f"  aux {record['router_aux']:.4f}"
                     extra += (f"  kd {record['kd_loss']:.3f}  ce {record['ce_loss']:.3f}"
                               f"  agree {record['top1_agreement']:.2f}"
                               f"  tail {record['teacher_tail_mass']:.3f}")
