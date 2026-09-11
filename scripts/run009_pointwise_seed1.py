@@ -7,6 +7,7 @@ can be judged against a same-seed control rather than only the historical seed-0
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -55,7 +56,11 @@ def command() -> list[str]:
 
 
 def main() -> int:
-    if (OUTPUT / "summary.json").exists():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dry-run", action="store_true", help="validate config without loading weights")
+    args = parser.parse_args()
+
+    if not args.dry_run and (OUTPUT / "summary.json").exists():
         raise SystemExit(f"Refusing to overwrite completed evidence: {OUTPUT / 'summary.json'}")
     OUTPUT.mkdir(parents=True, exist_ok=True)
     cmd = command()
@@ -68,12 +73,13 @@ def main() -> int:
         "normalise": True,
         "seed": SEED,
         "teacher_revision": REVISION,
+        "dry_run": args.dry_run,
         "command": cmd,
     }
     (OUTPUT / "arm_manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )
-    return kd_main(cmd)
+    return kd_main(cmd + (["--dry-run"] if args.dry_run else []))
 
 
 if __name__ == "__main__":
