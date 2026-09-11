@@ -1,0 +1,60 @@
+{
+  "experiment": "run012_ce_only_seed1",
+  "purpose": "no-teacher CE-only floor: does teacher supervision buy anything over ordinary training?",
+  "reference_run": "run008_raw_delta_seed1",
+  "only_intended_scientific_change": "objective: layer_kd (raw residual-transition KD) -> sft (CE only)",
+  "config_construction": "kd_run.build_config() applied to run008.command(); objective overridden to 'sft'",
+  "config_match_proof": {
+    "matched_from_run008_argv": {
+      "objective": "layer_kd",
+      "text_path": "/workspace/corpora/gutenberg/train.txt",
+      "tokenizer_path": "/workspace/models/qwen3.8-27b-dbdc473",
+      "max_tokens": 700000,
+      "max_sequence_length": 1536,
+      "max_steps": 128,
+      "batch_size": 1,
+      "gradient_accumulation_steps": 1,
+      "learning_rate": 0.0002,
+      "optimizer": "adamw",
+      "strategy": "qlora",
+      "lora_rank": 16,
+      "lora_alpha": 32,
+      "precision": "bf16",
+      "gradient_checkpointing": true,
+      "seed": 1,
+      "eval_every": 32,
+      "save_every": 64,
+      "log_every": 1,
+      "pretrained": "/workspace/runs/pilot001/transferred"
+    },
+    "changed": {
+      "objective": [
+        "layer_kd",
+        "sft"
+      ]
+    },
+    "is_single_scientific_change": true
+  },
+  "teacher_used": false,
+  "teacher_forward_passes": 0,
+  "loss": "HF causal-LM cross-entropy via model(input_ids=batch, labels=batch).loss",
+  "enforced_by": "trainer._require_supported raises if objective=='sft' and a teacher provider is passed; train() is called with teacher=None",
+  "recorded_implementation_differences": [
+    "no 4-bit teacher resident -> peak VRAM necessarily much lower (inherent to the control)",
+    "kd_weight/kd_temperature/kd_top_k/layer_kd_* carried for provenance but inert under sft",
+    "config.teacher metadata retained only to record which tokenizer produced the packed stream"
+  ],
+  "seed": 1,
+  "locked_before_execution": true,
+  "preregistered_interpretation": {
+    "if_ce_only_much_worse_than_all_kd_arms": "teacher supervision is buying real signal",
+    "if_ce_only_comparable_to_kd_arms": "teacher supervision is NOT buying much at this budget; the whole KD comparison loses significance and must be reported as such",
+    "if_ce_only_better": "report as-is; do not rescue the KD arms",
+    "reference_points_seed1_same_environment": {
+      "run009_pointwise": 8.73926,
+      "run008_raw_delta": 7.41131,
+      "run010_adjacent_raw_delta": 7.19814
+    }
+  },
+  "dry_run": false
+}

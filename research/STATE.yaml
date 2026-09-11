@@ -425,6 +425,51 @@ completed_experiments:
     artifact_paths:
       run_dir: /workspace/runs/run011_normalized_delta_seed1
       archived: experiments/run011_normalized_delta_seed1/
+  run012_ce_only_seed1:
+    label: Run012 - CE-only no-teacher baseline, seed 1
+    status: completed
+    integrity: PASS
+    immutable: true
+    steps: 128
+    purpose: 'no-teacher floor: does teacher supervision buy anything over ordinary training?'
+    reference_run: run008_raw_delta_seed1
+    only_intended_scientific_change: 'objective: layer_kd (raw residual-transition KD) -> sft (CE only)'
+    config_construction: kd_run.build_config() applied to run008.command(); ONLY training.objective overridden.
+      All 20 other fields verified identical (text_path, tokenizer_path, max_tokens, max_sequence_length,
+      max_steps, batch_size, grad_accum, lr, optimizer, strategy, lora_rank, lora_alpha, precision, gradient_checkpointing,
+      seed, eval/save/log_every, pretrained).
+    genuinely_teacher_free:
+      teacher_arg: None
+      teacher_forward_passes: 0
+      loss: HF causal-LM cross-entropy via model(input_ids=batch, labels=batch).loss
+      enforced_by: trainer._require_supported raises if objective==sft and a teacher provider is passed
+      empirical_confirmation: zero "loading teacher" lines in the run log; only the student 831 tensors
+        loaded; peak allocated 22.01 GiB vs 38.95 GiB for every KD arm (the ~17 GiB difference is the
+        absent 4-bit teacher); no distillation block in summary.json
+      envelope_validation: step-1 loss 11.0606 matches the KD arms step-1 CE diagnostic 11.061
+    recorded_implementation_differences:
+    - no 4-bit teacher resident -> peak VRAM 22.01 GiB vs 38.95 GiB (inherent to a no-teacher control)
+    - higher throughput 520 tok/s vs ~380 tok/s (no teacher forward pass)
+    - kd_weight/kd_temperature/kd_top_k/layer_kd_* carried in config for provenance but inert under sft
+    - no teacher/student top-1 agreement or logit-KD diagnostics exist for this arm (no teacher)
+    results:
+      final_validation_loss: 4.31886
+      best_validation_loss: 4.31886
+      runtime_seconds: 378.08
+      tokens_per_second: 520.0
+      tokens_seen: 196608
+      peak_allocated_gib: 22.011
+      peak_reserved_gib: 23.053
+      observed_nvidia_smi_peak_gib: 23.569
+      validation_trajectory:
+        step_32: 5.763
+        step_64: 4.5844
+        step_96: 4.3733
+        step_128: 4.3189
+      packed_corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+    artifact_paths:
+      run_dir: /workspace/runs/run012_ce_only_seed1
+      archived: experiments/run012_ce_only_seed1/
 current_finding:
   statement: 'Across three transformation-matching formulations under one matched 128-step envelope: A
     (RMS-normalised delta) loses badly (+2.93 validation); B (normalised + explicit log-RMS magnitude
@@ -458,6 +503,11 @@ current_finding:
     of run008) moved final validation 7.411 -> 10.822 (+46.0%), erasing the advantage and falling below
     the pointwise control. MAGNITUDE HYPOTHESIS SUPPORTED: preserving representation-update magnitude
     is the operative factor. Not yet separated from loss-scale/effective-LR effects.'
+  ce_only_floor: 'CE-only no-teacher training reaches 4.3189 final validation vs 7.1981 for the best pure-KD
+    arm (+66.7%). All pure representation-matching arms are far below the no-teacher floor on held-out
+    CE. CAVEAT: validation loss is exactly the CE-only training objective and the KD arms never optimise
+    CE, so this bounds the claim rather than refuting teacher signal outright. The composite objective
+    is now the decisive experiment.'
 active_hypothesis:
   statement: Does the Arm C 128-step advantage over pointwise KD reproduce at a second seed?
   status: being_tested_by_run008
@@ -534,12 +584,12 @@ rq2:
   gate: G6
   execute_now: false
   note: Full definition captured in research/ROADMAP.yaml. Not executed; RQ1 still active.
-next_action: 'Next: run012 CE-only no-teacher floor (launcher built and config-match proven: kd_run.build_config
-  on run008 argv with objective sft, teacher=None, single scientific change). Then faithful FDD prediction-dynamics
-  comparator (must be built from the actual paper, not from memory; report ambiguity rather than a strawman).
-  Then preregistered composite CE + logit KD + raw residual-transition KD. Then matched 1024-step pointwise.
-  Then second topology. Also worth considering: a scale-matched control to separate magnitude information
-  from loss-scale effects, since that is the main alternative explanation still standing.'
+next_action: 'Priority reordered by evidence: the preregistered COMPOSITE (CE + logit KD + raw residual-transition
+  KD) is now the highest-value run, because every pure-KD arm sits below the CE-only floor and only the
+  composite is a realistic recipe. Then the faithful FDD prediction-dynamics comparator (must be built
+  from the actual paper; report ambiguity rather than a strawman). Then a scale-matched control to separate
+  magnitude information from loss-scale/effective-LR effects. Then matched 1024-step controls (including
+  a CE-only long-horizon control, which the 128-step result makes necessary). Then second topology.'
 seed1_matched_pair_result:
   pair: run008_raw_delta_seed1 (treatment) vs run009_pointwise_seed1 (control)
   why_this_pair_is_primary: Same seed, same machine, same unpinned package environment, same teacher/student/corpus/token-budget/optimiser.
@@ -652,4 +702,39 @@ normalization_ablation_result:
     / effective-learning-rate effects are not ruled out and would need a scale-matched control.
   - Top-1 teacher agreement still favours the pointwise control in every arm; validation/CE and agreement
     continue to disagree.
+  - Single teacher/student topology.
+ce_only_floor_result:
+  seed1_final_validation_all_arms:
+    run012_ce_only_no_teacher: 4.31886
+    run010_adjacent_delta_raw: 7.19814
+    run008_residual_delta_raw: 7.41131
+    run009_pointwise_normalized: 8.73926
+    run011_residual_delta_normalized: 10.82203
+  gap_vs_ce_only_floor:
+    run010_adjacent_delta_raw: 2.8793
+    run008_residual_delta_raw: 3.0924
+    run009_pointwise_normalized: 4.4204
+    run011_residual_delta_normalized: 6.5032
+  classification: ALL_PURE_KD_ARMS_BELOW_NO_TEACHER_FLOOR
+  headline: Every pure teacher-supervised arm is substantially WORSE on held-out validation loss than
+    simply training the same student on the same data with cross-entropy. The best KD arm (adjacent raw
+    residual-transition) is +2.879 (+66.7%) above the CE-only floor.
+  critical_caveat_do_not_omit: 'Validation loss IS held-out cross-entropy, which is exactly the CE-only
+    arm TRAINING objective. The KD arms as configured are PURE representation-matching: kd_run runs layer_kd
+    with loss weight 1.0 and computes CE only as a no-gradient diagnostic, so they never optimise CE at
+    all. This result therefore establishes that pure representation-matching WITHOUT any CE term is far
+    worse at language modelling than direct CE training. It does NOT establish that teacher signal is
+    worthless in a realistic KD recipe, and it must not be reported as such.'
+  what_it_does_establish:
+  - The intra-KD comparisons (raw vs normalized vs pointwise vs adjacent) remain internally valid, but
+    the entire family sits below a trivially available no-teacher baseline on this metric.
+  - 'Any claim of the form "raw residual-transition KD improves language modelling" is NOT supported at
+    this budget: it improves only relative to other pure-KD objectives.'
+  - The preregistered composite (CE + logit KD + raw residual-transition KD) is now the decisive remaining
+    experiment, because it is the only configuration tested that is a realistic recipe.
+  honest_limits:
+  - Single seed.
+  - 128 steps is a very short budget; CE-only may simply converge faster early while KD arms could catch
+    up at longer horizons. No long-horizon CE-only control exists.
+  - CE-only has no teacher-agreement metric, so the arms cannot be compared on imitation fidelity.
   - Single teacher/student topology.

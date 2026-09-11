@@ -1,0 +1,30 @@
+SEED-1 ALL ARMS — identical seed/machine/env/packed corpus e11ca38bb099fc89...
+arm                             final_val   tok/s  peakGiB  teacher
+CE-only (no teacher)               4.3189   520.0    22.01       NO
+adjacent-delta (raw)               7.1981   385.8    38.95      yes
+residual-delta (raw)               7.4113   376.5    38.95      yes
+pointwise (normalized)             8.7393   386.2    38.95      yes
+residual-delta (normalized)       10.8220   393.9    38.95      yes
+
+gap vs CE-only floor             d final_val       pct
+adjacent-delta (raw)                 +2.8793   +66.67%
+residual-delta (raw)                 +3.0924   +71.60%
+pointwise (normalized)               +4.4204  +102.35%
+residual-delta (normalized)          +6.5032  +150.58%
+
+VALIDATION TRAJECTORY
+  step  CE-only (no teach  pointwise (normal  residual-delta (n  residual-delta (r  adjacent-delta (r
+    32             5.7630            11.9175            11.8965             9.4548             9.2465
+    64             4.5844            10.2236            12.2411             8.1694             7.7575
+    96             4.3733             8.9362            11.3665             7.6094             7.3942
+   128             4.3189             8.7393            10.8220             7.4113             7.1981
+
+CRITICAL CAVEAT: validation loss IS held-out cross-entropy, which is exactly the
+CE-only arm's TRAINING objective. The KD arms are PURE representation-matching
+(loss_weight 1.0 on layer/behavioural KD; CE is a no-gradient diagnostic only), so
+they never optimise CE at all. This comparison therefore shows that pure
+representation-matching WITHOUT a CE term is far worse at language modelling than
+direct CE training -- it does NOT show that teacher signal is worthless in a
+realistic recipe. The preregistered composite (CE + logit KD + raw residual-
+transition KD) is the experiment that actually answers that, and it is now the
+highest-value remaining run.
