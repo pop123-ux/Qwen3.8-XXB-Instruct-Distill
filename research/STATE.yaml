@@ -343,6 +343,40 @@ completed_experiments:
     artifact_paths:
       run_dir: /workspace/runs/run009_pointwise_seed1
       archived: experiments/run009_pointwise_seed1/
+  run010_adjacent_delta_seed1:
+    label: Run010 - adjacent-vs-span abstraction ablation, seed 1
+    status: completed
+    integrity: PASS
+    immutable: true
+    steps: 128
+    purpose: 'preregistered RQ1 gate: span-vs-adjacent abstraction ablation'
+    reference_run: run008_raw_delta_seed1
+    only_intended_change_vs_run008: 'teacher target: complete assigned span h_t[b]-h_t[a] -> single adjacent
+      anchor layer h_t[m(l)+1]-h_t[m(l)]. Student term, raw/unnormalised treatment, seed, corpus, teacher,
+      student init and all hyperparameters identical.'
+    implementation: 'in-process monkeypatch of behavioral._pair_tensors; repository objective code unmodified.
+      Patch verified active: 6144 invocations = 128 steps x 48 pairs.'
+    results:
+      final_validation_loss: 7.19814
+      best_validation_loss: 7.19814
+      final_ce_loss: 7.589111
+      final_logit_kd_loss: 5.286001
+      final_teacher_student_top1_agreement: 0.126384
+      mean_teacher_student_top1_agreement: 0.107049
+      runtime_seconds: 509.57
+      tokens_per_second: 385.8
+      peak_allocated_gib: 38.947
+      peak_reserved_gib: 40.742
+      observed_nvidia_smi_peak_gib: 41.263
+      validation_trajectory:
+        step_32: 9.2465
+        step_64: 7.7575
+        step_96: 7.3942
+        step_128: 7.1981
+      packed_corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+    artifact_paths:
+      run_dir: /workspace/runs/run010_adjacent_delta_seed1
+      archived: experiments/run010_adjacent_delta_seed1/
 current_finding:
   statement: 'Across three transformation-matching formulations under one matched 128-step envelope: A
     (RMS-normalised delta) loses badly (+2.93 validation); B (normalised + explicit log-RMS magnitude
@@ -367,6 +401,11 @@ current_finding:
   seed1_replication: The raw-delta advantage on validation loss and CE REPLICATED at seed 1 against a
     same-seed, same-environment pointwise control (val -15.20%, CE -13.41%), as did the small top-1 agreement
     disadvantage. The seed-0 logit-KD advantage did not replicate.
+  span_abstraction: The span-aggregation abstraction is NOT supported as the mechanism. Structurally it
+    is active on only 4/48 supervised pairs, and empirically replacing spans with adjacent anchor layers
+    did not degrade results (7.198 vs 7.411 validation, adjacent nominally better). The raw-delta advantage
+    over pointwise should be attributed to retaining update-magnitude information, not to charging removed
+    teacher layers to student spans.
 active_hypothesis:
   statement: Does the Arm C 128-step advantage over pointwise KD reproduce at a second seed?
   status: being_tested_by_run008
@@ -443,10 +482,13 @@ rq2:
   gate: G6
   execute_now: false
   note: Full definition captured in research/ROADMAP.yaml. Not executed; RQ1 still active.
-next_action: 'Decisive second-seed requirement for raw-delta vs pointwise is now SATISFIED. Highest-value
-  remaining RQ1 blockers, in preregistered information order: (1) faithful FDD prediction-delta prior-art
-  comparator; (2) adjacent-vs-span abstraction ablation; (3) CE-only no-teacher floor; (4) composite CE+logit+behavioural
-  objective; (5) matched 1024-step pointwise control (~2h, only with a sufficient window).'
+next_action: 'Second-seed replication gate SATISFIED; span-vs-adjacent ablation COMPLETE (claim not supported).
+  Remaining RQ1 blockers: (1) CE-only no-teacher floor - kd_run.py requires --teacher and offers no sft
+  objective, so this needs scripts/train_student.py or a small launcher; (2) faithful FDD prediction-delta
+  prior-art comparator - NOT implemented anywhere in the repo, needs building; (3) composite CE+logit+behavioural
+  objective; (4) matched 1024-step pointwise control (~2h); (5) second teacher/student topology. Also:
+  consider whether the paper claim should be reframed around magnitude-preserving residual matching rather
+  than span abstraction.'
 seed1_matched_pair_result:
   pair: run008_raw_delta_seed1 (treatment) vs run009_pointwise_seed1 (control)
   why_this_pair_is_primary: Same seed, same machine, same unpinned package environment, same teacher/student/corpus/token-budget/optimiser.
@@ -493,3 +535,34 @@ seed1_matched_pair_result:
   - Still a single teacher/student topology.
   - No matched 1024-step pointwise control exists, so no claim of raw-delta superiority at long horizon
     is supported.
+span_vs_adjacent_ablation:
+  gate: 'preregistered RQ1 gate: span-vs-adjacent abstraction ablation'
+  arms_all_seed1_same_environment:
+    run009_pointwise: 8.73926
+    run008_span_delta: 7.41131
+    run010_adjacent_delta: 7.19814
+  ablation_delta_adjacent_minus_span: -0.21317
+  ablation_delta_pct: -2.88
+  structural_finding_zero_gpu:
+    span_width_histogram:
+      '1': 44
+      '5': 4
+    n_pairs_where_span_differs_from_adjacent: 4
+    n_pairs_total: 48
+    note: layer_spans tiles 64 teacher layers across 48 student layers as 44 width-1 spans plus 4 width-5
+      spans. The span abstraction is therefore active on only 8.3% of supervised pairs; for the other
+      91.7% the span target IS the adjacent target.
+    artifact: experiments/_session_2026-09-11/span_structure_analysis.json
+  classification: ABSTRACTION_CLAIM_NOT_SUPPORTED
+  interpretation: Replacing the full assigned teacher span with the single adjacent anchor layer did NOT
+    hurt; adjacent was nominally better by 0.213 validation (-2.88%). Combined with the structural fact
+    that only 4/48 pairs have span != adjacent, the evidence does not support span aggregation as the
+    mechanism behind the raw-delta advantage. The advantage is far more plausibly attributable to the
+    raw/unnormalised treatment, which preserves update-magnitude information (under RMS normalisation
+    MSE == 2*(1-cos) identically, making the normalised objective pure-direction).
+  honest_limits:
+  - Single seed for this ablation; -0.213 is small and no variance estimate exists, so the defensible
+    reading is that span and adjacent are INDISTINGUISHABLE at this budget, not that adjacent is genuinely
+    better.
+  - This is a negative/null result on the abstraction claim and is retained as evidence.
+  - It does not weaken the raw-delta vs pointwise result, which remains replicated at two seeds.

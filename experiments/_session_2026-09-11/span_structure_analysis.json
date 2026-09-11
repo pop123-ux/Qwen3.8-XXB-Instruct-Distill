@@ -1,0 +1,48 @@
+{
+  "span_width_histogram": {
+    "1": 44,
+    "5": 4
+  },
+  "total_teacher_layers_covered": 64,
+  "n_pairs_where_span_differs_from_adjacent": 4,
+  "n_pairs_total": 48,
+  "wide_spans": [
+    {
+      "student_layer": 7,
+      "span": [
+        7,
+        12
+      ],
+      "width": 5,
+      "anchor": 7
+    },
+    {
+      "student_layer": 19,
+      "span": [
+        23,
+        28
+      ],
+      "width": 5,
+      "anchor": 23
+    },
+    {
+      "student_layer": 27,
+      "span": [
+        35,
+        40
+      ],
+      "width": 5,
+      "anchor": 35
+    },
+    {
+      "student_layer": 39,
+      "span": [
+        51,
+        56
+      ],
+      "width": 5,
+      "anchor": 51
+    }
+  ],
+  "interpretation": "Only 4 of 48 supervised pairs have a span wider than one teacher layer. For the other 44 pairs the span target is identical to the adjacent-layer target. The span-aggregation abstraction is therefore active on 8.3% of loss terms, which bounds how much of the raw-delta advantage it could possibly explain."
+}
