@@ -1,0 +1,31 @@
+========================================================================================================
+SEED-1 ARMS — identical seed / machine / package env / packed corpus (e11ca38bb099fc89...)
+========================================================================================================
+arm                             norm       mode  final_val        CE     top1   logitKD   tok/s
+--------------------------------------------------------------------------------------------------------
+pointwise (normalized)          True  pointwise     8.7393    8.9551   0.1453    5.2682   386.2
+residual-delta (normalized)     True      delta    10.8220   11.0246   0.1153    6.2898   393.9
+residual-delta (raw)           False      delta     7.4113    7.7542   0.1238    5.2658   376.5
+adjacent-delta (raw)           False      delta     7.1981    7.5891   0.1264    5.2860   385.8
+
+vs pointwise control             d final_val      pct       d CE    d top1
+--------------------------------------------------------------------------------------------------------
+residual-delta (normalized)          +2.0828  +23.83%    +2.0695   -0.0300
+residual-delta (raw)                 -1.3280  -15.20%    -1.2009   -0.0215
+adjacent-delta (raw)                 -1.5411  -17.63%    -1.3660   -0.0189
+
+DECISIVE NORMALIZATION ABLATION (identical argv except --layer-kd-no-normalise)
+--------------------------------------------------------------------------------------------------------
+  raw residual-delta (run008)        final_val 7.4113
+  normalized residual-delta (run011) final_val 10.8220
+  effect of ENABLING normalization   +3.4107  (+46.02%)
+  fraction of the raw-delta-vs-pointwise gap destroyed: 256.8%
+
+VALIDATION TRAJECTORY
+--------------------------------------------------------------------------------------------------------
+  step  pointwise (normalize  residual-delta (norm  residual-delta (raw)  adjacent-delta (raw)
+    32               11.9175               11.8965                9.4548                9.2465
+    64               10.2236               12.2411                8.1694                7.7575
+    96                8.9362               11.3665                7.6094                7.3942
+   128                8.7393               10.8220                7.4113                7.1981
+========================================================================================================

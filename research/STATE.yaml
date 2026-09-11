@@ -377,6 +377,54 @@ completed_experiments:
     artifact_paths:
       run_dir: /workspace/runs/run010_adjacent_delta_seed1
       archived: experiments/run010_adjacent_delta_seed1/
+  run011_normalized_delta_seed1:
+    label: Run011 - NORMALIZED residual-delta KD, seed 1 (normalization ablation)
+    status: completed
+    integrity: PASS
+    immutable: true
+    steps: 128
+    purpose: 'direct test of the magnitude hypothesis: does enabling normalization destroy the raw-delta
+      advantage?'
+    reference_run: run008_raw_delta_seed1
+    only_intended_scientific_change: residual-delta normalization DISABLED -> ENABLED
+    argv_construction: derived programmatically from run008.command() by removing exactly the token '--layer-kd-no-normalise';
+      launcher refuses to run unless the argv diff is a clean single-variable ablation (scientific_values_changed
+      == {})
+    preregistration:
+      file: experiments/_session_2026-09-11/run011_PREREGISTRATION.json
+      sha256: e1d8104cd3ac9c44a79264cdf706f27cb7048a35cbd856b193e11a553ec679f3
+      locked_at: '2026-09-11T17:02:12Z'
+      locked_before_training: true
+    implementation_sanity_check:
+      expected: mag/dir == 2.000 exactly under normalization (MSE == 2*(1-cos))
+      observed_step1: 2.0
+      observed_final: 1.999976
+      verdict: PASS
+      note: implementation check only, not a scientific result
+    envelope_validation: step-1 no-grad diagnostics bit-identical to run008 (kd 8.723, ce 11.061, agree
+      0.000, tail 0.672) and layer_direction identical (0.8468, cosine is scale-invariant), while layer_magnitude
+      moved 0.7194 -> 1.6936 = exactly 2x the direction term
+    results:
+      final_validation_loss: 10.82203
+      best_validation_loss: 10.82203
+      final_ce_loss: 11.02459
+      final_logit_kd_loss: 6.289809
+      final_teacher_student_top1_agreement: 0.115309
+      mean_teacher_student_top1_agreement: 0.101018
+      runtime_seconds: 499.12
+      tokens_per_second: 393.9
+      peak_allocated_gib: 38.947
+      peak_reserved_gib: 40.859
+      observed_nvidia_smi_peak_gib: 41.38
+      validation_trajectory:
+        step_32: 11.8965
+        step_64: 12.2411
+        step_96: 11.3665
+        step_128: 10.822
+      packed_corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+    artifact_paths:
+      run_dir: /workspace/runs/run011_normalized_delta_seed1
+      archived: experiments/run011_normalized_delta_seed1/
 current_finding:
   statement: 'Across three transformation-matching formulations under one matched 128-step envelope: A
     (RMS-normalised delta) loses badly (+2.93 validation); B (normalised + explicit log-RMS magnitude
@@ -406,6 +454,10 @@ current_finding:
     did not degrade results (7.198 vs 7.411 validation, adjacent nominally better). The raw-delta advantage
     over pointwise should be attributed to retaining update-magnitude information, not to charging removed
     teacher layers to student spans.
+  normalization_ablation: 'Enabling normalization on the raw residual-delta objective (single-flag ablation
+    of run008) moved final validation 7.411 -> 10.822 (+46.0%), erasing the advantage and falling below
+    the pointwise control. MAGNITUDE HYPOTHESIS SUPPORTED: preserving representation-update magnitude
+    is the operative factor. Not yet separated from loss-scale/effective-LR effects.'
 active_hypothesis:
   statement: Does the Arm C 128-step advantage over pointwise KD reproduce at a second seed?
   status: being_tested_by_run008
@@ -482,13 +534,12 @@ rq2:
   gate: G6
   execute_now: false
   note: Full definition captured in research/ROADMAP.yaml. Not executed; RQ1 still active.
-next_action: 'Second-seed replication gate SATISFIED; span-vs-adjacent ablation COMPLETE (claim not supported).
-  Remaining RQ1 blockers: (1) CE-only no-teacher floor - kd_run.py requires --teacher and offers no sft
-  objective, so this needs scripts/train_student.py or a small launcher; (2) faithful FDD prediction-delta
-  prior-art comparator - NOT implemented anywhere in the repo, needs building; (3) composite CE+logit+behavioural
-  objective; (4) matched 1024-step pointwise control (~2h); (5) second teacher/student topology. Also:
-  consider whether the paper claim should be reframed around magnitude-preserving residual matching rather
-  than span abstraction.'
+next_action: 'Next: run012 CE-only no-teacher floor (launcher built and config-match proven: kd_run.build_config
+  on run008 argv with objective sft, teacher=None, single scientific change). Then faithful FDD prediction-dynamics
+  comparator (must be built from the actual paper, not from memory; report ambiguity rather than a strawman).
+  Then preregistered composite CE + logit KD + raw residual-transition KD. Then matched 1024-step pointwise.
+  Then second topology. Also worth considering: a scale-matched control to separate magnitude information
+  from loss-scale effects, since that is the main alternative explanation still standing.'
 seed1_matched_pair_result:
   pair: run008_raw_delta_seed1 (treatment) vs run009_pointwise_seed1 (control)
   why_this_pair_is_primary: Same seed, same machine, same unpinned package environment, same teacher/student/corpus/token-budget/optimiser.
@@ -566,3 +617,39 @@ span_vs_adjacent_ablation:
     better.
   - This is a negative/null result on the abstraction claim and is retained as evidence.
   - It does not weaken the raw-delta vs pointwise result, which remains replicated at two seeds.
+normalization_ablation_result:
+  decisive_pair: run008 raw residual-delta vs run011 normalized residual-delta (argv-identical except
+    one flag)
+  seed1_same_environment_final_validation:
+    run009_pointwise_normalized: 8.73926
+    run011_residual_delta_normalized: 10.82203
+    run008_residual_delta_raw: 7.41131
+    run010_adjacent_delta_raw: 7.19814
+  effect_of_enabling_normalization_on_delta:
+    delta_validation: 3.41072
+    pct: 46.02
+    delta_ce: 3.27045
+    delta_top1: -0.00849
+  classification: MAGNITUDE_HYPOTHESIS_SUPPORTED
+  classification_basis: Enabling normalization on an otherwise byte-identical configuration moved final
+    validation from 7.41131 to 10.82203 (+3.411, +46.0%). This not only erased the entire -1.328 advantage
+    over the pointwise control, it pushed the arm 2.083 BELOW that control. The effect is an order of
+    magnitude larger than the run010-vs-run008 spread (0.213) that was preregistered as the noise floor,
+    so it is not attributable to seed noise.
+  mechanistic_reading: Under RMS normalization the per-pair magnitude term is algebraically redundant
+    (MSE == 2*(1-cos); observed ratio 1.999976), so the normalized objective is direction-only. Removing
+    update-magnitude information is therefore sufficient to destroy the raw-delta advantage. Combined
+    with run010 (span aggregation contributes nothing), the evidence points to preservation of representation-update
+    MAGNITUDE as the operative factor, not the transition/delta form itself and not span abstraction.
+  important_nuance: Normalized delta is not merely equal to pointwise - it is clearly WORSE (+2.083).
+    Both are direction-only objectives, so the delta form appears actively harmful once magnitude is stripped.
+    This reproduces historical Run004-M at seed 0 (11.8886 vs Run003 8.9599), so the pattern now holds
+    at two seeds and two package environments.
+  honest_limits:
+  - Single seed for run011 itself; the supporting seed-0 evidence is historical Run004-M on a different
+    package stack.
+  - This identifies normalization as the causal lever but does not isolate WHY magnitude helps; loss-scale
+    / effective-learning-rate effects are not ruled out and would need a scale-matched control.
+  - Top-1 teacher agreement still favours the pointwise control in every arm; validation/CE and agreement
+    continue to disagree.
+  - Single teacher/student topology.

@@ -1,0 +1,114 @@
+{
+  "experiment": "run011_normalized_delta_seed1",
+  "purpose": "direct normalization ablation: does preserving update MAGNITUDE drive the raw-delta advantage?",
+  "reference_run": "run008_raw_delta_seed1",
+  "only_intended_scientific_change": "residual-delta normalization DISABLED -> ENABLED",
+  "argv_construction": "derived programmatically from run008.command() by removing exactly '--layer-kd-no-normalise'",
+  "argv_diff_vs_run008": {
+    "flags_only_in_run008": {
+      "--layer-kd-no-normalise": true
+    },
+    "flags_only_in_run011": {},
+    "values_changed": {
+      "--output": [
+        "/workspace/runs/run008_raw_delta_seed1",
+        "/workspace/runs/run011_normalized_delta_seed1"
+      ],
+      "--name": [
+        "run008_raw_delta_seed1",
+        "run011_normalized_delta_seed1"
+      ]
+    },
+    "scientific_values_changed": {},
+    "artifact_only_changes": {
+      "--output": [
+        "/workspace/runs/run008_raw_delta_seed1",
+        "/workspace/runs/run011_normalized_delta_seed1"
+      ],
+      "--name": [
+        "run008_raw_delta_seed1",
+        "run011_normalized_delta_seed1"
+      ]
+    },
+    "is_clean_single_variable_ablation": true
+  },
+  "objective": "behavioral_kd",
+  "behavioral_mode": "delta",
+  "normalise": true,
+  "loss_equation": "mean_pairs[ MSE(nd_s, nd_t) + 1.0*(1 - cos(nd_s, nd_t)) ], nd = d / (RMS(d)+eps), d_s = h_s[l+1]-h_s[l], d_t = h_t[b]-h_t[a]",
+  "expected_implementation_sanity_check": "with normalization ON the logged layer_magnitude should equal 2 x layer_direction identically; this is an implementation check, NOT a scientific result",
+  "seed": 1,
+  "teacher_revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+  "locked_before_execution": true,
+  "preregistered_interpretation": {
+    "if_run011_much_worse_than_run008": "MAGNITUDE HYPOTHESIS SUPPORTED: removing update-magnitude information destroys the advantage, so magnitude preservation is the operative factor.",
+    "if_run011_approx_equal_to_run008": "MAGNITUDE HYPOTHESIS FALSIFIED: normalization is irrelevant and the raw-delta advantage must come from something else (e.g. the delta/transition form itself, or loss scale/effective-LR effects).",
+    "if_run011_between_run008_and_run009": "MAGNITUDE HYPOTHESIS PARTIALLY SUPPORTED / WEAKENED: magnitude contributes but does not account for the whole gap.",
+    "if_run011_better_than_run008": "HYPOTHESIS FALSIFIED IN REVERSE: report as-is, do not rescue.",
+    "reference_points_seed1_same_environment": {
+      "run009_pointwise_normalized": 8.73926,
+      "run008_raw_delta": 7.41131,
+      "run010_adjacent_raw_delta": 7.19814
+    },
+    "note": "n is small and no variance estimate exists. A difference smaller than the run010-vs-run008 spread (0.213) must NOT be treated as meaningful."
+  },
+  "dry_run": true,
+  "command": [
+    "--teacher",
+    "/workspace/models/qwen3.8-27b-dbdc473",
+    "--revision",
+    "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+    "--quantization",
+    "4bit",
+    "--student",
+    "canonical",
+    "--pretrained",
+    "/workspace/runs/pilot001/transferred",
+    "--text-path",
+    "/workspace/corpora/gutenberg/train.txt",
+    "--max-tokens",
+    "700000",
+    "--sequence-length",
+    "1536",
+    "--steps",
+    "128",
+    "--batch-size",
+    "1",
+    "--gradient-accumulation-steps",
+    "1",
+    "--learning-rate",
+    "0.0002",
+    "--objective",
+    "layer_kd",
+    "--layer-kd-direction-weight",
+    "1.0",
+    "--layer-kd-chunk-pairs",
+    "4",
+    "--kd-temperature",
+    "2.0",
+    "--kd-top-k",
+    "64",
+    "--strategy",
+    "qlora",
+    "--optimizer",
+    "adamw",
+    "--lora-rank",
+    "16",
+    "--lora-alpha",
+    "32",
+    "--precision",
+    "bf16",
+    "--seed",
+    "1",
+    "--log-every",
+    "1",
+    "--eval-every",
+    "32",
+    "--save-every",
+    "64",
+    "--output",
+    "/workspace/runs/run011_normalized_delta_seed1",
+    "--name",
+    "run011_normalized_delta_seed1"
+  ]
+}
