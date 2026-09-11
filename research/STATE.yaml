@@ -584,12 +584,13 @@ rq2:
   gate: G6
   execute_now: false
   note: Full definition captured in research/ROADMAP.yaml. Not executed; RQ1 still active.
-next_action: 'Priority reordered by evidence: the preregistered COMPOSITE (CE + logit KD + raw residual-transition
-  KD) is now the highest-value run, because every pure-KD arm sits below the CE-only floor and only the
-  composite is a realistic recipe. Then the faithful FDD prediction-dynamics comparator (must be built
-  from the actual paper; report ambiguity rather than a strawman). Then a scale-matched control to separate
-  magnitude information from loss-scale/effective-LR effects. Then matched 1024-step controls (including
-  a CE-only long-horizon control, which the 128-step result makes necessary). Then second topology.'
+next_action: 'BLOCKED/REPORTED: FDD comparator needs the intended paper named. HIGHEST VALUE NEXT: wire
+  CompositeLossConfig into trainer.py (documented feature commit, verified by the two reductions above),
+  then run the genuine preregistered cells A3 and A1 at seed 1, plus A0 with router_balance. This is the
+  experiment that actually answers whether residual-transition supervision adds value to a realistic recipe,
+  and it is the one the CE-only floor made decisive. Also still open: a scale-matched control to separate
+  magnitude information from loss-scale / effective-LR effects (the surviving alternative explanation
+  for Run011), and long-horizon controls including a 1024-step CE-only arm.'
 seed1_matched_pair_result:
   pair: run008_raw_delta_seed1 (treatment) vs run009_pointwise_seed1 (control)
   why_this_pair_is_primary: Same seed, same machine, same unpinned package environment, same teacher/student/corpus/token-budget/optimiser.
@@ -738,3 +739,87 @@ ce_only_floor_result:
     up at longer horizons. No long-horizon CE-only control exists.
   - CE-only has no teacher-agreement metric, so the arms cannot be compared on imitation fidelity.
   - Single teacher/student topology.
+preregistration_mismatch_finding:
+  severity: HIGH - affects how every run so far should be labelled
+  discovered: 2026-09-11, while preparing the composite objective
+  finding: docs/RESEARCH.md defines EVERY arm of the layer-matching ablation as a COMPOSITE loss, but
+    Run003-Run011 were all executed with kd_run.py --objective layer_kd, which is PURE hidden-state matching
+    (loss weight 1.0 on the hidden term; CE and logit KD are computed under torch.no_grad() as diagnostics
+    and contribute no gradient). The executed arms are therefore NOT the preregistered A1/A3 cells.
+  preregistered_weights_from_research_ablations_py:
+    A0_ce_only:
+      ce: 1.0
+      router_balance: 1.0
+    A2_logits_only:
+      ce: 0.1
+      logit_kd: 1.0
+      router_balance: 1.0
+    A1_pointwise_layer_matching:
+      ce: 0.1
+      logit_kd: 1.0
+      hidden_pointwise: 0.5
+      router_balance: 1.0
+    A3_behavioural_delta:
+      ce: 0.1
+      logit_kd: 1.0
+      hidden_delta: 0.5
+      router_balance: 1.0
+    A4_pointwise_plus_delta:
+      ce: 0.1
+      logit_kd: 1.0
+      hidden_pointwise: 0.5
+      hidden_delta: 0.5
+      router_balance: 1.0
+      allow_combined_hidden: true
+  what_the_executed_runs_actually_are:
+    run003/run009 (pointwise): PURE hidden_pointwise, weight 1.0, no ce/logit_kd/router_balance gradient
+    run006/run008 (raw delta): PURE hidden_delta unnormalised, weight 1.0, same
+    run010 (adjacent): PURE hidden_delta with adjacent teacher target, same
+    run011 (normalized delta): PURE hidden_delta normalised, same
+    run012 (CE-only): 'objective=sft, ce only. Closest to A0 but NOT identical: A0 also carries router_balance
+      1.0, which run012 does not.'
+  is_this_a_protocol_violation: 'No. docs/RESEARCH_COMPLETION.md states the composite "is a hypothesis
+    to test AFTER the controlled pure-objective results are available", so pure-objective runs were a
+    deliberate first stage. But the naming must be corrected: these are pure-objective ablations, and
+    the preregistered A1/A3/A4 cells remain UNRUN.'
+  why_it_matters: It fully explains the CE-only floor result. The pure-KD arms lack the ce and logit_kd
+    terms that the preregistered design always includes, so they were never optimising the metric the
+    primary endpoint measures. Any paper claim must either use the preregistered composite cells or explicitly
+    state that the reported arms are pure-objective variants.
+  implementation_blocker: 'CompositeLossConfig exists (src/qwen_distill/distillation/behavioral.py:545)
+    and the arms are defined in src/qwen_distill/research/ablations.py with tests, but it is NOT wired
+    into src/qwen_distill/training/trainer.py. The trainer supports only sft / logit_kd / mixed_kd / layer_kd.
+    Running a preregistered cell requires real work in the gradient path: (1) compute ce WITH gradient
+    (the layer_kd branch currently calls the model without labels); (2) compute logit_kd WITH gradient
+    (currently under torch.no_grad()); (3) enable output_router_logits and consume the MoE load-balancing
+    aux loss (not currently requested); (4) combine terms at the preregistered weights, noting that behavioral_loss_chunked
+    ALREADY performs its own backward internally via loss_scale, so the hidden term weight must be folded
+    into loss_scale rather than multiplied onto a returned tensor.'
+  recommended_next_implementation: 'Wire CompositeLossConfig into trainer.py as a documented feature commit,
+    verified by two reductions before any GPU spend: weights {logit_kd:1.0} must reproduce pure logit_kd,
+    and weights {hidden_delta:1.0} must reproduce pure layer_kd. Then run A3 and A1 at seed 1 as the real
+    preregistered comparison, plus A0 with router_balance for a matched floor.'
+fdd_comparator_status:
+  status: BLOCKED_AMBIGUOUS_REPORTED_NOT_IMPLEMENTED
+  instruction_followed: 'user directive: do NOT implement from memory; if a faithful implementation is
+    ambiguous, report that rather than creating a strawman'
+  what_was_checked:
+  - 'repository: the token "FDD" appears nowhere in the codebase or docs (only in research/STATE.yaml,
+    written by this agent)'
+  - docs/BEHAVIORAL_DISTILLATION.md and docs/RESEARCH.md describe the mechanism but cite no prior art
+    by name
+  - web search for FDD knowledge distillation prediction delta / prediction dynamics
+  candidates_found:
+    Frequency Division Duplex (FDD) channel prediction: wrong domain entirely (wireless); not a distillation
+      method
+    Delta Knowledge Distillation (arXiv 2509.14526): preserves the LOGIT-SPACE distributional shift introduced
+      during the teacher supervised fine-tuning. Conceptually adjacent (a "delta" of teacher behaviour)
+      but operates on output distributions, not residual-stream transitions, so it is NOT the same comparator.
+    FitNets-style hint matching: the genuine classic prior art for the POINTWISE arm; uses a learned projection
+      to bridge width/depth mismatch. Already effectively represented by the pointwise control, though
+      without the learned projection.
+  conclusion: No canonical "FDD prediction-delta" distillation method was identified. Building one from
+    the name alone would produce a strawman. The intended paper must be named before this comparator can
+    be implemented faithfully.
+  question_for_user: Which specific paper does "FDD" refer to? A title, arXiv id or author would unblock
+    it.
