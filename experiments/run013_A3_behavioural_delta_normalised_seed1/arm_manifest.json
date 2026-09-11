@@ -1,0 +1,58 @@
+{
+  "experiment": "run013_A3_behavioural_delta_normalised_seed1",
+  "preregistered_arm": "A3",
+  "arm_name": "behavioural_delta",
+  "question": "Is matching a layer's residual *contribution* better than matching its position, at equal supervision cost?",
+  "prediction": "Beats A1 by more at deeper layers than at shallow ones, because the removed layers' work is attributed to a student layer instead of being dropped. This is the paper's central claim.",
+  "falsified_if": "A3 does not beat A1 on the aggregate benchmark score, or beats it only within the seed-to-seed variance measured across the repeated control runs. Either outcome refutes the central claim and must be stated as such rather than reframed.",
+  "resolved_coefficients": {
+    "ce": 0.1,
+    "hidden_delta": 0.5,
+    "logit_kd": 1.0,
+    "router_balance": 1.0
+  },
+  "router_aux_loss_coef": 0.001,
+  "hidden_term": "hidden_delta",
+  "hidden_normalise": true,
+  "objective": "composite",
+  "envelope_match_proof": {
+    "arm": "A3",
+    "arm_name": "behavioural_delta",
+    "resolved_coefficients": {
+      "ce": 0.1,
+      "hidden_delta": 0.5,
+      "logit_kd": 1.0,
+      "router_balance": 1.0
+    },
+    "hidden_term": "hidden_delta",
+    "hidden_normalise": true,
+    "inherited_from_run008_argv": {
+      "max_steps": 128,
+      "batch_size": 1,
+      "gradient_accumulation_steps": 1,
+      "learning_rate": 0.0002,
+      "optimizer": "adamw",
+      "strategy": "qlora",
+      "lora_rank": 16,
+      "lora_alpha": 32,
+      "precision": "bf16",
+      "gradient_checkpointing": true,
+      "seed": 1,
+      "eval_every": 32,
+      "save_every": 64,
+      "log_every": 1,
+      "layer_kd_chunk_pairs": 4,
+      "layer_kd_direction_weight": 1.0,
+      "text_path": "/workspace/corpora/gutenberg/train.txt",
+      "tokenizer_path": "/workspace/models/qwen3.8-27b-dbdc473",
+      "max_tokens": 700000,
+      "max_sequence_length": 1536,
+      "pretrained": "/workspace/runs/pilot001/transferred"
+    },
+    "non_objective_fields_changed": {},
+    "is_envelope_matched": true
+  },
+  "reference_run_for_envelope": "run008_raw_delta_seed1",
+  "framing_note": "run008-run011 are PURE hidden-matching mechanism probes and are NOT these cells; run012 is a CE-only floor lacking A0's router_balance term and is not reused as A0. Historical runs are not relabelled.",
+  "locked_before_execution": true
+}
