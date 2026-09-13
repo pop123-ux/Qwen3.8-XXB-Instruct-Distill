@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import gc
 import importlib.util
 import json
 import subprocess
@@ -43,6 +44,19 @@ PLAN: tuple[tuple[str, str, str, str], ...] = (
     ("A3", "normalised", "run016_A3_behavioural_delta_normalised_seed2",
      "run013_A3_behavioural_delta_normalised_seed1"),
 )
+
+
+#: Technical history recorded into the arm manifest. Not a scientific change.
+EXECUTION_NOTES: dict[str, str] = {
+    "run016_A3_behavioural_delta_normalised_seed2": (
+        "Attempt 1 ran second in the shared process and OOMed on its first backward pass (step 0, "
+        "allocated 39.03 / reserved 42.90 GiB) because run015's CUDA cache was not released: its "
+        "baseline reserved memory was 41.9 GiB versus 16.71 GiB in a fresh process. Zero optimizer "
+        "steps were taken. Evidence preserved at /workspace/runs/"
+        "run016_A3_behavioural_delta_normalised_seed2_attempt1_oom. This attempt runs alone in a fresh "
+        "process with the identical frozen config, matching the seed-1 normalised reference, which "
+        "also ran in its own process."),
+}
 
 
 def load_matrix():
@@ -107,7 +121,10 @@ def git(*args: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--only", choices=[row[2] for row in PLAN],
+                    help="train a single arm in a fresh process (both arms are still verified)")
     args = ap.parse_args(argv)
+    selected = [row for row in PLAN if args.only in (None, row[2])]
 
     matrix = load_matrix()
     built = {run_id: build(matrix, *row[:2], run_id, row[3]) for row in PLAN for run_id in [row[2]]}
@@ -134,12 +151,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     head = git("rev-parse", "HEAD")
 
+    import torch
+
     import kd_run
     import run008_raw_delta_seed1 as run008
     from qwen_distill.distillation.backends import TransformersTeacher
     from qwen_distill.training.trainer import train
 
-    for _arm, _tag, run_id, _ref in PLAN:
+    for _arm, _tag, run_id, _ref in selected:
         if (Path("/workspace/runs") / run_id / "summary.json").exists():
             print(f"REFUSED: completed evidence exists for {run_id}", file=sys.stderr)
             return 2
@@ -155,7 +174,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"teacher ready: {teacher.describe()}", flush=True)
 
     results = {}
-    for arm, tag, run_id, ref_id in PLAN:
+    for position, (arm, tag, run_id, ref_id) in enumerate(selected):
+        if position:
+            # Release the previous arm before building the next. Without this, attempt 1 of
+            # run016 started with 41.9 GiB reserved (vs 16.71 GiB in a fresh process) because
+            # run015's CUDA cache was never returned, and OOMed on its first backward pass.
+            gc.collect()
+            torch.cuda.empty_cache()
         b = built[run_id]
         cfg = b["cfg"]
         out = Path(cfg.runtime.output_dir)
@@ -173,6 +198,8 @@ def main(argv: list[str] | None = None) -> int:
             "diff_vs_built_seed1": b["diff_vs_built_seed1"],
             "diff_vs_archived_seed1": b["diff_vs_archived_seed1"],
             "preregistered_order": [row[2] for row in PLAN],
+            "executed_in_fresh_process": args.only is not None,
+            "execution_note": EXECUTION_NOTES.get(run_id),
             "preparation_commit": head,
             "locked_before_execution": True,
         }, indent=2, default=str) + "\n", encoding="utf-8")

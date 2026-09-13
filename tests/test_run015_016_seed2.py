@@ -113,3 +113,14 @@ def test_historical_seed1_evidence_untouched():
     out = subprocess.run(["git", "-C", str(REPO), "status", "--porcelain", "--", *protected],
                          capture_output=True, text=True, check=True).stdout.strip()
     assert out == "", out
+
+
+def test_only_selects_a_single_arm_and_still_verifies_both(launcher):
+    import inspect
+
+    src = inspect.getsource(launcher.main)
+    assert '"--only"' in src and "selected" in src
+    # both arms are still built and verified before any selected arm trains
+    assert src.index("for run_id, b in built.items()") < src.index("for position, (arm, tag, run_id, ref_id) in enumerate(selected)")
+    assert "gc.collect()" in src and "torch.cuda.empty_cache()" in src and "import torch" in src
+    assert "run016_A3_behavioural_delta_normalised_seed2" in launcher.EXECUTION_NOTES
