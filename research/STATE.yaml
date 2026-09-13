@@ -470,6 +470,22 @@ completed_experiments:
     artifact_paths:
       run_dir: /workspace/runs/run012_ce_only_seed1
       archived: experiments/run012_ce_only_seed1/
+  run014_normalized_delta_gradmatched_seed1:
+    label: Run014 - gradient-scale-matched normalised residual-delta control, seed 1
+    status: completed
+    integrity: PASS
+    immutable: true
+    steps: 128
+    question: Does normalised residual-delta KD remain substantially worse than raw residual-delta KD
+      after matching its initial trainable-parameter gradient scale to the raw objective?
+    only_intended_change_vs_run011: normalised hidden-objective gradient x frozen multiplier 2.681121247187302
+    preregistration: experiments/run014_normalized_delta_gradmatched_seed1/PREREG.md (sha256 eb802275d49dd6fa4c88c29d10747dee5f063685cb9b57083e3d4b1e0d224bb8,
+      commit 70e4b7c)
+    multiplier: 2.681121247187302
+    final_validation_loss: 10.43334
+    fraction_of_run011_run008_gap_recovered: 0.114
+    classification: NORMALISATION_PENALTY_NOT_EXPLAINED_BY_SCALE
+    artifacts: experiments/run014_normalized_delta_gradmatched_seed1/
 current_finding:
   statement: 'Across three transformation-matching formulations under one matched 128-step envelope: A
     (RMS-normalised delta) loses badly (+2.93 validation); B (normalised + explicit log-RMS magnitude
@@ -989,3 +1005,22 @@ composite_matrix_seed1:
     A1: experiments/run013_A1_pointwise_layer_matching_normalised_seed1/
     A3: experiments/run013_A3_behavioural_delta_raw_seed1/
     comparison: experiments/_session_2026-09-11/composite_matrix_seed1.txt
+gradient_scale_control_result:
+  classification: NORMALISATION_PENALTY_NOT_EXPLAINED_BY_SCALE
+  finding: Matching the normalised objective's initial trainable gradient scale to the raw objective (multiplier
+    2.681121) moved final validation 10.82203 -> 10.43334, recovering 11.4% of the 3.41072 Run011-Run008
+    gap. The normalisation penalty is not explained by a simple scalar gradient-scale mismatch.
+  limits:
+  - 'Clip-mediated only: training applies clip_grad_norm_(1.0) then AdamW, which is ~invariant to a constant
+    gradient rescale. Calibration found the raw gradient above the clip threshold on 4/4 samples and the
+    normalised on 3/4, so the multiplier acts mainly through the clip nonlinearity. This rules out a clip-mediated
+    scalar-scale explanation, NOT every optimisation-dynamics explanation (e.g. per-parameter gradient
+    geometry, or scale that varies across training).'
+  - The 0.389 improvement over Run011 is ~1.8x the 0.213 single-spread noise floor, so the multiplier
+    may have had a small real effect; one run cannot establish that.
+  - Single seed, 128 steps, single topology, pure hidden-matching probe (not a preregistered composite
+    cell).
+  - Top-1 agreement is not moved (0.1166 vs Run011 0.1153).
+  reading_of_run011: The magnitude-information interpretation of Run011 survives this control; it is not
+    established as the mechanism, since optimisation explanations other than a scalar clip-mediated scale
+    remain open.

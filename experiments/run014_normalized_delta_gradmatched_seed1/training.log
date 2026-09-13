@@ -1,0 +1,279 @@
+used_vram_gib=0.000 limit_gib=45.000
+  tokenizer vocabulary 248,077 against a student embedding of 248,320: 243 alignment padding row(s) that no token id reaches. Carried, not trimmed — trimming would change the student's geometry.
+  preflight PASS; frozen multiplier = 2.681121247187302
+  canonical student : qwen38_19b_h5120_l48_moe
+                      loaded from /workspace/runs/pilot001/transferred
+
+  loading teacher Qwen/Qwen3.8-27B @ dbdc473dea0d6a9763042881cc33d6058d1742d2
+    quantization: 4bit
+used_vram_gib=0.000 limit_gib=45.000
+Loading weights:   0%|          | 0/851 [00:00<?, ?it/s]Loading weights:   0%|          | 1/851 [00:00<01:30,  9.39it/s]Loading weights:   0%|          | 2/851 [00:00<01:30,  9.39it/s]Loading weights:   3%|▎         | 23/851 [00:00<00:08, 96.39it/s]Loading weights:   6%|▌         | 47/851 [00:00<00:05, 150.91it/s]Loading weights:  10%|▉         | 82/851 [00:00<00:03, 214.64it/s]Loading weights:  14%|█▍        | 119/851 [00:00<00:02, 258.79it/s]Loading weights:  18%|█▊        | 149/851 [00:00<00:02, 268.26it/s]Loading weights:  22%|██▏       | 185/851 [00:00<00:02, 295.76it/s]Loading weights:  25%|██▌       | 215/851 [00:00<00:02, 285.67it/s]Loading weights:  30%|██▉       | 253/851 [00:01<00:01, 306.24it/s]Loading weights:  33%|███▎      | 284/851 [00:01<00:01, 301.17it/s]Loading weights:  37%|███▋      | 315/851 [00:01<00:01, 290.89it/s]Loading weights:  41%|████▏     | 353/851 [00:01<00:01, 315.99it/s]Loading weights:  45%|████▌     | 385/851 [00:01<00:01, 304.93it/s]Loading weights:  49%|████▉     | 417/851 [00:01<00:01, 304.65it/s]Loading weights:  53%|█████▎    | 452/851 [00:01<00:01, 314.67it/s]Loading weights:  57%|█████▋    | 489/851 [00:01<00:01, 329.40it/s]Loading weights:  61%|██████▏   | 523/851 [00:01<00:01, 313.04it/s]Loading weights:  66%|██████▌   | 558/851 [00:02<00:00, 316.07it/s]Loading weights:  70%|██████▉   | 593/851 [00:02<00:00, 323.17it/s]Loading weights:  74%|███████▎  | 626/851 [00:02<00:00, 305.39it/s]Loading weights:  78%|███████▊  | 663/851 [00:02<00:00, 315.59it/s]Loading weights:  82%|████████▏ | 695/851 [00:02<00:00, 313.94it/s]Loading weights:  86%|████████▌ | 729/851 [00:02<00:00, 320.43it/s]Loading weights:  90%|████████▉ | 762/851 [00:02<00:00, 312.71it/s]Loading weights:  93%|█████████▎| 794/851 [00:02<00:00, 298.77it/s]Loading weights:  98%|█████████▊| 832/851 [00:02<00:00, 318.20it/s]Loading weights: 100%|██████████| 851/851 [00:02<00:00, 284.86it/s]
+    teacher ready: {'source': 'online', 'top_k': 64, 'temperature': 2.0, 'teacher_model': 'Qwen/Qwen3.8-27B', 'teacher_revision': 'dbdc473dea0d6a9763042881cc33d6058d1742d2', 'hidden_states': True}
+
+  DISTILLING 128 steps (batch 1 x 1 accum @ 1536 tokens) ...
+
+  device: cuda
+  objective: layer_kd  alpha 1.0  T 2.0  tail bucket
+  layer KD : pointwise hidden-state matching, map 'group', direction weight 1.0, normalise True
+  layer loss evaluated in chunks of 4 pair(s), same objective
+  teacher  : {'source': 'online', 'top_k': 64, 'temperature': 2.0, 'teacher_model': 'Qwen/Qwen3.8-27B', 'teacher_revision': 'dbdc473dea0d6a9763042881cc33d6058d1742d2', 'hidden_states': True}
+used_vram_gib=17.202 limit_gib=45.000
+  tokenizer vocabulary 248,077 against a student embedding of 248,320: 243 alignment padding row(s) that no token id reaches. Carried, not trimmed — trimming would change the student's geometry.
+  corpus: /workspace/corpora/gutenberg/train.txt tokenised by Qwen2Tokenizer at /workspace/models/qwen3.8-27b-dbdc473
+          5,519,078 bytes, 455 sequences of 1536 (433 train / 22 validation)
+          sha256 e11ca38bb099fc89
+          tokenizer Qwen2Tokenizer vocab 248,077 eos 248046
+          700,000 tokens from 17,017 document(s), 1120 dropped in the tail
+Loading weights:   0%|          | 0/831 [00:00<?, ?it/s]Loading weights:   0%|          | 1/831 [00:00<02:09,  6.39it/s]Loading weights:   0%|          | 2/831 [00:00<01:48,  7.66it/s]Loading weights:   6%|▌         | 50/831 [00:00<00:04, 186.28it/s]Loading weights:  12%|█▏        | 101/831 [00:00<00:02, 291.89it/s]Loading weights:  18%|█▊        | 152/831 [00:00<00:01, 355.71it/s]Loading weights:  25%|██▌       | 208/831 [00:00<00:01, 407.98it/s]Loading weights:  31%|███       | 257/831 [00:00<00:01, 428.22it/s]Loading weights:  37%|███▋      | 308/831 [00:00<00:01, 442.02it/s]Loading weights:  43%|████▎     | 359/831 [00:01<00:01, 451.75it/s]Loading weights:  50%|████▉     | 415/831 [00:01<00:00, 470.49it/s]Loading weights:  56%|█████▌    | 464/831 [00:01<00:00, 468.80it/s]Loading weights:  62%|██████▏   | 515/831 [00:01<00:00, 471.52it/s]Loading weights:  68%|██████▊   | 566/831 [00:01<00:00, 470.55it/s]Loading weights:  75%|███████▍  | 620/831 [00:01<00:00, 489.65it/s]Loading weights:  81%|████████  | 670/831 [00:01<00:00, 483.19it/s]Loading weights:  87%|████████▋ | 720/831 [00:01<00:00, 485.44it/s]Loading weights:  93%|█████████▎| 769/831 [00:01<00:00, 484.95it/s]Loading weights:  98%|█████████▊| 818/831 [00:01<00:00, 460.83it/s]Loading weights: 100%|██████████| 831/831 [00:02<00:00, 415.47it/s]
+used_vram_gib=33.313 limit_gib=45.000
+  gradient checkpointing: ON
+  strategy: qlora (r=16, alpha=32)
+  optimizer: adamw
+  parameters: 13,031,508,864 total, 23,003,136 trainable (0.1765%)
+  precision: bf16 (autocast)
+
+  CHECKPOINTING
+    full checkpoint : every 64 steps -> /workspace/runs/run014_normalized_delta_gradmatched_seed1/checkpoints
+    progress record : every 1 steps -> metrics.jsonl + progress/latest.json
+    resume          : no (starting from step 0)
+    persistent copy : off (local only)
+                      NOTHING SURVIVES THIS RUNTIME. Set training.persistent_backup
+                      to a mounted Drive path to keep checkpoints.
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] `chunk_gated_delta_rule` is falling back to its reference PyTorch implementation because `flash-linear-attention` is not installed. This is correct but much slower; install `flash-linear-attention` for the optimized kernel.
+[transformers] `use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.
+  layer map: 48 pairs, 16 teacher layers unsupervised
+  step      1  loss   2.5404  layer 2.5404  (mag 1.6936  dir 0.8468)  kd 8.723  ce 11.061  agree 0.00  tail 0.672       360 tok/s  (run 360)     4.3s
+used_vram_gib=39.958 limit_gib=45.000
+  step      2  loss   2.5405  layer 2.5405  (mag 1.6937  dir 0.8469)  kd 6.032  ce 10.308  agree 0.01  tail 0.727       473 tok/s  (run 408)     7.5s
+used_vram_gib=40.657 limit_gib=45.000
+  step      3  loss   2.5329  layer 2.5329  (mag 1.6886  dir 0.8443)  kd 6.332  ce 10.974  agree 0.00  tail 0.721       456 tok/s  (run 423)    10.9s
+  step      4  loss   2.5176  layer 2.5176  (mag 1.6784  dir 0.8392)  kd 8.209  ce 10.430  agree 0.00  tail 0.679       487 tok/s  (run 438)    14.0s
+used_vram_gib=40.657 limit_gib=45.000
+  step      5  loss   2.5206  layer 2.5206  (mag 1.6804  dir 0.8402)  kd 15.685  ce 10.251  agree 0.00  tail 0.497       456 tok/s  (run 441)    17.4s
+used_vram_gib=40.657 limit_gib=45.000
+  step      6  loss   2.5071  layer 2.5071  (mag 1.6714  dir 0.8357)  kd 8.499  ce 9.843  agree 0.01  tail 0.651       478 tok/s  (run 447)    20.6s
+  step      7  loss   2.5190  layer 2.5190  (mag 1.6793  dir 0.8397)  kd 6.160  ce 10.308  agree 0.00  tail 0.721       483 tok/s  (run 452)    23.8s
+used_vram_gib=40.657 limit_gib=45.000
+  step      8  loss   2.4936  layer 2.4936  (mag 1.6624  dir 0.8312)  kd 4.450  ce 9.678  agree 0.01  tail 0.772       451 tok/s  (run 452)    27.2s
+used_vram_gib=40.657 limit_gib=45.000
+  step      9  loss   2.4559  layer 2.4559  (mag 1.6373  dir 0.8186)  kd 5.910  ce 8.930  agree 0.05  tail 0.685       481 tok/s  (run 455)    30.4s
+  step     10  loss   2.4474  layer 2.4474  (mag 1.6316  dir 0.8158)  kd 9.803  ce 8.550  agree 0.03  tail 0.569       482 tok/s  (run 457)    33.6s
+used_vram_gib=40.657 limit_gib=45.000
+  step     11  loss   2.4101  layer 2.4101  (mag 1.6068  dir 0.8034)  kd 4.818  ce 9.036  agree 0.05  tail 0.717       456 tok/s  (run 457)    37.0s
+used_vram_gib=40.657 limit_gib=45.000
+  step     12  loss   2.3693  layer 2.3693  (mag 1.5795  dir 0.7898)  kd 5.748  ce 8.696  agree 0.07  tail 0.657       489 tok/s  (run 460)    40.1s
+  step     13  loss   2.3197  layer 2.3197  (mag 1.5465  dir 0.7732)  kd 4.643  ce 8.457  agree 0.08  tail 0.707       456 tok/s  (run 460)    43.5s
+used_vram_gib=40.657 limit_gib=45.000
+  step     14  loss   2.3012  layer 2.3012  (mag 1.5341  dir 0.7671)  kd 5.128  ce 8.664  agree 0.08  tail 0.707       484 tok/s  (run 461)    46.6s
+used_vram_gib=40.657 limit_gib=45.000
+  step     15  loss   2.2879  layer 2.2879  (mag 1.5253  dir 0.7627)  kd 10.351  ce 8.543  agree 0.05  tail 0.556       482 tok/s  (run 462)    49.8s
+  step     16  loss   2.2388  layer 2.2388  (mag 1.4925  dir 0.7463)  kd 8.596  ce 8.825  agree 0.05  tail 0.585       451 tok/s  (run 462)    53.2s
+used_vram_gib=40.657 limit_gib=45.000
+  step     17  loss   2.1882  layer 2.1882  (mag 1.4588  dir 0.7294)  kd 3.831  ce 8.873  agree 0.07  tail 0.726       483 tok/s  (run 463)    56.4s
+  step     18  loss   2.1588  layer 2.1588  (mag 1.4392  dir 0.7196)  kd 4.154  ce 8.750  agree 0.07  tail 0.717       480 tok/s  (run 464)    59.6s
+used_vram_gib=40.657 limit_gib=45.000
+  step     19  loss   2.1309  layer 2.1309  (mag 1.4206  dir 0.7103)  kd 6.019  ce 8.997  agree 0.05  tail 0.661       453 tok/s  (run 463)    63.0s
+used_vram_gib=40.657 limit_gib=45.000
+  step     20  loss   2.1202  layer 2.1202  (mag 1.4135  dir 0.7068)  kd 8.188  ce 9.644  agree 0.05  tail 0.590       481 tok/s  (run 464)    66.2s
+  step     21  loss   2.0864  layer 2.0864  (mag 1.3909  dir 0.6955)  kd 6.459  ce 9.334  agree 0.07  tail 0.628       480 tok/s  (run 465)    69.4s
+used_vram_gib=40.657 limit_gib=45.000
+  step     22  loss   2.0582  layer 2.0582  (mag 1.3722  dir 0.6861)  kd 5.034  ce 10.003  agree 0.07  tail 0.679       453 tok/s  (run 464)    72.8s
+used_vram_gib=40.657 limit_gib=45.000
+  step     23  loss   2.0169  layer 2.0169  (mag 1.3446  dir 0.6723)  kd 4.276  ce 9.378  agree 0.07  tail 0.696       480 tok/s  (run 465)    76.0s
+  step     24  loss   1.9987  layer 1.9987  (mag 1.3324  dir 0.6662)  kd 4.722  ce 9.860  agree 0.10  tail 0.692       476 tok/s  (run 465)    79.2s
+used_vram_gib=40.657 limit_gib=45.000
+  step     25  loss   1.9478  layer 1.9478  (mag 1.2986  dir 0.6493)  kd 3.814  ce 9.899  agree 0.06  tail 0.706       428 tok/s  (run 464)    82.8s
+used_vram_gib=40.657 limit_gib=45.000
+  step     26  loss   1.9427  layer 1.9427  (mag 1.2951  dir 0.6476)  kd 4.084  ce 10.499  agree 0.08  tail 0.702       472 tok/s  (run 464)    86.1s
+  step     27  loss   1.9264  layer 1.9264  (mag 1.2843  dir 0.6421)  kd 4.017  ce 11.261  agree 0.08  tail 0.709       473 tok/s  (run 464)    89.3s
+used_vram_gib=40.657 limit_gib=45.000
+  step     28  loss   1.9045  layer 1.9045  (mag 1.2697  dir 0.6349)  kd 4.775  ce 11.858  agree 0.07  tail 0.699       428 tok/s  (run 463)    92.9s
+used_vram_gib=40.657 limit_gib=45.000
+  step     29  loss   1.9671  layer 1.9671  (mag 1.3114  dir 0.6557)  kd 8.947  ce 12.045  agree 0.05  tail 0.550       480 tok/s  (run 464)    96.1s
+  step     30  loss   1.9125  layer 1.9125  (mag 1.2750  dir 0.6375)  kd 6.218  ce 11.749  agree 0.07  tail 0.649       446 tok/s  (run 463)    99.5s
+used_vram_gib=40.657 limit_gib=45.000
+  step     31  loss   1.8863  layer 1.8863  (mag 1.2575  dir 0.6288)  kd 6.546  ce 11.958  agree 0.07  tail 0.651       480 tok/s  (run 464)   102.7s
+used_vram_gib=40.657 limit_gib=45.000
+  step     32  loss   1.8810  layer 1.8810  (mag 1.2540  dir 0.6270)  kd 4.461  ce 11.898  agree 0.11  tail 0.724       478 tok/s  (run 464)   106.0s
+used_vram_gib=41.380 limit_gib=45.000
+used_vram_gib=41.380 limit_gib=45.000
+  step     32  validation  12.4694
+  step     33  loss   1.8495  layer 1.8495  (mag 1.2330  dir 0.6165)  kd 4.927  ce 12.335  agree 0.09  tail 0.691       118 tok/s  (run 426)   119.0s
+used_vram_gib=41.380 limit_gib=45.000
+  step     34  loss   1.9129  layer 1.9129  (mag 1.2753  dir 0.6377)  kd 7.202  ce 13.256  agree 0.08  tail 0.617       466 tok/s  (run 427)   122.3s
+used_vram_gib=41.380 limit_gib=45.000
+  step     35  loss   1.8269  layer 1.8269  (mag 1.2179  dir 0.6090)  kd 5.655  ce 13.008  agree 0.11  tail 0.689       467 tok/s  (run 428)   125.6s
+  step     36  loss   1.8071  layer 1.8071  (mag 1.2047  dir 0.6024)  kd 5.425  ce 13.446  agree 0.12  tail 0.703       426 tok/s  (run 428)   129.2s
+used_vram_gib=41.380 limit_gib=45.000
+  step     37  loss   1.7896  layer 1.7896  (mag 1.1931  dir 0.5965)  kd 5.157  ce 13.558  agree 0.12  tail 0.725       466 tok/s  (run 429)   132.5s
+used_vram_gib=41.380 limit_gib=45.000
+  step     38  loss   1.7972  layer 1.7972  (mag 1.1982  dir 0.5991)  kd 7.776  ce 14.399  agree 0.10  tail 0.660       472 tok/s  (run 430)   135.7s
+  step     39  loss   1.7765  layer 1.7766  (mag 1.1844  dir 0.5922)  kd 5.517  ce 13.964  agree 0.13  tail 0.709       432 tok/s  (run 430)   139.3s
+used_vram_gib=41.380 limit_gib=45.000
+  step     40  loss   1.7604  layer 1.7604  (mag 1.1736  dir 0.5868)  kd 5.111  ce 14.119  agree 0.12  tail 0.718       472 tok/s  (run 431)   142.6s
+used_vram_gib=41.380 limit_gib=45.000
+  step     41  loss   1.7690  layer 1.7690  (mag 1.1793  dir 0.5897)  kd 7.150  ce 13.539  agree 0.11  tail 0.648       472 tok/s  (run 432)   145.8s
+  step     42  loss   1.7408  layer 1.7408  (mag 1.1605  dir 0.5803)  kd 5.197  ce 14.275  agree 0.14  tail 0.741       433 tok/s  (run 432)   149.4s
+used_vram_gib=41.380 limit_gib=45.000
+  step     43  loss   1.7347  layer 1.7347  (mag 1.1565  dir 0.5782)  kd 6.344  ce 14.102  agree 0.10  tail 0.682       472 tok/s  (run 433)   152.6s
+used_vram_gib=41.380 limit_gib=45.000
+  step     44  loss   1.7523  layer 1.7523  (mag 1.1682  dir 0.5841)  kd 5.651  ce 14.425  agree 0.10  tail 0.716       437 tok/s  (run 433)   156.1s
+  step     45  loss   1.7372  layer 1.7372  (mag 1.1581  dir 0.5791)  kd 6.386  ce 14.214  agree 0.14  tail 0.694       469 tok/s  (run 434)   159.4s
+used_vram_gib=41.380 limit_gib=45.000
+  step     46  loss   1.8454  layer 1.8454  (mag 1.2302  dir 0.6151)  kd 10.536  ce 14.031  agree 0.10  tail 0.546       471 tok/s  (run 434)   162.7s
+used_vram_gib=41.380 limit_gib=45.000
+  step     47  loss   1.7111  layer 1.7111  (mag 1.1408  dir 0.5704)  kd 5.585  ce 13.567  agree 0.11  tail 0.701       430 tok/s  (run 434)   166.2s
+  step     48  loss   1.7236  layer 1.7236  (mag 1.1491  dir 0.5745)  kd 8.465  ce 13.186  agree 0.14  tail 0.620       469 tok/s  (run 435)   169.5s
+used_vram_gib=41.380 limit_gib=45.000
+  step     49  loss   1.7052  layer 1.7052  (mag 1.1368  dir 0.5684)  kd 5.480  ce 13.685  agree 0.13  tail 0.729       471 tok/s  (run 436)   172.8s
+used_vram_gib=41.380 limit_gib=45.000
+  step     50  loss   1.7105  layer 1.7105  (mag 1.1403  dir 0.5702)  kd 8.332  ce 13.656  agree 0.10  tail 0.635       427 tok/s  (run 435)   176.4s
+  step     51  loss   1.6765  layer 1.6765  (mag 1.1176  dir 0.5588)  kd 5.232  ce 13.772  agree 0.13  tail 0.740       472 tok/s  (run 436)   179.6s
+used_vram_gib=41.380 limit_gib=45.000
+  step     52  loss   1.8110  layer 1.8110  (mag 1.2074  dir 0.6037)  kd 10.011  ce 13.452  agree 0.11  tail 0.569       470 tok/s  (run 437)   182.9s
+used_vram_gib=41.380 limit_gib=45.000
+  step     53  loss   1.6836  layer 1.6836  (mag 1.1224  dir 0.5612)  kd 5.378  ce 13.286  agree 0.14  tail 0.719       429 tok/s  (run 437)   186.5s
+  step     54  loss   1.6748  layer 1.6748  (mag 1.1165  dir 0.5583)  kd 6.298  ce 13.036  agree 0.12  tail 0.670       470 tok/s  (run 437)   189.7s
+used_vram_gib=41.380 limit_gib=45.000
+  step     55  loss   1.6969  layer 1.6969  (mag 1.1313  dir 0.5656)  kd 5.376  ce 12.713  agree 0.15  tail 0.714       468 tok/s  (run 438)   193.0s
+used_vram_gib=41.380 limit_gib=45.000
+  step     56  loss   1.6629  layer 1.6629  (mag 1.1086  dir 0.5543)  kd 4.927  ce 12.488  agree 0.12  tail 0.719       435 tok/s  (run 438)   196.6s
+  step     57  loss   1.6907  layer 1.6907  (mag 1.1272  dir 0.5636)  kd 7.914  ce 12.778  agree 0.11  tail 0.623       472 tok/s  (run 438)   199.8s
+used_vram_gib=41.380 limit_gib=45.000
+  step     58  loss   1.6681  layer 1.6681  (mag 1.1120  dir 0.5560)  kd 5.192  ce 12.053  agree 0.12  tail 0.697       472 tok/s  (run 439)   203.1s
+used_vram_gib=41.380 limit_gib=45.000
+  step     59  loss   1.6559  layer 1.6559  (mag 1.1039  dir 0.5520)  kd 4.860  ce 12.296  agree 0.13  tail 0.705       436 tok/s  (run 439)   206.6s
+  step     60  loss   1.6598  layer 1.6598  (mag 1.1066  dir 0.5533)  kd 5.030  ce 12.152  agree 0.13  tail 0.715       470 tok/s  (run 439)   209.9s
+used_vram_gib=41.380 limit_gib=45.000
+  step     61  loss   1.7624  layer 1.7624  (mag 1.1749  dir 0.5875)  kd 8.432  ce 12.266  agree 0.10  tail 0.591       434 tok/s  (run 439)   213.4s
+used_vram_gib=41.380 limit_gib=45.000
+  step     62  loss   1.6405  layer 1.6405  (mag 1.0937  dir 0.5468)  kd 7.064  ce 11.821  agree 0.13  tail 0.614       469 tok/s  (run 440)   216.7s
+  step     63  loss   1.6424  layer 1.6424  (mag 1.0949  dir 0.5475)  kd 5.264  ce 12.007  agree 0.12  tail 0.701       470 tok/s  (run 440)   219.9s
+used_vram_gib=41.380 limit_gib=45.000
+  step     64  loss   1.6583  layer 1.6583  (mag 1.1055  dir 0.5528)  kd 5.646  ce 12.478  agree 0.14  tail 0.701       432 tok/s  (run 440)   223.5s
+used_vram_gib=41.380 limit_gib=45.000
+used_vram_gib=41.380 limit_gib=45.000
+  step     64  validation  11.9808
+  checkpoint: step_000064 (periodic)
+used_vram_gib=41.380 limit_gib=45.000
+  step     65  loss   1.6483  layer 1.6483  (mag 1.0989  dir 0.5494)  kd 7.537  ce 12.109  agree 0.13  tail 0.619       117 tok/s  (run 422)   236.6s
+  step     66  loss   1.6523  layer 1.6523  (mag 1.1015  dir 0.5508)  kd 7.075  ce 12.062  agree 0.11  tail 0.636       470 tok/s  (run 423)   239.9s
+used_vram_gib=41.380 limit_gib=45.000
+  step     67  loss   1.7373  layer 1.7373  (mag 1.1582  dir 0.5791)  kd 9.466  ce 12.124  agree 0.11  tail 0.554       433 tok/s  (run 423)   243.4s
+used_vram_gib=41.380 limit_gib=45.000
+  step     68  loss   1.6339  layer 1.6339  (mag 1.0892  dir 0.5446)  kd 4.581  ce 11.981  agree 0.13  tail 0.732       470 tok/s  (run 423)   246.7s
+  step     69  loss   1.7374  layer 1.7374  (mag 1.1583  dir 0.5791)  kd 9.241  ce 11.956  agree 0.10  tail 0.551       473 tok/s  (run 424)   250.0s
+used_vram_gib=41.380 limit_gib=45.000
+  step     70  loss   1.6297  layer 1.6297  (mag 1.0865  dir 0.5432)  kd 7.310  ce 12.086  agree 0.11  tail 0.632       434 tok/s  (run 424)   253.5s
+used_vram_gib=41.380 limit_gib=45.000
+  step     71  loss   1.6268  layer 1.6268  (mag 1.0845  dir 0.5423)  kd 4.562  ce 12.074  agree 0.13  tail 0.739       471 tok/s  (run 425)   256.8s
+  step     72  loss   1.6432  layer 1.6432  (mag 1.0955  dir 0.5477)  kd 4.724  ce 11.944  agree 0.13  tail 0.725       471 tok/s  (run 425)   260.0s
+used_vram_gib=41.380 limit_gib=45.000
+  step     73  loss   1.6524  layer 1.6524  (mag 1.1016  dir 0.5508)  kd 5.861  ce 12.204  agree 0.12  tail 0.666       433 tok/s  (run 425)   263.6s
+used_vram_gib=41.380 limit_gib=45.000
+  step     74  loss   1.6459  layer 1.6459  (mag 1.0973  dir 0.5486)  kd 5.192  ce 11.577  agree 0.12  tail 0.697       470 tok/s  (run 426)   266.8s
+  step     75  loss   1.6203  layer 1.6203  (mag 1.0802  dir 0.5401)  kd 5.764  ce 11.565  agree 0.11  tail 0.665       430 tok/s  (run 426)   270.4s
+used_vram_gib=41.380 limit_gib=45.000
+  step     76  loss   1.6217  layer 1.6217  (mag 1.0811  dir 0.5406)  kd 5.040  ce 11.478  agree 0.14  tail 0.695       470 tok/s  (run 426)   273.7s
+used_vram_gib=41.380 limit_gib=45.000
+  step     77  loss   1.7566  layer 1.7566  (mag 1.1711  dir 0.5855)  kd 8.587  ce 11.808  agree 0.12  tail 0.575       471 tok/s  (run 427)   276.9s
+  step     78  loss   1.6252  layer 1.6252  (mag 1.0835  dir 0.5418)  kd 4.630  ce 11.417  agree 0.11  tail 0.704       431 tok/s  (run 427)   280.5s
+used_vram_gib=41.380 limit_gib=45.000
+  step     79  loss   1.6100  layer 1.6100  (mag 1.0733  dir 0.5367)  kd 4.491  ce 11.174  agree 0.13  tail 0.710       467 tok/s  (run 428)   283.8s
+used_vram_gib=41.380 limit_gib=45.000
+  step     80  loss   1.7759  layer 1.7759  (mag 1.1840  dir 0.5920)  kd 6.524  ce 11.575  agree 0.09  tail 0.641       471 tok/s  (run 428)   287.1s
+  step     81  loss   1.6082  layer 1.6082  (mag 1.0722  dir 0.5361)  kd 4.398  ce 11.188  agree 0.11  tail 0.703       428 tok/s  (run 428)   290.6s
+used_vram_gib=41.380 limit_gib=45.000
+  step     82  loss   1.6271  layer 1.6271  (mag 1.0848  dir 0.5424)  kd 6.794  ce 11.057  agree 0.11  tail 0.606       468 tok/s  (run 428)   293.9s
+used_vram_gib=41.380 limit_gib=45.000
+  step     83  loss   1.6048  layer 1.6048  (mag 1.0699  dir 0.5349)  kd 4.717  ce 11.227  agree 0.12  tail 0.701       468 tok/s  (run 429)   297.2s
+  step     84  loss   1.6147  layer 1.6147  (mag 1.0765  dir 0.5382)  kd 5.304  ce 11.390  agree 0.12  tail 0.684       434 tok/s  (run 429)   300.7s
+used_vram_gib=41.380 limit_gib=45.000
+  step     85  loss   1.6411  layer 1.6411  (mag 1.0940  dir 0.5470)  kd 7.915  ce 11.588  agree 0.11  tail 0.599       470 tok/s  (run 430)   304.0s
+used_vram_gib=41.380 limit_gib=45.000
+  step     86  loss   1.6311  layer 1.6311  (mag 1.0874  dir 0.5437)  kd 7.612  ce 11.345  agree 0.10  tail 0.609       474 tok/s  (run 430)   307.2s
+  step     87  loss   1.6135  layer 1.6135  (mag 1.0756  dir 0.5378)  kd 4.869  ce 11.095  agree 0.14  tail 0.699       433 tok/s  (run 430)   310.8s
+used_vram_gib=41.380 limit_gib=45.000
+  step     88  loss   1.6160  layer 1.6160  (mag 1.0773  dir 0.5387)  kd 5.215  ce 11.530  agree 0.15  tail 0.704       472 tok/s  (run 430)   314.1s
+used_vram_gib=41.380 limit_gib=45.000
+  step     89  loss   1.6028  layer 1.6028  (mag 1.0686  dir 0.5343)  kd 6.190  ce 11.514  agree 0.12  tail 0.654       471 tok/s  (run 431)   317.3s
+  step     90  loss   1.6278  layer 1.6278  (mag 1.0852  dir 0.5426)  kd 5.765  ce 11.939  agree 0.11  tail 0.687       436 tok/s  (run 431)   320.8s
+used_vram_gib=41.380 limit_gib=45.000
+  step     91  loss   1.6445  layer 1.6445  (mag 1.0963  dir 0.5482)  kd 4.698  ce 11.317  agree 0.13  tail 0.719       472 tok/s  (run 431)   324.1s
+used_vram_gib=41.380 limit_gib=45.000
+  step     92  loss   1.6068  layer 1.6068  (mag 1.0712  dir 0.5356)  kd 4.301  ce 11.310  agree 0.11  tail 0.727       435 tok/s  (run 431)   327.6s
+  step     93  loss   1.5972  layer 1.5972  (mag 1.0648  dir 0.5324)  kd 4.988  ce 11.275  agree 0.14  tail 0.695       469 tok/s  (run 432)   330.9s
+used_vram_gib=41.380 limit_gib=45.000
+  step     94  loss   1.6054  layer 1.6054  (mag 1.0703  dir 0.5351)  kd 4.790  ce 11.353  agree 0.13  tail 0.717       469 tok/s  (run 432)   334.2s
+used_vram_gib=41.380 limit_gib=45.000
+  step     95  loss   1.7328  layer 1.7328  (mag 1.1552  dir 0.5776)  kd 7.419  ce 11.252  agree 0.13  tail 0.603       432 tok/s  (run 432)   337.7s
+  step     96  loss   1.6049  layer 1.6049  (mag 1.0699  dir 0.5350)  kd 6.766  ce 11.020  agree 0.12  tail 0.624       471 tok/s  (run 432)   341.0s
+used_vram_gib=41.380 limit_gib=45.000
+used_vram_gib=41.380 limit_gib=45.000
+  step     96  validation  10.9593
+used_vram_gib=41.380 limit_gib=45.000
+  step     97  loss   1.5990  layer 1.5990  (mag 1.0660  dir 0.5330)  kd 4.913  ce 11.177  agree 0.13  tail 0.695       121 tok/s  (run 421)   353.7s
+used_vram_gib=41.380 limit_gib=45.000
+  step     98  loss   1.7310  layer 1.7310  (mag 1.1540  dir 0.5770)  kd 8.648  ce 11.260  agree 0.10  tail 0.569       434 tok/s  (run 421)   357.2s
+  step     99  loss   1.7295  layer 1.7295  (mag 1.1530  dir 0.5765)  kd 7.222  ce 11.011  agree 0.10  tail 0.606       473 tok/s  (run 422)   360.5s
+used_vram_gib=41.380 limit_gib=45.000
+  step    100  loss   1.6130  layer 1.6130  (mag 1.0753  dir 0.5377)  kd 4.380  ce 10.631  agree 0.15  tail 0.713       471 tok/s  (run 422)   363.7s
+used_vram_gib=41.380 limit_gib=45.000
+  step    101  loss   1.5912  layer 1.5912  (mag 1.0608  dir 0.5304)  kd 4.783  ce 11.154  agree 0.11  tail 0.687       436 tok/s  (run 422)   367.2s
+  step    102  loss   1.5926  layer 1.5926  (mag 1.0617  dir 0.5309)  kd 4.277  ce 10.557  agree 0.14  tail 0.713       472 tok/s  (run 423)   370.5s
+used_vram_gib=41.380 limit_gib=45.000
+  step    103  loss   1.6054  layer 1.6054  (mag 1.0702  dir 0.5351)  kd 4.373  ce 10.521  agree 0.14  tail 0.698       471 tok/s  (run 423)   373.8s
+used_vram_gib=41.380 limit_gib=45.000
+  step    104  loss   1.7242  layer 1.7242  (mag 1.1494  dir 0.5747)  kd 8.250  ce 11.027  agree 0.10  tail 0.562       437 tok/s  (run 423)   377.3s
+  step    105  loss   1.6089  layer 1.6089  (mag 1.0726  dir 0.5363)  kd 5.292  ce 10.619  agree 0.11  tail 0.681       474 tok/s  (run 424)   380.5s
+used_vram_gib=41.380 limit_gib=45.000
+  step    106  loss   1.5939  layer 1.5939  (mag 1.0626  dir 0.5313)  kd 5.162  ce 10.890  agree 0.13  tail 0.689       431 tok/s  (run 424)   384.1s
+used_vram_gib=41.380 limit_gib=45.000
+  step    107  loss   1.5896  layer 1.5896  (mag 1.0597  dir 0.5299)  kd 4.047  ce 10.894  agree 0.12  tail 0.724       470 tok/s  (run 424)   387.3s
+  step    108  loss   1.7039  layer 1.7039  (mag 1.1359  dir 0.5680)  kd 7.470  ce 10.822  agree 0.09  tail 0.598       469 tok/s  (run 425)   390.6s
+used_vram_gib=41.380 limit_gib=45.000
+  step    109  loss   1.6960  layer 1.6960  (mag 1.1307  dir 0.5653)  kd 7.796  ce 10.316  agree 0.12  tail 0.568       433 tok/s  (run 425)   394.2s
+used_vram_gib=41.380 limit_gib=45.000
+  step    110  loss   1.7346  layer 1.7346  (mag 1.1564  dir 0.5782)  kd 6.336  ce 10.988  agree 0.12  tail 0.639       470 tok/s  (run 425)   397.4s
+  step    111  loss   1.7279  layer 1.7279  (mag 1.1519  dir 0.5760)  kd 5.715  ce 10.893  agree 0.11  tail 0.659       469 tok/s  (run 426)   400.7s
+used_vram_gib=41.380 limit_gib=45.000
+  step    112  loss   1.5900  layer 1.5900  (mag 1.0600  dir 0.5300)  kd 4.923  ce 10.934  agree 0.12  tail 0.695       431 tok/s  (run 426)   404.3s
+used_vram_gib=41.380 limit_gib=45.000
+  step    113  loss   1.6020  layer 1.6020  (mag 1.0680  dir 0.5340)  kd 6.677  ce 10.858  agree 0.11  tail 0.626       471 tok/s  (run 426)   407.5s
+  step    114  loss   1.6001  layer 1.6001  (mag 1.0668  dir 0.5334)  kd 6.234  ce 10.401  agree 0.13  tail 0.632       471 tok/s  (run 426)   410.8s
+used_vram_gib=41.380 limit_gib=45.000
+  step    115  loss   1.5980  layer 1.5980  (mag 1.0653  dir 0.5327)  kd 4.674  ce 10.759  agree 0.14  tail 0.697       433 tok/s  (run 426)   414.4s
+used_vram_gib=41.380 limit_gib=45.000
+  step    116  loss   1.6165  layer 1.6165  (mag 1.0776  dir 0.5388)  kd 6.917  ce 11.216  agree 0.12  tail 0.654       467 tok/s  (run 427)   417.6s
+  step    117  loss   1.7098  layer 1.7098  (mag 1.1399  dir 0.5699)  kd 6.727  ce 10.719  agree 0.11  tail 0.615       470 tok/s  (run 427)   420.9s
+used_vram_gib=41.380 limit_gib=45.000
+  step    118  loss   1.6012  layer 1.6012  (mag 1.0675  dir 0.5337)  kd 7.127  ce 10.694  agree 0.11  tail 0.616       428 tok/s  (run 427)   424.5s
+used_vram_gib=41.380 limit_gib=45.000
+  step    119  loss   1.5890  layer 1.5890  (mag 1.0594  dir 0.5297)  kd 4.160  ce 10.695  agree 0.14  tail 0.716       466 tok/s  (run 427)   427.8s
+  step    120  loss   1.6025  layer 1.6025  (mag 1.0683  dir 0.5342)  kd 6.552  ce 10.622  agree 0.13  tail 0.632       468 tok/s  (run 428)   431.1s
+used_vram_gib=41.380 limit_gib=45.000
+  step    121  loss   1.5972  layer 1.5972  (mag 1.0648  dir 0.5324)  kd 6.288  ce 10.790  agree 0.09  tail 0.633       431 tok/s  (run 428)   434.6s
+used_vram_gib=41.380 limit_gib=45.000
+  step    122  loss   1.6027  layer 1.6027  (mag 1.0685  dir 0.5342)  kd 4.898  ce 10.686  agree 0.11  tail 0.696       470 tok/s  (run 428)   437.9s
+  step    123  loss   1.5905  layer 1.5905  (mag 1.0603  dir 0.5302)  kd 4.853  ce 10.599  agree 0.14  tail 0.695       470 tok/s  (run 428)   441.2s
+used_vram_gib=41.380 limit_gib=45.000
+  step    124  loss   1.5992  layer 1.5992  (mag 1.0661  dir 0.5331)  kd 4.812  ce 10.836  agree 0.15  tail 0.689       440 tok/s  (run 428)   444.7s
+used_vram_gib=41.380 limit_gib=45.000
+  step    125  loss   1.6181  layer 1.6181  (mag 1.0787  dir 0.5394)  kd 4.636  ce 10.633  agree 0.13  tail 0.704       474 tok/s  (run 429)   447.9s
+  step    126  loss   1.6890  layer 1.6890  (mag 1.1260  dir 0.5630)  kd 6.312  ce 10.374  agree 0.11  tail 0.625       437 tok/s  (run 429)   451.4s
+used_vram_gib=41.380 limit_gib=45.000
+  step    127  loss   1.5974  layer 1.5974  (mag 1.0649  dir 0.5325)  kd 5.042  ce 10.962  agree 0.11  tail 0.701       476 tok/s  (run 429)   454.6s
+used_vram_gib=41.380 limit_gib=45.000
+  step    128  loss   1.6092  layer 1.6092  (mag 1.0728  dir 0.5364)  kd 6.048  ce 10.668  agree 0.12  tail 0.663       475 tok/s  (run 429)   457.9s
+used_vram_gib=41.380 limit_gib=45.000
+used_vram_gib=41.380 limit_gib=45.000
+  step    128  validation  10.4333
+  checkpoint: step_000128 (periodic)
+
+  finished step 128 of 128 in 467.7s (196,608 tokens seen)
+  wrote /workspace/runs/run014_normalized_delta_gradmatched_seed1/checkpoints/step_000128 and summary.json
+
+  exit code 0 in 8.0 min
+  record: /workspace/runs/run014_normalized_delta_gradmatched_seed1
+  scaled hidden-loss invocations: 128 (expected 128)

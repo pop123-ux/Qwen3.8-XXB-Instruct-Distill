@@ -1,0 +1,2 @@
+run014_training_nvidia_smi_peak: used_vram_gib=41.380 limit_gib=45.000
+calibration_nvidia_smi_peak: used_vram_gib=38.206 limit_gib=45.000

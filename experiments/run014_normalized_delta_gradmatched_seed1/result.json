@@ -1,0 +1,97 @@
+{
+  "experiment_id": "run014_normalized_delta_gradmatched_seed1",
+  "preregistration_sha256": "eb802275d49dd6fa4c88c29d10747dee5f063685cb9b57083e3d4b1e0d224bb8",
+  "preparation_commit": "70e4b7c88d7ee5a5df1779f2cdd4835df90de672",
+  "calibration": {
+    "indices": [
+      0,
+      144,
+      288,
+      432
+    ],
+    "token_hashes": {
+      "0": "0b8649f8657f38f6b8673a0edd7c4ab5363cb99dbe3b1a06bd014bfbacd666a8",
+      "144": "e074c203f7d7ca687ccbc743e596f08de5d3e880cea70f157c0b6dc00326ba81",
+      "288": "38edbcfd449656f229631a7aacfdc6c98ee03afee88468e1576ddacb8d3c9147",
+      "432": "b0afddbf4d8c5ec17048d8fdfc832afacb91ca67d8459c663ab11428828c851e"
+    },
+    "raw_grad_norms": [
+      3.3338525698509898,
+      3.7409020491353764,
+      2.801228354162667,
+      2.520476954063383
+    ],
+    "normalised_grad_norms": [
+      1.4795747498692358,
+      1.0347510460663825,
+      0.9831005663010653,
+      1.0030307061596193
+    ],
+    "ratios": [
+      2.2532505168431904,
+      3.615267714254996,
+      2.8493812842589867,
+      2.512861210115617
+    ],
+    "multiplier": 2.681121247187302,
+    "clip_exceeded_raw": [
+      true,
+      true,
+      true,
+      true
+    ],
+    "clip_exceeded_normalised": [
+      true,
+      true,
+      false,
+      true
+    ],
+    "parameters_mutated": false
+  },
+  "scaled_hidden_loss_invocations": 128,
+  "primary_endpoint_final_validation_loss": 10.433341893282803,
+  "best_validation_loss": 10.433341893282803,
+  "validation_trajectory": {
+    "step_32": 12.46944,
+    "step_64": 11.98076,
+    "step_96": 10.95931,
+    "step_128": 10.43334
+  },
+  "diagnostics_final": {
+    "ce": 10.668427,
+    "logit_kd": 6.048158,
+    "top1_agreement": 0.116612,
+    "top1_agreement_mean": 0.102412,
+    "hidden_loss_unweighted": 1.609153,
+    "hidden_loss_unweighted_first": 2.540417,
+    "magnitude": 1.072764,
+    "direction": 0.536389,
+    "norm_ratio": 0.687095
+  },
+  "hidden_loss_note": "unweighted normalised residual-delta loss (comparable to Run011); optimised objective = multiplier x this",
+  "runtime_seconds": 467.75,
+  "tokens_per_second": 420.3,
+  "peak_allocated_gib": 38.94692611694336,
+  "peak_reserved_gib": 40.859375,
+  "nvidia_smi_peak_gib": 41.38,
+  "references": {
+    "run008_raw_delta_seed1": 7.411308180202138,
+    "run011_normalized_delta_seed1": 10.8220290704207,
+    "run009_pointwise_seed1": 8.739264965057373
+  },
+  "contrasts": {
+    "vs_run011": -0.38868717713789636,
+    "vs_run008": 3.022033713080665,
+    "vs_run009": 1.6940769282254298
+  },
+  "preregistered_rule": {
+    "gap_run011_minus_run008": 3.4107208902185615,
+    "F_fraction_of_gap_recovered": 0.11396041765029592,
+    "noise_floor_N": 0.213,
+    "F_0.25_boundary_validation": 9.969348847866058,
+    "distance_from_boundary": 0.46399304541674447,
+    "boundary_case": false
+  },
+  "classification": "NORMALISATION_PENALTY_NOT_EXPLAINED_BY_SCALE",
+  "statement": "simple scalar gradient-scale mismatch does not explain most of the normalisation penalty"
+}
