@@ -1,0 +1,33 @@
+{
+  "experiment_id": "run014_normalized_delta_gradmatched_seed1",
+  "method_version": "run014-gradcal-1.0",
+  "generated_by": "qwen_distill.training.tokenized_data.prepare_tokenized_corpus + qwen_distill.research.gradient_calibration.select_calibration_samples",
+  "split": "TRAINING (sequences[:-n_validation], contiguous head of the packed stream)",
+  "packing_version": "1.0",
+  "packed_corpus_sha256": "e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d",
+  "n_tokens": 700000,
+  "n_sequences": 455,
+  "n_train": 433,
+  "n_validation": 22,
+  "sequence_length": 1536,
+  "calibration_indices": [
+    0,
+    144,
+    288,
+    432
+  ],
+  "token_byte_format": "uint32-little-endian",
+  "token_hashes": {
+    "0": "0b8649f8657f38f6b8673a0edd7c4ab5363cb99dbe3b1a06bd014bfbacd666a8",
+    "144": "e074c203f7d7ca687ccbc743e596f08de5d3e880cea70f157c0b6dc00326ba81",
+    "288": "38edbcfd449656f229631a7aacfdc6c98ee03afee88468e1576ddacb8d3c9147",
+    "432": "b0afddbf4d8c5ec17048d8fdfc832afacb91ca67d8459c663ab11428828c851e"
+  },
+  "rng_seed_rule": "seed = training_seed * 1000003 + index (shared by raw and normalised measurement)",
+  "rng_seeds": {
+    "0": 1000003,
+    "144": 1000147,
+    "288": 1000291,
+    "432": 1000435
+  }
+}
