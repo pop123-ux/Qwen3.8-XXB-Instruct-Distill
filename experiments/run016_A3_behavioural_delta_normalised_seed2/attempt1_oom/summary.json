@@ -1,0 +1,302 @@
+{
+  "experiment": "run016_A3_behavioural_delta_normalised_seed2",
+  "level": "",
+  "git_commit": "e891fe95807d538aafd5571e9654a28324ee350f",
+  "device": "cuda",
+  "requested_precision": "bf16",
+  "effective_precision": "bf16",
+  "precision_note": null,
+  "objective": "composite",
+  "parameters": null,
+  "parameter_counts": {
+    "total_parameters": 13031508864,
+    "trainable_parameters": 23003136,
+    "trainable_fraction": 0.0017651935965409939,
+    "frozen_parameters": 13008505728
+  },
+  "strategy": "qlora",
+  "optimizer": "adamw",
+  "steps": 0,
+  "runtime_s": 1.59,
+  "tokens_seen": 0,
+  "tokens_per_second": 0.0,
+  "throughput": {
+    "total_tokens": 0,
+    "elapsed_s": 1.59,
+    "tokens_per_second": 0.0,
+    "session_tokens": 0,
+    "session_elapsed_s": 1.59,
+    "session_tokens_per_second": 0.0,
+    "resumed_tokens": 0,
+    "resumed_seconds": 0.0,
+    "n_sessions_note": "elapsed_s and tokens_per_second span every session this experiment ran across; session_* cover only the process that wrote this record"
+  },
+  "first_loss": null,
+  "final_loss": null,
+  "best_validation_loss": null,
+  "first_validation_loss": null,
+  "final_validation_loss": null,
+  "corpus": {
+    "source": "/workspace/corpora/gutenberg/train.txt tokenised by Qwen2Tokenizer at /workspace/models/qwen3.8-27b-dbdc473",
+    "n_bytes": 5519078,
+    "n_sequences": 455,
+    "sequence_length": 1536,
+    "sha256": "e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d",
+    "n_train": 433,
+    "n_validation": 22,
+    "n_tokens": 700000,
+    "n_documents": 17017,
+    "n_tokens_dropped": 1120,
+    "document_separator": "blank_line",
+    "packing_version": "1.0",
+    "eos_token_id": 248046,
+    "tokenizer": {
+      "source": "/workspace/models/qwen3.8-27b-dbdc473",
+      "tokenizer_class": "Qwen2Tokenizer",
+      "vocab_size": 248077,
+      "eos_token": "<|im_end|>",
+      "eos_token_id": 248046,
+      "file_sha256": {
+        "tokenizer.json": "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3",
+        "tokenizer_config.json": "b11349aafa7cdc6a320767cf7ceb29ed82f7eda5d65e8e0819e76f0ce947bf27",
+        "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+        "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d"
+      },
+      "teacher_model": "Qwen/Qwen3.8-27B",
+      "teacher_revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+      "is_pinned": true
+    },
+    "tokens_per_byte": 0.1268
+  },
+  "distillation": {
+    "objective": "composite",
+    "kd_alpha": 0.5,
+    "kd_temperature": 2.0,
+    "kd_tail": "bucket",
+    "kd_top_k": 64,
+    "teacher": {
+      "source": "online",
+      "top_k": 64,
+      "temperature": 2.0,
+      "teacher_model": "Qwen/Qwen3.8-27B",
+      "teacher_revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2",
+      "hidden_states": true
+    },
+    "n_logged_steps": 0,
+    "kd_loss": {
+      "first": null,
+      "final": null,
+      "mean": null
+    },
+    "ce_loss": {
+      "first": null,
+      "final": null,
+      "mean": null
+    },
+    "top1_agreement": {
+      "first": null,
+      "final": null,
+      "mean": null
+    },
+    "teacher_entropy": {
+      "first": null,
+      "final": null,
+      "mean": null
+    },
+    "teacher_tail_mass": {
+      "first": null,
+      "final": null,
+      "mean": null
+    }
+  },
+  "outcome": "OOM",
+  "oom": {
+    "phase": "backward pass",
+    "device_name": "NVIDIA L40S",
+    "total_vram_gib": 44.39215087890625,
+    "allocated_at_failure_gib": 39.02554988861084,
+    "reserved_at_failure_gib": 42.904296875,
+    "free_at_failure_gib": 0.9681396484375,
+    "estimated_total_gib": null,
+    "configuration": {
+      "parameters": null,
+      "sequence_length": 1536,
+      "batch_size": 1,
+      "gradient_accumulation_steps": 1,
+      "precision": "bf16",
+      "optimizer": "adamw",
+      "gradient_checkpointing": true,
+      "steps_completed": 0
+    },
+    "message": "CUDA out of memory. Tried to allocate 1.42 GiB. GPU 0 has a total capacity of 44.39 GiB of which 991.38 MiB is free. Including non-PyTorch memory, this process has 43.42 GiB memory in use. Of the allocated memory 42.58 GiB is allocated by PyTorch, and 336.70 MiB is reserved by PyTorch but unallocated.",
+    "lower_bound_gib": 39.02554988861084
+  },
+  "persistence": {
+    "enabled": false,
+    "destination": null,
+    "persisted": [],
+    "failed": [],
+    "all_checkpoints_persisted": false
+  },
+  "memory": {
+    "cuda_available": true,
+    "device_name": "NVIDIA L40S",
+    "total_vram_gib": 44.39215087890625,
+    "snapshots": [
+      {
+        "stage": "baseline",
+        "allocated_gib": 19.30807113647461,
+        "reserved_gib": 41.896484375,
+        "max_allocated_gib": 19.30807113647461,
+        "max_reserved_gib": 41.896484375
+      },
+      {
+        "stage": "after_model_creation",
+        "allocated_gib": 35.425827980041504,
+        "reserved_gib": 41.896484375,
+        "max_allocated_gib": 35.46337413787842,
+        "max_reserved_gib": 41.896484375
+      },
+      {
+        "stage": "after_model_to_device",
+        "allocated_gib": 35.425827980041504,
+        "reserved_gib": 41.896484375,
+        "max_allocated_gib": 35.46337413787842,
+        "max_reserved_gib": 41.896484375
+      },
+      {
+        "stage": "after_optimizer_creation",
+        "allocated_gib": 35.425827980041504,
+        "reserved_gib": 41.896484375,
+        "max_allocated_gib": 35.46337413787842,
+        "max_reserved_gib": 41.896484375
+      },
+      {
+        "stage": "after_input_allocation",
+        "allocated_gib": 35.4258394241333,
+        "reserved_gib": 41.896484375,
+        "max_allocated_gib": 35.46337413787842,
+        "max_reserved_gib": 41.896484375
+      },
+      {
+        "stage": "after_forward",
+        "allocated_gib": 37.88279151916504,
+        "reserved_gib": 41.896484375,
+        "max_allocated_gib": 40.18276643753052,
+        "max_reserved_gib": 41.896484375
+      },
+      {
+        "stage": "after_loss",
+        "allocated_gib": 40.44700765609741,
+        "reserved_gib": 43.654296875,
+        "max_allocated_gib": 41.90983009338379,
+        "max_reserved_gib": 43.654296875
+      },
+      {
+        "stage": "peak_training",
+        "allocated_gib": 39.02554941177368,
+        "reserved_gib": 42.904296875,
+        "max_allocated_gib": 43.2869553565979,
+        "max_reserved_gib": 43.654296875
+      }
+    ],
+    "components": {
+      "cuda_context_and_baseline_gib": 19.30807113647461,
+      "weights_gib": 16.117756843566895,
+      "input_batch_gib": 1.1444091796875e-05,
+      "activations_gib": 2.4569520950317383,
+      "loss_path_gib": 2.564216136932373,
+      "peak_allocated_gib": 43.2869553565979,
+      "peak_reserved_gib": 43.654296875,
+      "allocator_reserve_overhead_gib": 0.3673415184020996
+    },
+    "peak_allocated_gib": 43.2869553565979,
+    "peak_reserved_gib": 43.654296875,
+    "notes": []
+  },
+  "analytical_estimate": null,
+  "estimate_vs_measured": {
+    "available": false
+  },
+  "config": {
+    "name": "run016_A3_behavioural_delta_normalised_seed2",
+    "description": "real teacher-in-the-loop layer_kd against the frozen canonical student",
+    "level": "",
+    "objective": {
+      "signal_source": "online"
+    },
+    "teacher": {
+      "model": "Qwen/Qwen3.8-27B",
+      "revision": "dbdc473dea0d6a9763042881cc33d6058d1742d2"
+    },
+    "model": {
+      "spec_path": null,
+      "pretrained": "/workspace/runs/pilot001/transferred",
+      "architecture": {},
+      "trust_remote_code": false
+    },
+    "data": {
+      "train_path": null,
+      "validation_path": null,
+      "synthetic": false,
+      "synthetic_examples": 256,
+      "text_corpus": false,
+      "text_path": "/workspace/corpora/gutenberg/train.txt",
+      "procedural_bytes": 2000000,
+      "validation_fraction": 0.05,
+      "max_corpus_bytes": null,
+      "max_sequence_length": 1536,
+      "streaming": false,
+      "shuffle_seed": 0,
+      "tokenized_text": true,
+      "tokenizer_path": "/workspace/models/qwen3.8-27b-dbdc473",
+      "expected_vocab_size": 248320,
+      "document_separator": "blank_line",
+      "max_documents": null,
+      "max_tokens": 700000
+    },
+    "training": {
+      "strategy": "qlora",
+      "optimizer": "adamw",
+      "precision": "bf16",
+      "objective": "composite",
+      "learning_rate": 0.0002,
+      "weight_decay": 0.0,
+      "warmup_steps": 10,
+      "max_steps": 128,
+      "scheduler": "cosine",
+      "batch_size": 1,
+      "gradient_accumulation_steps": 1,
+      "gradient_checkpointing": true,
+      "lora_rank": 16,
+      "lora_alpha": 32,
+      "lora_dropout": 0.05,
+      "kd_weight": 0.5,
+      "kd_temperature": 2.0,
+      "kd_tail": "bucket",
+      "kd_top_k": 64,
+      "layer_kd_direction_weight": 1.0,
+      "layer_kd_normalise": true,
+      "layer_kd_map_strategy": "group",
+      "layer_kd_chunk_pairs": 4,
+      "composite_weights": {
+        "ce": 0.1,
+        "logit_kd": 1.0,
+        "router_balance": 1.0,
+        "hidden_delta": 0.5
+      },
+      "seed": 2,
+      "eval_every": 32,
+      "save_every": 64,
+      "log_every": 1,
+      "progress_every": null,
+      "persistent_backup": null
+    },
+    "runtime": {
+      "output_dir": "/workspace/runs/run016_A3_behavioural_delta_normalised_seed2",
+      "device": "auto",
+      "resume_from": null,
+      "reserved_vram_gib": 1.0
+    }
+  }
+}

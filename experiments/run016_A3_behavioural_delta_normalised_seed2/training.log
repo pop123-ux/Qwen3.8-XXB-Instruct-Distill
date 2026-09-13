@@ -1,0 +1,329 @@
+used_vram_gib=0.000 limit_gib=45.000
+  run015_A3_behavioural_delta_raw_seed2: permitted-only diff = True
+  run016_A3_behavioural_delta_normalised_seed2: permitted-only diff = True
+used_vram_gib=0.003 limit_gib=45.000
+
+Loading weights:   0%|          | 0/851 [00:00<?, ?it/s]
+Loading weights:   0%|          | 1/851 [00:00<01:30,  9.38it/s]
+Loading weights:   0%|          | 2/851 [00:00<01:30,  9.41it/s]
+Loading weights:   3%|▎         | 23/851 [00:00<00:08, 96.82it/s]
+Loading weights:   6%|▌         | 48/851 [00:00<00:05, 150.11it/s]
+Loading weights:  10%|▉         | 82/851 [00:00<00:03, 215.05it/s]
+Loading weights:  14%|█▍        | 119/851 [00:00<00:02, 258.94it/s]
+Loading weights:  18%|█▊        | 149/851 [00:00<00:02, 268.20it/s]
+Loading weights:  22%|██▏       | 186/851 [00:00<00:02, 293.51it/s]
+Loading weights:  25%|██▌       | 216/851 [00:00<00:02, 292.45it/s]
+Loading weights:  29%|██▉       | 250/851 [00:01<00:01, 304.75it/s]
+Loading weights:  33%|███▎      | 281/851 [00:01<00:01, 293.35it/s]
+Loading weights:  37%|███▋      | 312/851 [00:01<00:01, 293.80it/s]
+Loading weights:  41%|████      | 347/851 [00:01<00:01, 303.58it/s]
+Loading weights:  45%|████▌     | 384/851 [00:01<00:01, 316.47it/s]
+Loading weights:  49%|████▉     | 416/851 [00:01<00:01, 310.86it/s]
+Loading weights:  53%|█████▎    | 451/851 [00:01<00:01, 318.39it/s]
+Loading weights:  57%|█████▋    | 486/851 [00:01<00:01, 324.47it/s]
+Loading weights:  61%|██████    | 519/851 [00:01<00:01, 316.97it/s]
+Loading weights:  65%|██████▍   | 553/851 [00:02<00:00, 320.16it/s]
+Loading weights:  69%|██████▉   | 586/851 [00:02<00:00, 305.78it/s]
+Loading weights:  73%|███████▎  | 623/851 [00:02<00:00, 323.53it/s]
+Loading weights:  77%|███████▋  | 656/851 [00:02<00:00, 314.85it/s]
+Loading weights:  81%|████████  | 688/851 [00:02<00:00, 302.09it/s]
+Loading weights:  85%|████████▌ | 726/851 [00:02<00:00, 322.41it/s]
+Loading weights:  89%|████████▉ | 759/851 [00:02<00:00, 307.34it/s]
+Loading weights:  93%|█████████▎| 791/851 [00:02<00:00, 298.81it/s]
+Loading weights:  97%|█████████▋| 824/851 [00:02<00:00, 302.87it/s]
+Loading weights: 100%|██████████| 851/851 [00:02<00:00, 284.54it/s]
+teacher ready: {'source': 'online', 'top_k': 64, 'temperature': 2.0, 'teacher_model': 'Qwen/Qwen3.8-27B', 'teacher_revision': 'dbdc473dea0d6a9763042881cc33d6058d1742d2', 'hidden_states': True}
+
+======================================================================
+=== run016_A3_behavioural_delta_normalised_seed2  [normalised]  seed=2
+======================================================================
+
+  device: cuda
+  objective: composite  alpha 0.5  T 2.0  tail bucket
+  composite: weights {'ce': 0.1, 'hidden_delta': 0.5, 'logit_kd': 1.0, 'router_balance': 1.0}
+  composite: hidden term hidden_delta (mode delta)
+  teacher  : {'source': 'online', 'top_k': 64, 'temperature': 2.0, 'teacher_model': 'Qwen/Qwen3.8-27B', 'teacher_revision': 'dbdc473dea0d6a9763042881cc33d6058d1742d2', 'hidden_states': True}
+  tokenizer vocabulary 248,077 against a student embedding of 248,320: 243 alignment padding row(s) that no token id reaches. Carried, not trimmed — trimming would change the student's geometry.
+  corpus: /workspace/corpora/gutenberg/train.txt tokenised by Qwen2Tokenizer at /workspace/models/qwen3.8-27b-dbdc473
+          5,519,078 bytes, 455 sequences of 1536 (433 train / 22 validation)
+          sha256 e11ca38bb099fc89
+          tokenizer Qwen2Tokenizer vocab 248,077 eos 248046
+          700,000 tokens from 17,017 document(s), 1120 dropped in the tail
+used_vram_gib=17.202 limit_gib=45.000
+
+Loading weights:   0%|          | 0/831 [00:00<?, ?it/s]
+Loading weights:   0%|          | 1/831 [00:00<02:10,  6.35it/s]
+Loading weights:   0%|          | 2/831 [00:00<01:48,  7.63it/s]
+Loading weights:   6%|▌         | 50/831 [00:00<00:04, 187.98it/s]
+Loading weights:  12%|█▏        | 101/831 [00:00<00:02, 292.52it/s]
+Loading weights:  18%|█▊        | 152/831 [00:00<00:01, 356.07it/s]
+Loading weights:  25%|██▍       | 206/831 [00:00<00:01, 413.82it/s]
+Loading weights:  31%|███       | 256/831 [00:00<00:01, 434.79it/s]
+Loading weights:  37%|███▋      | 307/831 [00:00<00:01, 451.26it/s]
+Loading weights:  43%|████▎     | 357/831 [00:01<00:01, 462.11it/s]
+Loading weights:  49%|████▊     | 404/831 [00:01<00:00, 458.81it/s]
+Loading weights:  55%|█████▌    | 460/831 [00:01<00:00, 482.12it/s]
+Loading weights:  61%|██████▏   | 510/831 [00:01<00:00, 483.78it/s]
+Loading weights:  68%|██████▊   | 561/831 [00:01<00:00, 481.91it/s]
+Loading weights:  73%|███████▎  | 610/831 [00:01<00:00, 475.76it/s]
+Loading weights:  79%|███████▉  | 658/831 [00:01<00:00, 473.45it/s]
+Loading weights:  85%|████████▍ | 706/831 [00:01<00:00, 469.04it/s]
+Loading weights:  91%|█████████▏| 759/831 [00:01<00:00, 486.70it/s]
+Loading weights:  97%|█████████▋| 808/831 [00:01<00:00, 478.41it/s]
+Loading weights: 100%|██████████| 831/831 [00:01<00:00, 417.55it/s]
+  gradient checkpointing: ON
+  strategy: qlora (r=16, alpha=32)
+  optimizer: adamw
+  parameters: 13,031,508,864 total, 23,003,136 trainable (0.1765%)
+  precision: bf16 (autocast)
+
+  CHECKPOINTING
+    full checkpoint : every 64 steps -> /workspace/runs/run016_A3_behavioural_delta_normalised_seed2/checkpoints
+    progress record : every 1 steps -> metrics.jsonl + progress/latest.json
+    resume          : no (starting from step 0)
+    persistent copy : off (local only)
+                      NOTHING SURVIVES THIS RUNTIME. Set training.persistent_backup
+                      to a mounted Drive path to keep checkpoints.
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] `chunk_gated_delta_rule` is falling back to its reference PyTorch implementation because `flash-linear-attention` is not installed. This is correct but much slower; install `flash-linear-attention` for the optimized kernel.
+used_vram_gib=33.524 limit_gib=45.000
+[transformers] `use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.
+  layer map: 48 pairs, 16 teacher layers unsupervised
+  step      1  loss  12.2269  obj 12.2269  hid 2.5193  aux 2.0003  kd 9.957  ce 10.083  agree 0.00  tail 0.619       356 tok/s  (run 356)     4.3s
+used_vram_gib=44.220 limit_gib=45.000
+  step      2  loss  12.3540  obj 12.3540  hid 2.5223  aux 2.0004  kd 10.076  ce 10.143  agree 0.00  tail 0.618       423 tok/s  (run 387)     7.9s
+used_vram_gib=44.333 limit_gib=45.000
+  step      3  loss  11.7485  obj 11.7485  hid 2.5229  aux 2.0005  kd 9.378  ce 11.068  agree 0.00  tail 0.660       473 tok/s  (run 412)    11.2s
+  step      4  loss  11.7084  obj 11.7084  hid 2.5266  aux 2.0000  kd 9.366  ce 10.774  agree 0.00  tail 0.653       453 tok/s  (run 421)    14.6s
+used_vram_gib=42.517 limit_gib=45.000
+  step      5  loss  11.3147  obj 11.3147  hid 2.5378  aux 2.0011  kd 8.924  ce 11.202  agree 0.00  tail 0.672       422 tok/s  (run 421)    18.2s
+used_vram_gib=42.409 limit_gib=45.000
+  step      6  loss  13.6462  obj 13.6462  hid 2.5387  aux 2.0008  kd 11.312  ce 10.633  agree 0.01  tail 0.601       454 tok/s  (run 426)    21.6s
+  step      7  loss  11.7494  obj 11.7494  hid 2.5189  aux 2.0001  kd 9.487  ce 10.007  agree 0.01  tail 0.625       454 tok/s  (run 430)    25.0s
+used_vram_gib=42.437 limit_gib=45.000
+  step      8  loss   9.6339  obj 9.6339  hid 2.5177  aux 2.0004  kd 7.416  ce 9.566  agree 0.03  tail 0.669       419 tok/s  (run 429)    28.7s
+used_vram_gib=42.466 limit_gib=45.000
+  step      9  loss   6.3612  obj 6.3612  hid 2.4998  aux 2.0002  kd 4.181  ce 9.285  agree 0.07  tail 0.726       451 tok/s  (run 431)    32.1s
+  step     10  loss   6.5876  obj 6.5876  hid 2.5002  aux 1.9999  kd 4.318  ce 10.171  agree 0.08  tail 0.711       445 tok/s  (run 432)    35.5s
+used_vram_gib=42.476 limit_gib=45.000
+  step     11  loss   7.8764  obj 7.8764  hid 2.4950  aux 1.9998  kd 5.634  ce 9.932  agree 0.06  tail 0.676       421 tok/s  (run 431)    39.2s
+used_vram_gib=42.966 limit_gib=45.000
+  step     12  loss   5.4283  obj 5.4283  hid 2.4673  aux 1.9998  kd 3.193  ce 10.001  agree 0.08  tail 0.745       441 tok/s  (run 432)    42.7s
+used_vram_gib=42.425 limit_gib=45.000
+  step     13  loss   6.1791  obj 6.1791  hid 2.4712  aux 2.0000  kd 4.044  ce 8.972  agree 0.05  tail 0.704       451 tok/s  (run 434)    46.1s
+  step     14  loss   6.5450  obj 6.5450  hid 2.4673  aux 2.0002  kd 4.423  ce 8.864  agree 0.06  tail 0.684       433 tok/s  (run 434)    49.6s
+used_vram_gib=44.179 limit_gib=45.000
+  step     15  loss   6.7773  obj 6.7773  hid 2.4593  aux 2.0002  kd 4.653  ce 8.924  agree 0.07  tail 0.684       450 tok/s  (run 434)    53.0s
+used_vram_gib=42.411 limit_gib=45.000
+  step     16  loss   7.7729  obj 7.7729  hid 2.4661  aux 2.0004  kd 5.644  ce 8.934  agree 0.06  tail 0.619       412 tok/s  (run 433)    56.7s
+  step     17  loss   9.2638  obj 9.2638  hid 2.4734  aux 2.0007  kd 7.076  ce 9.486  agree 0.06  tail 0.590       448 tok/s  (run 434)    60.2s
+used_vram_gib=43.159 limit_gib=45.000
+  step     18  loss   5.4437  obj 5.4437  hid 2.4506  aux 2.0003  kd 3.375  ce 8.416  agree 0.07  tail 0.705       451 tok/s  (run 435)    63.6s
+used_vram_gib=42.329 limit_gib=45.000
+  step     19  loss   5.0929  obj 5.0929  hid 2.4396  aux 2.0006  kd 3.054  ce 8.175  agree 0.10  tail 0.717       420 tok/s  (run 434)    67.2s
+  step     20  loss   8.1243  obj 8.1243  hid 2.4596  aux 2.0004  kd 6.099  ce 7.934  agree 0.07  tail 0.619       454 tok/s  (run 435)    70.6s
+used_vram_gib=42.399 limit_gib=45.000
+  step     21  loss   5.2279  obj 5.2279  hid 2.4271  aux 2.0006  kd 3.203  ce 8.093  agree 0.12  tail 0.699       452 tok/s  (run 436)    74.0s
+used_vram_gib=40.720 limit_gib=45.000
+  step     22  loss   4.8025  obj 4.8025  hid 2.4255  aux 2.0003  kd 2.793  ce 7.943  agree 0.13  tail 0.717       414 tok/s  (run 435)    77.7s
+used_vram_gib=43.032 limit_gib=45.000
+  step     23  loss   7.0556  obj 7.0556  hid 2.4696  aux 2.0005  kd 4.994  ce 8.244  agree 0.09  tail 0.675       449 tok/s  (run 435)    81.2s
+  step     24  loss   4.8043  obj 4.8043  hid 2.4404  aux 2.0006  kd 2.829  ce 7.530  agree 0.14  tail 0.727       447 tok/s  (run 436)    84.6s
+used_vram_gib=42.478 limit_gib=45.000
+  step     25  loss   5.1024  obj 5.1024  hid 2.4197  aux 2.0011  kd 3.164  ce 7.263  agree 0.14  tail 0.697       423 tok/s  (run 435)    88.2s
+used_vram_gib=42.466 limit_gib=45.000
+  step     26  loss   5.1975  obj 5.1975  hid 2.3889  aux 2.0009  kd 3.293  ce 7.075  agree 0.13  tail 0.689       450 tok/s  (run 436)    91.6s
+  step     27  loss   4.3406  obj 4.3406  hid 2.3838  aux 2.0003  kd 2.423  ce 7.234  agree 0.14  tail 0.729       441 tok/s  (run 436)    95.1s
+used_vram_gib=42.437 limit_gib=45.000
+  step     28  loss   4.5683  obj 4.5683  hid 2.3665  aux 2.0007  kd 2.707  ce 6.764  agree 0.13  tail 0.688       421 tok/s  (run 435)    98.8s
+used_vram_gib=42.343 limit_gib=45.000
+  step     29  loss   4.7895  obj 4.7895  hid 2.3508  aux 2.0007  kd 2.918  ce 6.937  agree 0.15  tail 0.681       450 tok/s  (run 436)   102.2s
+  step     30  loss   4.9931  obj 4.9931  hid 2.3481  aux 2.0009  kd 3.113  ce 7.041  agree 0.16  tail 0.678       396 tok/s  (run 434)   106.1s
+used_vram_gib=42.458 limit_gib=45.000
+  step     31  loss   7.1999  obj 7.1999  hid 2.3743  aux 2.0005  kd 5.303  ce 7.082  agree 0.16  tail 0.610       449 tok/s  (run 435)   109.5s
+used_vram_gib=40.271 limit_gib=45.000
+  step     32  loss   5.2879  obj 5.2879  hid 2.3406  aux 2.0007  kd 3.432  ce 6.836  agree 0.16  tail 0.688       447 tok/s  (run 435)   112.9s
+used_vram_gib=43.062 limit_gib=45.000
+used_vram_gib=43.062 limit_gib=45.000
+  step     32  validation   6.6016
+  step     33  loss   4.2802  obj 4.2802  hid 2.3063  aux 2.0003  kd 2.491  ce 6.345  agree 0.16  tail 0.691       117 tok/s  (run 402)   126.0s
+used_vram_gib=42.360 limit_gib=45.000
+  step     34  loss   4.4244  obj 4.4244  hid 2.2989  aux 2.0004  kd 2.657  ce 6.158  agree 0.20  tail 0.684       452 tok/s  (run 404)   129.4s
+used_vram_gib=42.999 limit_gib=45.000
+  step     35  loss   6.0599  obj 6.0599  hid 2.3311  aux 2.0002  kd 4.257  ce 6.353  agree 0.20  tail 0.651       448 tok/s  (run 405)   132.9s
+used_vram_gib=42.401 limit_gib=45.000
+  step     36  loss   4.0192  obj 4.0192  hid 2.2774  aux 2.0002  kd 2.277  ce 6.019  agree 0.23  tail 0.687       421 tok/s  (run 405)   136.5s
+  step     37  loss   3.5763  obj 3.5763  hid 2.2405  aux 2.0003  kd 1.848  ce 6.064  agree 0.23  tail 0.721       448 tok/s  (run 406)   139.9s
+used_vram_gib=42.380 limit_gib=45.000
+  step     38  loss   5.8991  obj 5.8991  hid 2.2882  aux 2.0001  kd 4.150  ce 6.028  agree 0.20  tail 0.621       454 tok/s  (run 407)   143.3s
+used_vram_gib=42.444 limit_gib=45.000
+  step     39  loss   4.5164  obj 4.5164  hid 2.2498  aux 2.0005  kd 2.805  ce 5.849  agree 0.21  tail 0.688       422 tok/s  (run 408)   147.0s
+  step     40  loss   4.0623  obj 4.0623  hid 2.2404  aux 2.0004  kd 2.361  ce 5.793  agree 0.24  tail 0.687       443 tok/s  (run 408)   150.4s
+used_vram_gib=42.419 limit_gib=45.000
+  step     41  loss   4.8720  obj 4.8720  hid 2.2324  aux 2.0005  kd 3.192  ce 5.619  agree 0.23  tail 0.656       438 tok/s  (run 409)   153.9s
+used_vram_gib=42.370 limit_gib=45.000
+  step     42  loss   3.6611  obj 3.6611  hid 2.2112  aux 2.0006  kd 1.980  ce 5.734  agree 0.26  tail 0.706       418 tok/s  (run 409)   157.6s
+  step     43  loss   3.4242  obj 3.4242  hid 2.2006  aux 2.0004  kd 1.764  ce 5.582  agree 0.25  tail 0.725       439 tok/s  (run 410)   161.1s
+used_vram_gib=42.458 limit_gib=45.000
+  step     44  loss   7.6924  obj 7.6924  hid 2.2393  aux 2.0007  kd 6.021  ce 5.502  agree 0.20  tail 0.549       410 tok/s  (run 410)   164.9s
+used_vram_gib=43.845 limit_gib=45.000
+  step     45  loss   3.5178  obj 3.5178  hid 2.1812  aux 2.0007  kd 1.889  ce 5.367  agree 0.25  tail 0.702       447 tok/s  (run 411)   168.3s
+used_vram_gib=42.384 limit_gib=45.000
+  step     46  loss   3.2423  obj 3.2423  hid 2.1731  aux 2.0009  kd 1.588  ce 5.663  agree 0.26  tail 0.727       451 tok/s  (run 412)   171.7s
+  step     47  loss   3.6248  obj 3.6248  hid 2.1855  aux 2.0010  kd 2.008  ce 5.219  agree 0.29  tail 0.692       419 tok/s  (run 412)   175.4s
+used_vram_gib=42.458 limit_gib=45.000
+  step     48  loss   4.8391  obj 4.8391  hid 2.1955  aux 2.0010  kd 3.225  ce 5.144  agree 0.22  tail 0.648       450 tok/s  (run 412)   178.8s
+used_vram_gib=43.161 limit_gib=45.000
+  step     49  loss   5.3076  obj 5.3076  hid 2.2206  aux 2.0011  kd 3.595  ce 6.000  agree 0.23  tail 0.639       446 tok/s  (run 413)   182.2s
+  step     50  loss   4.6660  obj 4.6660  hid 2.1888  aux 2.0011  kd 3.027  ce 5.422  agree 0.22  tail 0.656       434 tok/s  (run 413)   185.8s
+used_vram_gib=44.294 limit_gib=45.000
+  step     51  loss   3.4677  obj 3.4677  hid 2.1671  aux 2.0009  kd 1.811  ce 5.713  agree 0.28  tail 0.721       446 tok/s  (run 414)   189.2s
+used_vram_gib=42.397 limit_gib=45.000
+  step     52  loss   4.3713  obj 4.3713  hid 2.1589  aux 2.0010  kd 2.800  ce 4.901  agree 0.25  tail 0.647       445 tok/s  (run 415)   192.7s
+  step     53  loss   5.0418  obj 5.0418  hid 2.1639  aux 2.0010  kd 3.438  ce 5.202  agree 0.26  tail 0.638       414 tok/s  (run 415)   196.4s
+used_vram_gib=42.415 limit_gib=45.000
+  step     54  loss   3.2288  obj 3.2288  hid 2.1248  aux 2.0009  kd 1.646  ce 5.179  agree 0.30  tail 0.709       451 tok/s  (run 415)   199.8s
+used_vram_gib=42.298 limit_gib=45.000
+  step     55  loss   3.2346  obj 3.2346  hid 2.1318  aux 2.0011  kd 1.647  ce 5.193  agree 0.29  tail 0.704       446 tok/s  (run 416)   203.2s
+used_vram_gib=42.401 limit_gib=45.000
+  step     56  loss   4.0995  obj 4.0995  hid 2.1443  aux 2.0011  kd 2.510  ce 5.155  agree 0.24  tail 0.689       421 tok/s  (run 416)   206.9s
+  step     57  loss   2.8898  obj 2.8898  hid 2.1099  aux 2.0011  kd 1.317  ce 5.156  agree 0.33  tail 0.741       449 tok/s  (run 416)   210.3s
+used_vram_gib=42.458 limit_gib=45.000
+  step     58  loss   4.5338  obj 4.5338  hid 2.1271  aux 2.0011  kd 2.986  ce 4.822  agree 0.27  tail 0.645       443 tok/s  (run 417)   213.8s
+used_vram_gib=43.134 limit_gib=45.000
+  step     59  loss   6.2397  obj 6.2397  hid 2.1207  aux 2.0013  kd 4.698  ce 4.790  agree 0.25  tail 0.568       414 tok/s  (run 417)   217.5s
+  step     60  loss   3.1102  obj 3.1102  hid 2.0997  aux 2.0012  kd 1.564  ce 4.942  agree 0.32  tail 0.703       439 tok/s  (run 417)   221.0s
+used_vram_gib=42.397 limit_gib=45.000
+  step     61  loss   4.3383  obj 4.3383  hid 2.1355  aux 2.0010  kd 2.756  ce 5.121  agree 0.25  tail 0.660       414 tok/s  (run 417)   224.7s
+used_vram_gib=42.362 limit_gib=45.000
+  step     62  loss   5.0666  obj 5.0666  hid 2.1552  aux 2.0011  kd 3.464  ce 5.233  agree 0.26  tail 0.621       453 tok/s  (run 418)   228.1s
+  step     63  loss   3.1277  obj 3.1277  hid 2.1090  aux 2.0013  kd 1.550  ce 5.210  agree 0.30  tail 0.714       441 tok/s  (run 418)   231.6s
+used_vram_gib=42.419 limit_gib=45.000
+  step     64  loss   3.3505  obj 3.3505  hid 2.1212  aux 2.0012  kd 1.755  ce 5.325  agree 0.30  tail 0.703       416 tok/s  (run 418)   235.2s
+used_vram_gib=43.159 limit_gib=45.000
+used_vram_gib=43.159 limit_gib=45.000
+  step     64  validation   5.0959
+  checkpoint: step_000064 (periodic)
+used_vram_gib=42.267 limit_gib=45.000
+  step     65  loss   2.8945  obj 2.8945  hid 2.0744  aux 2.0015  kd 1.376  ce 4.794  agree 0.30  tail 0.720       116 tok/s  (run 402)   248.5s
+used_vram_gib=43.190 limit_gib=45.000
+  step     66  loss   3.0357  obj 3.0357  hid 2.0894  aux 2.0016  kd 1.483  ce 5.063  agree 0.30  tail 0.719       444 tok/s  (run 402)   252.0s
+  step     67  loss   3.9253  obj 3.9253  hid 2.0889  aux 2.0015  kd 2.421  ce 4.578  agree 0.28  tail 0.651       419 tok/s  (run 403)   255.6s
+used_vram_gib=42.321 limit_gib=45.000
+  step     68  loss   3.2903  obj 3.2903  hid 2.0863  aux 2.0017  kd 1.767  ce 4.785  agree 0.29  tail 0.697       464 tok/s  (run 403)   258.9s
+used_vram_gib=42.489 limit_gib=45.000
+  step     69  loss   2.9565  obj 2.9565  hid 2.0672  aux 2.0016  kd 1.435  ce 4.858  agree 0.33  tail 0.707       450 tok/s  (run 404)   262.4s
+  step     70  loss   5.6568  obj 5.6568  hid 2.1039  aux 2.0017  kd 4.117  ce 4.853  agree 0.27  tail 0.602       412 tok/s  (run 404)   266.1s
+used_vram_gib=43.103 limit_gib=45.000
+  step     71  loss   3.0520  obj 3.0520  hid 2.0573  aux 2.0018  kd 1.568  ce 4.533  agree 0.34  tail 0.678       450 tok/s  (run 405)   269.5s
+used_vram_gib=42.292 limit_gib=45.000
+  step     72  loss   3.4017  obj 3.4017  hid 2.0805  aux 2.0016  kd 1.913  ce 4.469  agree 0.34  tail 0.650       417 tok/s  (run 405)   273.2s
+  step     73  loss   4.6435  obj 4.6435  hid 2.1083  aux 2.0016  kd 3.073  ce 5.144  agree 0.27  tail 0.633       450 tok/s  (run 405)   276.6s
+used_vram_gib=42.458 limit_gib=45.000
+  step     74  loss   3.1843  obj 3.1843  hid 2.0753  aux 2.0014  kd 1.659  ce 4.860  agree 0.32  tail 0.689       446 tok/s  (run 406)   280.0s
+used_vram_gib=42.347 limit_gib=45.000
+  step     75  loss   2.8901  obj 2.8901  hid 2.0683  aux 2.0016  kd 1.372  ce 4.821  agree 0.34  tail 0.719       419 tok/s  (run 406)   283.7s
+used_vram_gib=43.032 limit_gib=45.000
+  step     76  loss   4.2582  obj 4.2582  hid 2.0850  aux 2.0015  kd 2.756  ce 4.578  agree 0.27  tail 0.643       443 tok/s  (run 406)   287.2s
+  step     77  loss   2.6835  obj 2.6835  hid 2.0513  aux 2.0015  kd 1.194  ce 4.622  agree 0.35  tail 0.725       450 tok/s  (run 407)   290.6s
+used_vram_gib=42.437 limit_gib=45.000
+  step     78  loss   2.9813  obj 2.9813  hid 2.0613  aux 2.0014  kd 1.456  ce 4.931  agree 0.34  tail 0.717       412 tok/s  (run 407)   294.3s
+used_vram_gib=42.382 limit_gib=45.000
+  step     79  loss   5.3198  obj 5.3198  hid 2.1225  aux 2.0014  kd 3.740  ce 5.161  agree 0.27  tail 0.615       449 tok/s  (run 408)   297.7s
+  step     80  loss   2.7477  obj 2.7477  hid 2.0481  aux 2.0017  kd 1.243  ce 4.781  agree 0.36  tail 0.725       449 tok/s  (run 408)   301.2s
+used_vram_gib=42.437 limit_gib=45.000
+  step     81  loss   3.1448  obj 3.1448  hid 2.0702  aux 2.0017  kd 1.657  ce 4.512  agree 0.33  tail 0.678       421 tok/s  (run 408)   304.8s
+used_vram_gib=43.940 limit_gib=45.000
+  step     82  loss   2.8403  obj 2.8403  hid 2.0582  aux 2.0016  kd 1.285  ce 5.245  agree 0.36  tail 0.754       464 tok/s  (run 409)   308.1s
+  step     83  loss   5.0146  obj 5.0146  hid 2.0753  aux 2.0012  kd 3.473  ce 5.022  agree 0.27  tail 0.626       447 tok/s  (run 409)   311.6s
+used_vram_gib=42.495 limit_gib=45.000
+  step     84  loss   2.9637  obj 2.9637  hid 2.0482  aux 2.0014  kd 1.441  ce 4.963  agree 0.34  tail 0.716       419 tok/s  (run 409)   315.2s
+used_vram_gib=42.337 limit_gib=45.000
+  step     85  loss   4.4878  obj 4.4878  hid 2.0775  aux 2.0015  kd 2.976  ce 4.709  agree 0.25  tail 0.637       444 tok/s  (run 410)   318.7s
+  step     86  loss   4.7615  obj 4.7615  hid 2.0677  aux 2.0012  kd 3.245  ce 4.809  agree 0.24  tail 0.616       451 tok/s  (run 410)   322.1s
+used_vram_gib=42.378 limit_gib=45.000
+  step     87  loss   2.6359  obj 2.6359  hid 2.0206  aux 2.0013  kd 1.173  ce 4.506  agree 0.36  tail 0.711       417 tok/s  (run 410)   325.8s
+used_vram_gib=42.419 limit_gib=45.000
+  step     88  loss   2.9126  obj 2.9126  hid 2.0428  aux 2.0013  kd 1.418  ce 4.712  agree 0.33  tail 0.723       449 tok/s  (run 411)   329.2s
+used_vram_gib=42.341 limit_gib=45.000
+  step     89  loss   4.9384  obj 4.9384  hid 2.0975  aux 2.0014  kd 3.375  ce 5.124  agree 0.26  tail 0.631       415 tok/s  (run 411)   332.9s
+  step     90  loss   4.5112  obj 4.5112  hid 2.0743  aux 2.0016  kd 3.030  ce 4.416  agree 0.30  tail 0.623       451 tok/s  (run 411)   336.3s
+used_vram_gib=42.460 limit_gib=45.000
+  step     91  loss   3.6521  obj 3.6521  hid 2.0602  aux 2.0013  kd 2.167  ce 4.531  agree 0.29  tail 0.672       464 tok/s  (run 412)   339.6s
+used_vram_gib=42.981 limit_gib=45.000
+  step     92  loss   4.5043  obj 4.5043  hid 2.0665  aux 2.0012  kd 2.965  ce 5.041  agree 0.26  tail 0.654       408 tok/s  (run 412)   343.4s
+  step     93  loss   3.0161  obj 3.0161  hid 2.0326  aux 2.0015  kd 1.520  ce 4.781  agree 0.35  tail 0.702       448 tok/s  (run 412)   346.8s
+used_vram_gib=43.022 limit_gib=45.000
+  step     94  loss   2.9994  obj 2.9994  hid 2.0365  aux 2.0013  kd 1.487  ce 4.924  agree 0.33  tail 0.719       450 tok/s  (run 412)   350.2s
+used_vram_gib=42.339 limit_gib=45.000
+  step     95  loss   2.8705  obj 2.8705  hid 2.0481  aux 2.0012  kd 1.376  ce 4.686  agree 0.33  tail 0.714       323 tok/s  (run 411)   355.0s
+used_vram_gib=42.396 limit_gib=45.000
+  step     96  loss   5.3449  obj 5.3449  hid 2.0969  aux 2.0014  kd 3.790  ce 5.049  agree 0.27  tail 0.595       390 tok/s  (run 411)   358.9s
+used_vram_gib=42.476 limit_gib=45.000
+used_vram_gib=42.476 limit_gib=45.000
+  step     96  validation   4.8603
+  step     97  loss   3.9402  obj 3.9402  hid 2.0473  aux 2.0013  kd 2.434  ce 4.805  agree 0.34  tail 0.684       121 tok/s  (run 401)   371.6s
+used_vram_gib=44.118 limit_gib=45.000
+  step     98  loss   2.7059  obj 2.7059  hid 2.0353  aux 2.0013  kd 1.213  ce 4.728  agree 0.37  tail 0.720       410 tok/s  (run 401)   375.3s
+used_vram_gib=43.032 limit_gib=45.000
+  step     99  loss   5.0798  obj 5.0798  hid 2.0890  aux 2.0015  kd 3.539  ce 4.942  agree 0.28  tail 0.606       447 tok/s  (run 402)   378.8s
+  step    100  loss   3.1663  obj 3.1663  hid 2.0512  aux 2.0014  kd 1.668  ce 4.705  agree 0.35  tail 0.693       464 tok/s  (run 402)   382.1s
+used_vram_gib=44.353 limit_gib=45.000
+  step    101  loss   2.7683  obj 2.7683  hid 2.0242  aux 2.0016  kd 1.284  ce 4.703  agree 0.35  tail 0.715       422 tok/s  (run 402)   385.7s
+used_vram_gib=43.001 limit_gib=45.000
+  step    102  loss   3.0176  obj 3.0176  hid 2.0358  aux 2.0015  kd 1.526  ce 4.715  agree 0.33  tail 0.713       448 tok/s  (run 403)   389.1s
+used_vram_gib=43.083 limit_gib=45.000
+  step    103  loss   3.5510  obj 3.5510  hid 2.0509  aux 2.0014  kd 2.075  ce 4.483  agree 0.32  tail 0.670       408 tok/s  (run 403)   392.9s
+  step    104  loss   3.2687  obj 3.2687  hid 2.0414  aux 2.0014  kd 1.771  ce 4.747  agree 0.28  tail 0.698       450 tok/s  (run 403)   396.3s
+used_vram_gib=42.378 limit_gib=45.000
+  step    105  loss   2.8082  obj 2.8082  hid 2.0269  aux 2.0014  kd 1.321  ce 4.713  agree 0.34  tail 0.715       444 tok/s  (run 403)   399.8s
+used_vram_gib=43.054 limit_gib=45.000
+  step    106  loss   3.7011  obj 3.7011  hid 2.0615  aux 2.0016  kd 2.178  ce 4.900  agree 0.30  tail 0.665       410 tok/s  (run 404)   403.5s
+  step    107  loss   2.8887  obj 2.8887  hid 2.0364  aux 2.0015  kd 1.398  ce 4.703  agree 0.33  tail 0.713       449 tok/s  (run 404)   406.9s
+used_vram_gib=42.438 limit_gib=45.000
+  step    108  loss   2.8423  obj 2.8423  hid 2.0337  aux 2.0016  kd 1.362  ce 4.615  agree 0.36  tail 0.702       446 tok/s  (run 404)   410.4s
+used_vram_gib=42.401 limit_gib=45.000
+  step    109  loss   3.6902  obj 3.6902  hid 2.0509  aux 2.0016  kd 2.201  ce 4.619  agree 0.29  tail 0.678       417 tok/s  (run 404)   414.1s
+  step    110  loss   4.6045  obj 4.6045  hid 2.0659  aux 2.0013  kd 3.096  ce 4.740  agree 0.27  tail 0.612       447 tok/s  (run 405)   417.5s
+used_vram_gib=42.399 limit_gib=45.000
+  step    111  loss   6.4927  obj 6.4927  hid 2.0844  aux 2.0014  kd 4.946  ce 5.030  agree 0.28  tail 0.552       451 tok/s  (run 405)   420.9s
+used_vram_gib=43.159 limit_gib=45.000
+  step    112  loss   4.4364  obj 4.4364  hid 2.0903  aux 2.0013  kd 2.902  ce 4.874  agree 0.29  tail 0.641       416 tok/s  (run 405)   424.6s
+used_vram_gib=42.401 limit_gib=45.000
+  step    113  loss   2.8596  obj 2.8596  hid 2.0230  aux 2.0014  kd 1.297  ce 5.491  agree 0.30  tail 0.772       448 tok/s  (run 406)   428.0s
+  step    114  loss   2.8903  obj 2.8903  hid 2.0239  aux 2.0015  kd 1.420  ce 4.560  agree 0.34  tail 0.692       467 tok/s  (run 406)   431.3s
+used_vram_gib=43.884 limit_gib=45.000
+  step    115  loss   5.3914  obj 5.3914  hid 2.0984  aux 2.0015  kd 3.882  ce 4.584  agree 0.29  tail 0.569       419 tok/s  (run 406)   435.0s
+used_vram_gib=44.058 limit_gib=45.000
+  step    116  loss   3.7077  obj 3.7077  hid 2.0469  aux 2.0014  kd 2.227  ce 4.555  agree 0.30  tail 0.677       466 tok/s  (run 406)   438.3s
+  step    117  loss   2.8092  obj 2.8092  hid 2.0132  aux 2.0017  kd 1.368  ce 4.323  agree 0.39  tail 0.682       445 tok/s  (run 407)   441.7s
+used_vram_gib=43.200 limit_gib=45.000
+  step    118  loss   7.3220  obj 7.3220  hid 2.0802  aux 2.0015  kd 5.800  ce 4.795  agree 0.25  tail 0.502       434 tok/s  (run 407)   445.3s
+used_vram_gib=42.489 limit_gib=45.000
+  step    119  loss   2.9265  obj 2.9265  hid 2.0274  aux 2.0015  kd 1.458  ce 4.529  agree 0.35  tail 0.689       451 tok/s  (run 407)   448.7s
+  step    120  loss   2.7497  obj 2.7497  hid 2.0159  aux 2.0017  kd 1.321  ce 4.188  agree 0.37  tail 0.687       465 tok/s  (run 408)   452.0s
+used_vram_gib=44.372 limit_gib=45.000
+  step    121  loss   3.0560  obj 3.0560  hid 2.0279  aux 2.0013  kd 1.565  ce 4.747  agree 0.32  tail 0.698       421 tok/s  (run 408)   455.6s
+used_vram_gib=42.356 limit_gib=45.000
+  step    122  loss   6.5363  obj 6.5363  hid 2.0836  aux 2.0014  kd 4.977  ce 5.153  agree 0.25  tail 0.554       450 tok/s  (run 408)   459.0s
+  step    123  loss   3.0394  obj 3.0394  hid 2.0230  aux 2.0016  kd 1.574  ce 4.516  agree 0.34  tail 0.687       414 tok/s  (run 408)   462.8s
+used_vram_gib=43.159 limit_gib=45.000
+  step    124  loss   6.2077  obj 6.2077  hid 2.0954  aux 2.0015  kd 4.650  ce 5.082  agree 0.25  tail 0.565       446 tok/s  (run 408)   466.2s
+used_vram_gib=42.245 limit_gib=45.000
+  step    125  loss   3.3325  obj 3.3325  hid 2.0320  aux 2.0014  kd 1.854  ce 4.600  agree 0.32  tail 0.695       441 tok/s  (run 409)   469.7s
+used_vram_gib=43.153 limit_gib=45.000
+  step    126  loss   2.7693  obj 2.7693  hid 2.0190  aux 2.0016  kd 1.297  ce 4.609  agree 0.33  tail 0.717       406 tok/s  (run 409)   473.5s
+  step    127  loss   4.8461  obj 4.8461  hid 2.0862  aux 2.0015  kd 3.297  ce 5.040  agree 0.28  tail 0.631       449 tok/s  (run 409)   476.9s
+used_vram_gib=42.399 limit_gib=45.000
+  step    128  loss   3.5339  obj 3.5339  hid 2.0456  aux 2.0015  kd 2.067  ce 4.423  agree 0.29  tail 0.681       450 tok/s  (run 409)   480.3s
+used_vram_gib=42.456 limit_gib=45.000
+used_vram_gib=42.456 limit_gib=45.000
+  step    128  validation   4.7987
+  checkpoint: step_000128 (periodic)
+
+  finished step 128 of 128 in 490.2s (196,608 tokens seen)
+  wrote /workspace/runs/run016_A3_behavioural_delta_normalised_seed2/checkpoints/step_000128 and summary.json
+=== run016_A3_behavioural_delta_normalised_seed2 done: rc=0 in 496.3s
+
+=== PAIR COMPLETE ===
+  run016_A3_behavioural_delta_normalised_seed2: rc=0 in 496.3s

@@ -1,0 +1,24 @@
+{
+  "composite_seed1": {
+    "raw": 4.936469793319702,
+    "normalised": 4.838203148408369,
+    "contrast_norm_minus_raw": -0.09826664491133297
+  },
+  "composite_seed2": {
+    "raw": 4.845722371881658,
+    "normalised": 4.798652193763039,
+    "contrast_norm_minus_raw": -0.04707017811861913
+  },
+  "seed_to_seed_spread_S": 0.09074742143804393,
+  "per_arm_seed_shift": {
+    "raw": -0.09074742143804393,
+    "normalised": -0.039550954645330094
+  },
+  "abs_c2_exceeds_S": false,
+  "direction_consistent_across_seeds": true,
+  "mean_contrast_descriptive": -0.07266841151497605,
+  "pure_hidden_kd_seed1_contrast_norm_minus_raw": 3.4107208902185615,
+  "pure_hidden_kd_seeds_available": 1,
+  "classification": "SAME_DIRECTION_WITHIN_SPREAD",
+  "significance_claimed": false
+}

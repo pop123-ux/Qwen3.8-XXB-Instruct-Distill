@@ -1,0 +1,61 @@
+=== run016_A3_behavioural_delta_normalised_seed2  [normalised]  seed=2
+======================================================================
+
+  device: cuda
+  objective: composite  alpha 0.5  T 2.0  tail bucket
+  composite: weights {'ce': 0.1, 'hidden_delta': 0.5, 'logit_kd': 1.0, 'router_balance': 1.0}
+  composite: hidden term hidden_delta (mode delta)
+  teacher  : {'source': 'online', 'top_k': 64, 'temperature': 2.0, 'teacher_model': 'Qwen/Qwen3.8-27B', 'teacher_revision': 'dbdc473dea0d6a9763042881cc33d6058d1742d2', 'hidden_states': True}
+  tokenizer vocabulary 248,077 against a student embedding of 248,320: 243 alignment padding row(s) that no token id reaches. Carried, not trimmed — trimming would change the student's geometry.
+  corpus: /workspace/corpora/gutenberg/train.txt tokenised by Qwen2Tokenizer at /workspace/models/qwen3.8-27b-dbdc473
+          5,519,078 bytes, 455 sequences of 1536 (433 train / 22 validation)
+          sha256 e11ca38bb099fc89
+          tokenizer Qwen2Tokenizer vocab 248,077 eos 248046
+          700,000 tokens from 17,017 document(s), 1120 dropped in the tail
+
+Loading weights:   0%|          | 0/831 [00:00<?, ?it/s]
+Loading weights:   0%|          | 1/831 [00:00<01:55,  7.19it/s]
+Loading weights:   0%|          | 2/831 [00:00<01:39,  8.31it/s]
+Loading weights:   7%|▋         | 58/831 [00:00<00:03, 233.49it/s]
+Loading weights:  14%|█▎        | 114/831 [00:00<00:02, 352.86it/s]
+Loading weights:  20%|█▉        | 166/831 [00:00<00:01, 408.66it/s]
+Loading weights:  26%|██▋       | 220/831 [00:00<00:01, 447.70it/s]
+Loading weights:  33%|███▎      | 275/831 [00:00<00:01, 480.01it/s]
+Loading weights:  39%|███▉      | 326/831 [00:00<00:01, 485.45it/s]
+Loading weights:  47%|████▋     | 389/831 [00:00<00:00, 529.67it/s]
+Loading weights:  53%|█████▎    | 443/831 [00:01<00:00, 521.18it/s]
+Loading weights:  60%|█████▉    | 496/831 [00:01<00:00, 516.87it/s]
+Loading weights:  67%|██████▋   | 553/831 [00:01<00:00, 520.85it/s]
+Loading weights:  73%|███████▎  | 607/831 [00:01<00:00, 526.34it/s]
+Loading weights:  80%|████████  | 666/831 [00:01<00:00, 537.78it/s]used_vram_gib=42.417 limit_gib=45.000
+
+Loading weights:  87%|████████▋ | 720/831 [00:01<00:00, 530.36it/s]
+Loading weights:  93%|█████████▎| 774/831 [00:01<00:00, 519.79it/s]
+Loading weights: 100%|█████████▉| 830/831 [00:01<00:00, 530.98it/s]
+Loading weights: 100%|██████████| 831/831 [00:01<00:00, 463.15it/s]
+  gradient checkpointing: ON
+  strategy: qlora (r=16, alpha=32)
+  optimizer: adamw
+  parameters: 13,031,508,864 total, 23,003,136 trainable (0.1765%)
+  precision: bf16 (autocast)
+
+  CHECKPOINTING
+    full checkpoint : every 64 steps -> /workspace/runs/run016_A3_behavioural_delta_normalised_seed2/checkpoints
+    progress record : every 1 steps -> metrics.jsonl + progress/latest.json
+    resume          : no (starting from step 0)
+    persistent copy : off (local only)
+                      NOTHING SURVIVES THIS RUNTIME. Set training.persistent_backup
+                      to a mounted Drive path to keep checkpoints.
+  layer map: 48 pairs, 16 teacher layers unsupervised
+
+OUT OF MEMORY — recorded as an experimental result
+  phase                : backward pass
+  device               : NVIDIA L40S
+  total VRAM           : 44.39 GiB
+  allocated at failure : 39.03 GiB
+  reserved at failure  : 42.90 GiB
+
+  wrote /workspace/runs/run016_A3_behavioural_delta_normalised_seed2/summary.json recording the OOM.
+  This is usable data: run scripts/hardware_info.py --calibrate-run on it.
+=== run016_A3_behavioural_delta_normalised_seed2 done: rc=1 in 7.0s
+STOPPING: run016_A3_behavioural_delta_normalised_seed2 returned 1

@@ -486,6 +486,40 @@ completed_experiments:
     fraction_of_run011_run008_gap_recovered: 0.114
     classification: NORMALISATION_PENALTY_NOT_EXPLAINED_BY_SCALE
     artifacts: experiments/run014_normalized_delta_gradmatched_seed1/
+  run015_A3_behavioural_delta_raw_seed2:
+    final_validation_loss: 4.845722371881658
+    final_ce: 4.480191
+    final_logit_kd: 2.126863
+    final_top1: 0.29772
+    runtime_seconds: 479.9
+    tokens_per_second: 409.7
+    peak_allocated_gib: 41.316
+    peak_reserved_gib: 43.869
+    packed_corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+    integrity: PASS
+    replication_of: run013_A3_behavioural_delta_raw_seed1
+    seed: 2
+    immutable: true
+    archived: experiments/run015_A3_behavioural_delta_raw_seed2/
+  run016_A3_behavioural_delta_normalised_seed2:
+    final_validation_loss: 4.798652193763039
+    final_ce: 4.422896
+    final_logit_kd: 2.066781
+    final_top1: 0.291205
+    runtime_seconds: 490.15
+    tokens_per_second: 401.1
+    peak_allocated_gib: 41.316
+    peak_reserved_gib: 43.869
+    packed_corpus_sha256: e11ca38bb099fc89c2f74e96f5d2f1209def6a16f6a8432d4e9972acd50c100d
+    integrity: PASS
+    replication_of: run013_A3_behavioural_delta_normalised_seed1
+    seed: 2
+    immutable: true
+    archived: experiments/run016_A3_behavioural_delta_normalised_seed2/
+    technical_history: attempt 1 ran second in the shared process and OOMed at step 0 (first backward)
+      because run015's CUDA cache was not released (baseline reserved 41.9 vs 16.71 GiB). Zero optimizer
+      steps. Attempt 2 ran alone in a fresh process with the identical frozen config (launcher fix 9d0b281).
+      Attempt-1 evidence archived under attempt1_oom/.
 current_finding:
   statement: 'Across three transformation-matching formulations under one matched 128-step envelope: A
     (RMS-normalised delta) loses badly (+2.93 validation); B (normalised + explicit log-RMS magnitude
@@ -604,9 +638,7 @@ rq2:
   gate: G6
   execute_now: false
   note: Full definition captured in research/ROADMAP.yaml. Not executed; RQ1 still active.
-next_action: De-confound A3-vs-A1 by running matched-normalisation cells (A3 normalised and/or A1 raw).
-  Then gradient-scale-matched normalized-delta control, matched 1024-step pointwise control, capability/transition
-  evaluation. FDD remains BLOCKED_BY_PRIOR_ART_IDENTITY.
+next_action: Seed-2 composite A3 pair complete (SAME_DIRECTION_WITHIN_SPREAD). No further experiment started.
 seed1_matched_pair_result:
   pair: run008_raw_delta_seed1 (treatment) vs run009_pointwise_seed1 (control)
   why_this_pair_is_primary: Same seed, same machine, same unpinned package environment, same teacher/student/corpus/token-budget/optimiser.
@@ -1024,3 +1056,30 @@ gradient_scale_control_result:
   reading_of_run011: The magnitude-information interpretation of Run011 survives this control; it is not
     established as the mechanism, since optimisation explanations other than a scalar clip-mediated scale
     remain open.
+composite_normalisation_seed2_replication:
+  preregistration: experiments/run015_016_A3_seed2_pair/PREREG.md
+  preparation_commit: e891fe95807d538aafd5571e9654a28324ee350f
+  launcher_fix_commit: 9d0b281386d8fce2988eab24f974141fc01b1dd7
+  composite_seed1:
+    raw: 4.936469793319702
+    normalised: 4.838203148408369
+    contrast_norm_minus_raw: -0.09826664491133297
+  composite_seed2:
+    raw: 4.845722371881658
+    normalised: 4.798652193763039
+    contrast_norm_minus_raw: -0.04707017811861913
+  seed_to_seed_spread_S: 0.09074742143804393
+  per_arm_seed_shift:
+    raw: -0.09074742143804393
+    normalised: -0.039550954645330094
+  abs_c2_exceeds_S: false
+  direction_consistent_across_seeds: true
+  mean_contrast_descriptive: -0.07266841151497605
+  pure_hidden_kd_seed1_contrast_norm_minus_raw: 3.4107208902185615
+  classification: SAME_DIRECTION_WITHIN_SPREAD
+  interpretation: 'Under the composite objective, normalised residual-delta beat raw at BOTH seeds (c1
+    -0.0983, c2 -0.0471). The direction repeated, but the seed-2 contrast is smaller than the seed-to-seed
+    shift of the raw arm alone (S 0.0907), so by the frozen rule the effect is not practically distinguishable
+    from seed variation. Supervision-context dependence of the normalisation effect remains directionally
+    suggestive, not established: the pure hidden-KD side (+3.41, raw far better) has only seed 1, and
+    the composite effect is small relative to seed noise. No significance claimed from two seeds.'

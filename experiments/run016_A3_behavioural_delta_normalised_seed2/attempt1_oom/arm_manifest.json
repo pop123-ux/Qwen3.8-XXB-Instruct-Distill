@@ -1,0 +1,56 @@
+{
+  "experiment": "run016_A3_behavioural_delta_normalised_seed2",
+  "replication_of": "run013_A3_behavioural_delta_normalised_seed1",
+  "replication_seed": 2,
+  "preregistered_arm": "A3",
+  "arm_name": "behavioural_delta",
+  "hidden_term": "hidden_delta",
+  "hidden_normalise": true,
+  "resolved_coefficients": {
+    "ce": 0.1,
+    "hidden_delta": 0.5,
+    "logit_kd": 1.0,
+    "router_balance": 1.0
+  },
+  "router_aux_loss_coef": 0.001,
+  "objective": "composite",
+  "permitted_changes_vs_seed1": [
+    "name",
+    "runtime.output_dir",
+    "training.seed"
+  ],
+  "diff_vs_built_seed1": {
+    "name": [
+      "run013_A3_behavioural_delta_normalised_seed1",
+      "run016_A3_behavioural_delta_normalised_seed2"
+    ],
+    "runtime.output_dir": [
+      "/workspace/runs/run013_A3_behavioural_delta_normalised_seed1",
+      "/workspace/runs/run016_A3_behavioural_delta_normalised_seed2"
+    ],
+    "training.seed": [
+      1,
+      2
+    ]
+  },
+  "diff_vs_archived_seed1": {
+    "name": [
+      "run013_A3_behavioural_delta_normalised_seed1",
+      "run016_A3_behavioural_delta_normalised_seed2"
+    ],
+    "runtime.output_dir": [
+      "/workspace/runs/run013_A3_behavioural_delta_normalised_seed1",
+      "/workspace/runs/run016_A3_behavioural_delta_normalised_seed2"
+    ],
+    "training.seed": [
+      1,
+      2
+    ]
+  },
+  "preregistered_order": [
+    "run015_A3_behavioural_delta_raw_seed2",
+    "run016_A3_behavioural_delta_normalised_seed2"
+  ],
+  "preparation_commit": "e891fe95807d538aafd5571e9654a28324ee350f",
+  "locked_before_execution": true
+}
